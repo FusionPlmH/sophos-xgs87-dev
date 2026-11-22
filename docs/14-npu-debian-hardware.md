@@ -469,7 +469,58 @@ p1–p8 与 sfp 全部拿到独立 MAC 并 up。
 
 ---
 
-## 14.11 复现清单
+## 14.11 时间：板载 RTC 是坏的，用 fake-hwclock + NTP
+
+### 现象
+
+每次开机系统时间都回到 `2026-04-13 19:38`，与真实时间相差数月。
+
+### 根因：`armada38x-rtc` 返回垃圾值且不走时
+
+```
+# cat /sys/class/rtc/rtc0/since_epoch
+4278124286            # = 0xFEDCBAFE，典型的未初始化值
+
+# 5 秒后再读
+4278124286            # 完全没有变化
+
+# timedatectl
+RTC time: Mon 2105-07-27 07:51:26
+```
+
+`0xFEDCBAFE` + 不递增 ⇒ **RTC 硬件/备电在这块板子上不可用**，软件修不了。
+
+### 处理方案
+
+| 组件 | 作用 |
+|---|---|
+| **`fake-hwclock`** | 关机与每小时把系统时间存到 `/etc/fake-hwclock.data`，开机时读回，保证时间单调、不会倒退 |
+| **`systemd-timesyncd`** | 有网络后 NTP 校正到真实时间 |
+| **`dbus`** | `timedatectl` / `systemctl` 的总线功能依赖它（minbase 里没有） |
+
+```bash
+apt install systemd-timesyncd dbus fake-hwclock util-linux-extra
+systemctl enable --now dbus.socket          # Debian 用 socket 激活
+timedatectl set-timezone Asia/Shanghai
+```
+
+### 验证
+
+重启后：
+
+```
+date           : Mon Nov 23 04:35:23 CST 2026     ← fake-hwclock 恢复
+System clock synchronized: no                     ← 开机时还没网络，属正常
+NTP service   : active
+RTC time      : Mon 2105-07-27 ...                ← 硬件仍坏，已绕过
+```
+
+> 开机时 NTP 能否立刻同步取决于是否有网络。当前 sfp 口的 DHCP 是手动执行的，
+> 若希望开机即联网校时，需要把上游口的 DHCP（或静态地址）做成持久配置。
+
+---
+
+## 14.12 复现清单
 
 ```bash
 # 1. DTB：port@9 必须带 managed = "in-band-status"
