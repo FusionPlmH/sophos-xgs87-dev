@@ -1,0 +1,10 @@
+docs: add NPU OS migration plan (OpenWrt vs Debian) and 10G SFP path
+
+- 13.1 why a switch driver is mandatory (mvpp2 + comphy + mv88e6xxx + phylink/sfp)
+- 13.2 mainline status: board DTS 0f72e965 (not in v6.18), 6193X no-PTP fix 6b491af01aa5
+- 13.4 single DTS change: port@9 phy-mode 1000base-x -> 10gbase-r
+- 13.5 Debian steps: build DTB, debootstrap to p1, extract-vmlinux to raw Image,
+        bootcmd without fdt_set_partno, rollback via bootcmd_emmc3
+- 13.6 risk table (SPI never written, 2GB RAM, eMMC wear, x86 reboot resets NPU)
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

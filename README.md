@@ -62,7 +62,8 @@
 | [docs/09-adaptation-notes.md](docs/09-adaptation-notes.md) | 做 OpenWrt / 自研固件要改什么，已知缺口 |
 | [docs/10-ideas.md](docs/10-ideas.md) | **这台机器独特设计的最佳用法**（重点，持续更新） |
 | [docs/11-roadmap.md](docs/11-roadmap.md) | 下一步实验清单 |
-| [docs/12-measurements.md](docs/12-measurements.md) | **实测记录**：LED、`dev_write`、**SFP 10G**、**原厂交换机初始化序列**、PCIe、GPIO、完整备份 |
+| [docs/12-measurements.md](docs/12-measurements.md) | **实测记录**：LED、`dev_write`、**SFP 10G**、**原厂交换机初始化序列**、PCIe、GPIO、完整备份、mainline 支持情况 |
+| [docs/13-npu-os-plan.md](docs/13-npu-os-plan.md) | **NPU 换系统方案**：OpenWrt vs Debian、DTS 一行改动让 SFP 跑 10G、debootstrap 步骤、回滚 |
 | [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
 | [tools/](tools/) | 采集/转换脚本（设备树转 DTS、脱敏） |
 
