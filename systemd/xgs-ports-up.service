@@ -1,0 +1,12 @@
+[Unit]
+Description=XGS 87: per-port MAC addresses and bring switch ports up
+After=network-pre.target
+Before=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/xgs-ports-init.sh
+
+[Install]
+WantedBy=multi-user.target
