@@ -264,7 +264,34 @@ Read - switch port: 0x9, reg: 0x0, val: 0xF4D      # bit11 LINK=1, speed=3, CMOD
 
 - ✅ 物理/PCS 层：SFP 10G 链路、CPU 10G 链路都实测 UP。
 - ✅ 数据面：LAN1（1G）↔ 交换机 ↔ CPU 口（10G）↔ `eth0` 全程可用 —— ping、SSH、**93 MB/s** 的整盘 dump 都跑在这条路上。
-- ⛔ **SFP 10G 同时转发**未验证：4.14 厂商内核**根本没有交换机驱动**，二层完全靠 U-Boot 的寄存器初始化；要在 10G SerDes 口上正常收发需要 mainline `mv88e6xxx` DSA 驱动（见 12.15）。
+- ⛔ **SFP 10G 同时转发**：做不到，见下面的实测。
+
+### 重要：把 port 9 切成 10GBASE-R 会让**整个交换机停止转发**
+
+在原厂 `sw_init` 配好的、本来完全正常的二层状态里，只做这一步：
+
+```sh
+xgs-mdio -a 0 2 9.0 0xd            # port 9: 1000BASE-X → 10GBASE-R
+xgs-mdio -d 9 0 2 4.0xf002 0x804d
+xgs-mdio -d 9 0 2 4.0x2000 0x9140
+```
+
+结果：
+
+| 观察项 | 结果 |
+|---|---|
+| port 9 PORT_STATUS | `0x0e49` → **`0x0f4d`**（LINK=1, speed=3, CMODE=0xD）→ 10 Gbps 链路成功 |
+| port 0（CPU）PORT_STATUS | `0x0f4d`（仍然 10 Gbps UP） |
+| port 9 `PORT_CONTROL(0x04)` | `0x007f`（Forwarding，没被改） |
+| **LAN1 ↔ PC 的 ping / SSH** | **全部中断** |
+| SFP 侧 DHCP（对端为家用路由器） | 拿不到租约 |
+
+把 port 9 写回 `0x9` + 同样的 PCS 初始化后，**ping / SSH 立刻恢复**。
+说明 88E6193X 在 10GBASE-R 模式下不是"链路上、转发照旧"：厂商配置里这个
+端口 MAC 的速率/流控/SerDes 参数没有按 10G 设置，整块芯片的转发随之失效。
+
+结论：**10G SFP 不是靠写几个寄存器就能用的**，必须由 mainline `mv88e6xxx`
+DSA 驱动按 phylink 流程把端口带起来（见 12.15）。在那之前，SFP 口按原厂 1 Gbps 用是稳定的。
 
 ---
 
