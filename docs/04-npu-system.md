@@ -163,7 +163,23 @@ resource/
 - `/sys/class/leds` 不存在（DT 里没有 LED 节点）。
 - RTC 未设好时会回到 2105 年（`armada38x-rtc`），注意日志时间戳。
 
-## 4.10 我们做过的改动（可回滚）
+## 4.11 为什么不把完整 rootfs 放进本仓库
+
+原厂 rootfs（p3，约 100 MB gzip）里包含 **Sophos / Marvell 的专有二进制**
+（`cpss_agent`、`nwa_db_*.bin`、`mv_*` 驱动、各类闭源工具），公开分发有版权风险，
+因此本仓库只放**实测数据**（设备树、内核 config、U-Boot、日志）和文档。
+
+需要完整镜像时在自己机器上导出即可（命令见 [07-storage.md](07-storage.md)）：
+
+```sh
+# 在 NPU 上
+tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
+        --exclude=./tmp --exclude=./run -czf - . > /rootfs.tar.gz
+```
+
+或者把本仓库 clone 下来，用 `tools/` 里的脚本重新采集。
+
+## 4.12 我们做过的改动（可回滚）
 
 | 改动 | 目的 |
 |---|---|
