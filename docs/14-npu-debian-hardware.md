@@ -300,7 +300,93 @@ openssl speed -evp aes-128-gcm
 
 ---
 
-## 14.6 复现清单
+## 14.6 10G SFP 与铜口 1G 能否共存？——能，实测无误
+
+有人担心"SFP 跑 10G 会把铜口压到 100M"。**实测证伪。**
+
+同一台设备、同一批对端，只切换 SFP 状态（`ip link set sfp down/up`）：
+
+| 状态 | SFP | p1 (→PC) | p4 (→路由器) |
+|---|---|---|---|
+| A: SFP UP | **10000 Mb/s** | 1000/Full | 1000/Full |
+| B: SFP DOWN | down | 1000/Full | 1000/Full |
+| C: SFP UP | **10000 Mb/s** | 1000/Full | 1000/Full |
+
+三次一致，**没有任何耦合**。88E6193X 的 8 个 10/100/1000 PHY 与 3 条
+SerDes（port 0 / 9 / 10）互不影响。本机 port 0（CPU 口）从开机起就是
+10GBASE-R，SFP 是 74 秒后才起来的，时间线上也不成立。
+
+### 之前看到 100Mbps 的两个真实原因
+
+1. **DSA 端口不 `ip link set pN up` 就不会拉起 PHY** —— p4 从来没被 up 过，
+   所以一直是 `down`，看起来像"没协商"。
+2. `ethtool` 的 `Link partner advertised link modes` 是多行输出，
+   用 `grep -A1` 会截断掉 `1000baseT/Full` 那一行，造成误判。
+
+### 修复：开机自动 up 全部端口
+
+```ini
+# /etc/systemd/system/xgs-ports-up.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for i in 1 2 3 4 5 6 7 8; do ip link set p$i up; done'
+```
+
+之后插线即按最高速率协商（p1/p4 实测 1000/Full，SFP 同时 10000/Full）。
+
+---
+
+## 14.7 原厂的 CPU 隔离参数：对内核转发**有害**，已回退
+
+原厂 bootargs 带 `cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3`。
+在 NPU 上用 netns + veth 构造 `发起 → NPU 转发 → 接收` 路径实测（关掉全部
+offload，避免 GSO/GRO 放大）：
+
+| 配置 | TCP 4 流 | 加 NAT + conntrack | 64B ping RTT |
+|---|---|---|---|
+| **基线（默认，全部 4 核）** | **4.74 – 4.81 Gbps** | **3.48 – 3.81 Gbps** | 18 µs / 25 µs |
+| 原厂隔离参数 | 1.67 Gbps | 1.29 Gbps | 18 µs |
+| 原厂隔离 + 绑核 1-3 | 1.60 Gbps | 1.11 Gbps | 17 µs |
+
+**隔离让转发吞吐掉了约 65%。** 原因很清楚：原厂是把 CPU 1-3 留给**用户态
+MUSDK 数据面**独占的，控制面挤在 CPU0；而我们的转发完全由内核在
+softirq 里做，需要全部 4 个核参与。隔离反而把它们从调度器里摘走了。
+
+结论：**保持 Debian 默认 bootargs**（已回退）。除非将来真的上 VPP/MUSDK
+用户态数据面，才需要那套参数。
+
+> 测量口径说明：veth 没有网卡 DMA/中断开销，所以这些数字是**软件转发路径
+> 的上界**。真实链路的天花板由端口速率决定（铜口 1G / SFP 10G）。
+
+---
+
+## 14.8 与 Sophos 官方标称的对比
+
+厂商数字是**整机**（x86 跑防火墙逻辑 + NPU 做快通道卸载），我们是**全部
+在 NPU 的 4×A72 上软件完成**，不是同一赛道，但可以做量级对照：
+
+| 指标 | Sophos XGS 87(w) 标称 | 本研究实测 / 推算 | 判定 |
+|---|---|---|---|
+| Firewall throughput | 3,700 Mbps | **3,480 – 4,810 Mbps** | ✅ 持平或更高* |
+| Firewall latency (64B UDP) | 6 µs | 18 – 25 µs** | ⚠️ 口径不同，不可比 |
+| IPsec VPN | 750 Mbps | 单核 AES-256-GCM 8.5 Gbps → 实作预计 **1.5 – 3 Gbps** | ✅ 更高 |
+| IPS throughput | 1,015 Mbps | 无对应软件 | ❌ 不具备 |
+| Threat Protection | 240 Mbps | 无对应软件 | ❌ 不具备 |
+| Concurrent connections | 1,600,000 | conntrack 约 300–400 B/条 → 需 ~600 MB（本机 1.9 GB）| ⚠️ 可行但吃紧 |
+| TLS inspection | 375 Mbps | 无对应软件 | ❌ 不具备 |
+| SFP 端口速率 | 1G（上游 DTS `1000base-x`） | **10G 实测链路** | ✅ 超出 |
+
+\* 软件转发上界；真实链路受端口速率限制（铜口 1G × 8，SFP 10G）。
+\** veth 往返含 2 次软件收包，非端口到端口延迟。
+
+**一句话**：做纯路由器/防火墙（L3 转发 + NAT + IPsec），这台 Debian
+**不输反超**；做 UTM（IPS/威胁防护/TLS 解密），需要另装 Suricata 一类
+软件，那部分本机没有对应能力。
+
+---
+
+## 14.9 复现清单
 
 ```bash
 # 1. DTB：port@9 必须带 managed = "in-band-status"
