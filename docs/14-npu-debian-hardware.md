@@ -386,7 +386,90 @@ softirq 里做，需要全部 4 个核参与。隔离反而把它们从调度器
 
 ---
 
-## 14.9 复现清单
+## 14.9 SFP 供电预算：`maximum-power-milliwatt`
+
+SFP 核心在没有该属性时**默认按 1.0 W** 限制模块功耗，日志里是：
+
+```
+sfp sfp: Host maximum power 1.0W
+```
+
+这对纯光纤模块够用（10GBASE-SR 约 0.6 W），但 **10GBASE-T 电口模块普遍要 2.5–2.6 W**，
+超过预算时内核直接拒绝上电并报 `power budget exceeded`，表现为"插上模块完全没反应"。
+
+### 取值参考
+
+| 值 | 适用场景 |
+|---|---|
+| 1000 mW | 规范默认；纯光纤模块（SR/LR/ER）够用 |
+| 1500 mW | SFF-8431 对 SFP+ 的规范上限 |
+| **2500–2600 mW** | **10GBASE-T 模块的实际功耗**（Mikrotik S+RJ10 = 2.6 W，FS/Ubiquiti 多为 2.5 W） |
+| 3000 mW | 覆盖几乎所有电口模块的保守上限 |
+| >3000 mW | 无意义，只会掩盖供电能力不足 |
+
+**关键概念：这不是电流限制，而是"许可门"。**
+内核只做一件事——模块声明的最大功耗 > 主机预算就拒绝上电。把值调高
+**不会让模块多耗电**，模块实际吃多少还是它自己决定。
+
+真正的风险在**主板 SFP 笼的 3.3V 供电能力**（XGS 87 的设计未知）。
+
+### 本机采用的配置
+
+```dts
+sfp: sfp {
+	compatible = "sff,sfp";
+	maximum-power-milliwatt = <2600>;
+	...
+};
+```
+
+重启后确认生效：
+
+```
+sfp sfp: Host maximum power 2.6W
+```
+
+> 若插上电口模块仍被拒，可提到 3000；若模块反复重启或 `ethtool -m sfp`
+> 显示温度异常，说明笼子供电不足，只能退回光纤模块。
+
+---
+
+## 14.10 开机服务时序：必须等 DSA 端口出现
+
+把"设备端口 up + 每口 MAC"做成 systemd 服务时踩了一个坑：写成
+
+```ini
+After=network-pre.target
+Before=network.target
+```
+
+服务在开机第 9 秒就跑，此时 **DSA 还没把 `p1…p8`/`sfp` 创建出来**：
+
+```
+xgs-ports-init.sh[595]: Cannot find device "p1"
+...
+xgs-ports-init.sh[621]: Cannot find device "sfp"
+Main process exited, code=exited, status=1/FAILURE
+```
+
+结果：服务 failed，MAC 全是同一个，除 p1 外端口都没起来。
+
+**修法**：脚本内先轮询等设备出现（最多 30 s），再等 `/dev/mtd1` 就绪
+（`spi-orion` 是模块，`fw_printenv` 依赖它），最后才设 MAC 和 up：
+
+```bash
+for _ in $(seq 1 150); do
+	[ -e /sys/class/net/p8 ] && [ -e /sys/class/net/sfp ] && break
+	sleep 0.2
+done
+```
+
+重启后验证：`systemctl is-active xgs-ports-up.service` = **active**，
+p1–p8 与 sfp 全部拿到独立 MAC 并 up。
+
+---
+
+## 14.11 复现清单
 
 ```bash
 # 1. DTB：port@9 必须带 managed = "in-band-status"
