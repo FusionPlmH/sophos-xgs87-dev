@@ -1,0 +1,134 @@
+# 17 x86 与 NPU 共享一个管理口（p8）
+
+目标：前面板 **p8** 同时作为 NPU（Debian）和 x86（Debian）的管理口——两台机器在同一个二层、
+各拿一个地址，机箱上只占一个口。
+
+本文是**方案与实测现状**，尚未实施（用户要求 plan-only）。
+
+---
+
+## 17.1 现状（2026-11-23 实测）
+
+| 项 | 事实 |
+|---|---|
+| 本机运行的 DT | **没有任何 PCIe 节点**——NPU 侧 Linux 完全没碰 PCIe（`lspci` 空、`/proc/iomem` 无 pci 段） |
+| 原厂 DT | `pcie-ep@600000`：`marvell,armada-pcie-ep` + `snps,dw-pcie`，`reg-names="core","lm","shadow_core"`，`status="okay"`；同地址的 RC 节点是 `disabled` → **NPU = Endpoint，x86 = Root Complex** |
+| 原厂另有 `pci-ep-uio` 节点 | `bar0` / `bar2` / `bar4` / `host-map` → Sophos 走的是 **UIO + MUSDK**，不是 NTB |
+| **x86 侧已经看得到 NPU** | `03:00.0 [11ab:7080]`，BAR0 = **1 MiB**、BAR2 = 16 MiB、BAR4 = 16 MiB，Gen3 **x2**（cap 为 x4），有 MSI + MSI-X(16)，`NoSnoop+` → **链路和 iATU 是 U-Boot/ATF 配好的，Linux 不碰也在** |
+| x86 硬件 | AMD Embedded R-Series **RX-216TD**，Debian **6.12.94+deb13-amd64**，自带 14.7 GB eMMC（UEFI 启动，AMI BIOS 1906） |
+| NPU 内核配置 | `CONFIG_PCI_ENDPOINT=y`，但 `PCI_ENDPOINT_CONFIGFS` / `CONFIG_NTB` / `PCI_EPF_NTB` 全是 **not set** |
+| 主线支持 | 有 `pcie-designware-ep.c` 框架和 `pci-layerscape-ep.c` 等胶水，**没有** `marvell,armada-pcie-ep`；通用 EP 可走 `pcie-designware-plat.c`（`snps,dw-pcie-ep`） |
+| 现有地址 | `192.168.1.1/24` 在 **p1**；p1/p4/sfp 有载波，p2/p3/p5–p8 都是 admin-up 但 NO-CARRIER |
+
+结论：**数据通路必须自己建**。x86 没有独立网口，NTB 是唯一开源可行方式。
+
+---
+
+## 17.2 阶段 1：p8 先当 NPU 的管理口（不动内核，零风险）
+
+p8 已经在 `LOWERLAYERDOWN`（admin up、无载波），说明 `xgs-ports-up.service` 已经把它拉起来了，
+只差一个二层归属和 IP。
+
+```ini
+# /etc/systemd/network/10-br-mgmt.netdev
+[NetDev]
+Name=br-mgmt
+Kind=bridge
+
+# /etc/systemd/network/10-br-mgmt.network
+[Match]
+Name=br-mgmt
+[Network]
+Address=192.168.100.1/24
+
+# /etc/systemd/network/20-p8.network
+[Match]
+Name=p8
+[Network]
+Bridge=br-mgmt
+```
+
+注意事项：
+
+- **不要把 `end0` 放进桥**：`end0` 是 DSA 的 conduit，桥接它等于绕开硬件转发。
+- **不要一开始就把 p1 也放进 `br-mgmt`**：那会把 p1 和 p8 变成一台交换机。建议先只桥 p8，
+  p1 保持 `192.168.1.1/24` 不动；拿根网线插 p8、`ssh 192.168.100.1` 验证通过后，再决定是否把 p1 并进来。
+- `p8` 必须在 DSA 端口就绪后才存在，networkd 会自动重试；如果要严格顺序，加
+  `After=xgs-ports-up.service` + `Wants=xgs-ports-up.service`。
+- 没有 DHCP 服务器时用上面的静态地址；有上游 DHCP 就把 `Address=` 换成 `DHCP=yes`。
+
+---
+
+## 17.3 阶段 2：NTB 链路（需要重编两个内核）
+
+物理速率：Gen3 x2 ≈ 2.0 GB/s 理论；参考 xgs107 的实测 0.63 / 1.7 Gbps（受 `transport_mtu` 影响），
+做管理口绰绰有余。
+
+### NPU 侧（自编内核 + DT）
+
+```
+CONFIG_PCI_ENDPOINT=y
+CONFIG_PCI_ENDPOINT_CONFIGFS=y
+CONFIG_PCI_EPF_NTB=m
+CONFIG_NTB=m
+CONFIG_NTB_TRANSPORT=m
+CONFIG_NTB_NETDEV=m
+CONFIG_PCIE_DW=y
+CONFIG_PCIE_DW_EP=y
+CONFIG_PCI_DW_PLAT=y
+```
+
+DT 草案（把原厂的 reg 换成 `dw-pcie-ep` 绑定的名字，**顺序和用途待实测确认**）：
+
+```dts
+pcie_ep0: pcie-ep@600000 {
+	compatible = "snps,dw-pcie-ep";
+	reg = <0x0 0xf2600000 0x0 0x4000>,	/* dbi        ← 原厂 "core"        */
+	      <0x0 0xf2604000 0x0 0x1000>,	/* atu        ← 原厂 "shadow_core" */
+	      <0x0 0xf2608000 0x0 0x80000>;	/* addr_space ← 原厂 "lm"          */
+	reg-names = "dbi", "atu", "addr_space";
+	num-lanes = <2>;
+	status = "okay";
+};
+```
+
+三个已知坑（来自 openwrt-sophos-xgs107 的实践）：
+
+1. **BAR 必须 1 MiB 对齐**：这颗 iATU 忽略目标地址低 20 位 → 补丁 `951-PCI-dwc-plat-ep-1M-BAR-align.patch`
+2. **不能写 `dma-coherent`**：本机 `NoSnoop+`，EP 不 snoop CPU cache，写了会读到脏数据
+3. **用 MSI，不要 MSI-X**：DesignWare 报 MSI-X 但实际只发 MSI，否则 x86 IOMMU 报 `IO_PAGE_FAULT`
+
+加载时给 `ntb_transport` 传 `transport_mtu=2048`（默认 64 KiB 帧会让 1 MiB 窗口只剩 15 个槽）。
+
+### x86 侧（Debian 6.12.94，装模块即可）
+
+```
+CONFIG_NTB=m
+CONFIG_NTB_TRANSPORT=m
+CONFIG_NTB_NETDEV=m
+CONFIG_NTB_HW_EPF=m
+```
+
+外加 `953-ntb-hw-epf-prefer-msi.patch`。
+
+### 合流
+
+NPU 把 `ntb0` 加进 `br-mgmt`，x86 在 `ntb0` 上静态地址（如 `192.168.100.2/24`）或 DHCP →
+**两台机器就在 p8 这同一个二层里**。
+
+---
+
+## 17.4 前置条件与风险
+
+- **x86 目前的可控通道**：它没有网口（`x86-info.txt` 是本地采集的）。改内核前必须先能登进去：
+  显示器 + USB 键盘，或者 BIOS 的 Console Redirection 引到串口。
+- **EP 的 BAR 现在是固件配的**：改成 NTB 后要由 Linux EP 驱动重配 iATU；如果 U-Boot 有锁定或 ATF 干预，需要实测。
+- **回退**：全程不碰 eMMC 上的原厂分区（NPU 的 `mmcblk0-full.img` 已备份），DTB / 内核都可回退。
+
+---
+
+## 17.5 如果只是想把 x86 管起来（不做 NTB）
+
+- **USB 网卡**：x86 有 XHCI，前面板 USB 插个 USB-Ethernet 就有独立管理口——不占交换机口、不改内核。
+  `x86-info.txt` 里已经有 `MCP2210 USB-SPI` 在用，说明这条路径是通的。
+- **串口**：AMI BIOS 1906 支持 Console Redirection，可把 x86 控制台引到 COM。

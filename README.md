@@ -66,7 +66,8 @@
 | [docs/13-npu-os-plan.md](docs/13-npu-os-plan.md) | **NPU 换系统方案**：OpenWrt vs Debian、DTS 一行改动让 SFP 跑 10G、debootstrap 步骤、回滚 |
 | [docs/14-npu-debian-hardware.md](docs/14-npu-debian-hardware.md) | **Debian 下硬件补齐**：SFP+ 10G 根因与修复、SPI NOR/MTD、`fw_printenv`、EIP197 加密引擎分析、厂家 BSP 补丁对比 |
 | [docs/15-performance.md](docs/15-performance.md) | **性能标定**：CPU 实测 1.6 GHz、小包/大包转发、加密能力、厂家 BSP 与固件 dump 的可采纳项清单 |
-| [docs/16-eip197-activated.md](docs/16-eip197-activated.md) | **EIP197 硬件加密激活成功**（一行补丁）、正确性验证、与 ARMv8 CE 的性能对比、为何最终不启用 |
+| [docs/16-eip197-activated.md](docs/16-eip197-activated.md) | **EIP197 硬件加密激活成功**（一行补丁）、正确性验证、与 ARMv8 CE 的性能对比、每字节 CPU 成本实测、为何最终不启用 |
+| [docs/17-x86-npu-shared-mgmt.md](docs/17-x86-npu-shared-mgmt.md) | **x86 与 NPU 共享 p8 管理口**：PCIe EP 现状（x86 已枚举 `11ab:7080`）、阶段 1 桥接方案、阶段 2 NTB 内核与 DT 改动 |
 | [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
 | [tools/](tools/) | 采集/转换脚本（设备树转 DTS、脱敏） |
 

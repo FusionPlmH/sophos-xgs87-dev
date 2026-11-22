@@ -113,3 +113,44 @@ EIP197 只有在**成批异步**投递时才有优势——原厂正是这么做
 | `src/drivers/sam/safexcel/Firmware/` 只有 `api` | 证实 MUSDK 自己**不**加载固件，必须靠内核驱动 |
 | 原厂 eMMC dump 的 `/usr/lib/firmware/inside-secure/eip197b/` | 提供与硬件配套的固件（与 GitHub 版本不同） |
 | 主线驱动的 `eip197b_mrvl_data` 未设 `fw_little_endian` | 排除字节序假设（与 4.14 一致，都是大端） |
+
+---
+
+## 16.6 补充：每字节 CPU 成本实测
+
+前面的结论只看了吞吐。但真正的问题是"能不能降低 CPU 负载"，所以直接测**每 KB 的 CPU 秒**。
+
+方法：[`tools/afalg_bench.c`](../tools/afalg_bench.c) 单线程绑 CPU0，用 `/proc/stat` 前后差值算 CPU 秒；
+软件 = ARMv8 CE，硬件 = EIP197（`modprobe crypto_safexcel` 后 `cbc(aes)` 自动选中 `safexcel-cbc-aes`）。
+
+| 块大小 | 后端 | 吞吐 | CPU 占用 | 每 KB 的 CPU 成本 |
+|---|---|---|---|---|
+| 1408 B | `cbc-aes-ce` | 0.48 Gbps | 1.00 核 | 16.6 µs |
+| 1408 B | `safexcel` | 0.23 Gbps | 0.69 核 | **23.9 µs** |
+| 16 KB | `cbc-aes-ce` | 3.19 Gbps | 1.00 核 | 2.51 µs |
+| 16 KB | `safexcel` | 1.62 Gbps | **0.40 核** | **1.95 µs** |
+| 1 MB | 两者 | — | — | **单请求挂死** |
+
+读法：
+
+- **硬件确实能省 CPU**：16 KB 时核心只占 40%，每字节便宜 22%，剩下的时间可以让给转发——这就是"和 CPU 并行"的真实含义。
+- **但省得不多**：look-aside 每个请求都要建描述符、DMA 映射、等中断，这套固定开销和 CE 指令本身同量级。
+- **块越小越亏**：到 1408 B（真实 IPsec 包长）硬件在吞吐和 CPU 两个维度都更差。
+- **1 MB 单请求会把进程挂死**（软/硬后端都一样，不是报错而是永远等不到完成），大块请求不可用。
+- 多线程聚合上限仍是 **4.4 Gbps**（4 线程 × 137 MB/s），软件 4 线程 12.41 Gbps。
+
+### 16.6.1 一次失败的验证：ESP/XFRM 路径
+
+想用真实 IPsec 路径（`ip xfrm` + ESP + iperf3，1400 B 包、0 重传）比较两端，结果 **null cipher 也只有 0.65 Gbps、4 核满载**，
+`rfc4106(gcm(aes))` 软/硬后端都是 0.6 Gbps——瓶颈在测试环境（veth + netns + 同机收发的每包约 50 µs 开销），
+**不是加密**。所以本文结论只基于 AF_ALG 的干净测量；ESP 路径上硬件的收益**既未证实也未证伪**。
+
+### 16.6.2 对流传说法的纠正
+
+| 常见说法 | 本机实测 / 事实 |
+|---|---|
+| CN9130 最高 2.2 GHz | 本机 CPU 实测 **1598 MHz**（依赖链基准，见 [docs/15](15-performance.md)） |
+| IPsec 大包 7–9 Gbps | 那是 DPDK/MUSDK 用户态（`crypto_mvsam` PMD）。主线 look-aside 天花板 **4.4 Gbps** |
+| 用 `pcrypt` 让 4 核并发喂 EIP197 | `pcrypt` 是软件并行化层；引擎已经是 async，4 并发就到 4.4 Gbps 饱和，`pcrypt` 抬不高上限 |
+| EIP197 规格 10 Gbps | 需要 inline / 批量投递（原厂 `mv_sam_uio` + MUSDK SAM），内核 crypto API 拿不到 |
+| WireGuard 走硬件加密 | 不会：EIP197 不做 ChaCha20，WG 只能用 NEON |
