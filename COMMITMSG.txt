@@ -1,0 +1,9 @@
+docs: 10G SFP supported by mainline mv88e6xxx; one DTS change needed
+
+- board DTS already upstream: arch/arm64/boot/dts/marvell/cn9130-sophos-xgs107w.dts
+- mv88e6191x_ops (6193X has no PTP) is upstream too
+- MV88E6393X_PORT_STS_CMODE_10GBASER = 0x0d, matches the value we wrote by hand
+- port@9 is declared 1000base-x; switching it to 10gbase-r lets phylink bring up 10G
+- explains why hand-written CMODE gives link-up but kills forwarding (missing SerDes/MAC/PCS bring-up)
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

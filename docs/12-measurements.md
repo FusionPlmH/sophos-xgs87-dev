@@ -416,3 +416,111 @@ npu0.sff.event=phys:1:4
 | 备份/恢复文档：`bootcmd_emmc3` 永远能回原厂槽 p3；SPI U-Boot 永不写 | 刷机风险可控 |
 
 我们的适配路线因此可以非常明确：**不自研交换机驱动，直接用 OpenWrt mvebu/cortexa72 + 这块板的 DTS**。
+
+---
+
+## 12.16 10G SFP 的 mainline 支持情况（查源码得出结论）
+
+### 这块板的 DTS 已经进 mainline 了
+
+`arch/arm64/boot/dts/marvell/cn9130-sophos-xgs107w.dts`（compatible `sophos,xgs107w-npu`），内容与参考仓库一致，关键片段：
+
+```dts
+&cp0_eth0 {                                   /* CPU 口 → 交换机 port 0 */
+	phy-mode = "10gbase-r";
+	phys = <&cp0_comphy4 0>;
+	managed = "in-band-status";
+};
+
+&cp0_mdio {
+	switch@2 {
+		compatible = "marvell,mv88e6190";
+		reg = <2>;
+		reset-gpios = <&cp0_gpio2 17 GPIO_ACTIVE_LOW>;   /* 就是我们实测的 C17 */
+		port@0 { ethernet = <&cp0_eth0>; phy-mode = "10gbase-r"; managed = "in-band-status"; };
+		port@1..8 { label = "p1".."p8"; };               /* 内置 PHY */
+		port@9 {                                         /* SFP 笼 F1 */
+			phy-mode = "1000base-x";                     /* ← 只声明到 1G */
+			managed = "in-band-status";
+			sfp = <&sfp>;
+		};
+	};
+};
+```
+
+### 6193X 在 mainline 里是被支持的
+
+`drivers/net/dsa/mv88e6xxx/chip.c`（mainline）：
+
+```c
+static const struct mv88e6xxx_ops mv88e6191x_ops = {
+	/* MV88E6XXX_FAMILY_6393 without AVB and PTP: 6191X and 6193X */
+	...
+	.port_set_cmode = mv88e6393x_port_set_cmode,
+	.serdes_get_lane = mv88e6393x_serdes_get_lane,
+	.phylink_get_caps = mv88e6393x_phylink_get_caps,
+	.pcs_ops = &mv88e6393x_pcs_ops,
+};
+...
+[MV88E6193X] = { ... .ops = &mv88e6191x_ops, },   /* 不再 .ptp_support = true */
+```
+
+这张表本来只在参考项目的 `950-net-dsa-mv88e6xxx-6191x-6193x-no-ptp.patch` 里，
+**现在已经在 mainline 了**。之前 6193X 会 probe 失败并报
+`unexpected cycle counter period of 0 ps` —— 就是它没有 PTP/AVB 单元导致的。
+
+### 0xD 就是 mainline 的 10GBASE-R 编码（我们手写对了，但只对了一半）
+
+`drivers/net/dsa/mv88e6xxx/port.h`：
+
+```c
+#define MV88E6XXX_PORT_STS_CMODE_XAUI       0x000c
+#define MV88E6XXX_PORT_STS_CMODE_RXAUI      0x000d
+#define MV88E6393X_PORT_STS_CMODE_5GBASER   0x000c
+#define MV88E6393X_PORT_STS_CMODE_10GBASER  0x000d   /* ← 我们写的 0xD */
+#define MV88E6393X_PORT_STS_CMODE_USXGMII   0x000e
+```
+
+`port.c`：
+
+```c
+case PHY_INTERFACE_MODE_10GBASER:
+	cmode = MV88E6393X_PORT_STS_CMODE_10GBASER;   /* 0x0d */
+	break;
+```
+
+`pcs-639x.c` 里也明确处理 `PHY_INTERFACE_MODE_10GBASER` / `RXAUI` / `XAUI`。
+
+**所以 10 Gbps 是这代芯片被驱动支持的速率**，我们手写 CMODE=0xD 后 PCS 也能锁定
+（`0x0F4D` 就是证据）。之所以"链路 UP 但整机不转发"，是因为驱动除了写 CMODE，
+还要成对地配置 SerDes lane、端口 MAC 速率和 PCS（`mv88e6393x_port_set_cmode`
+→ `mv88e6393x_serdes_power` → `pcs-639x.c`），我们只做了三分之一。
+
+### 结论：要 10G，只需要一处 DTS 改动
+
+把 mainline DTS 里 port@9 的
+
+```dts
+phy-mode = "1000base-x";
+```
+
+改成
+
+```dts
+phy-mode = "10gbase-r";
+```
+
+（或者干脆删掉 `phy-mode`/`managed`，让 `sfp` 节点 + phylink 按模块能力自动选，
+10GBASE-SR 模块会协商到 10GBASE-R。）
+
+然后由 mainline 的 `mv88e6xxx` + phylink 按正确顺序把 port 9 带起来：
+CMODE 写 0xD、SerDes lane 9 上电、PCS 配 10GBASE-R、端口 MAC 速率同步 ——
+这才是"链路上 + 能转发"的完整状态。
+
+### 仍未验证的部分（要上机才知道）
+
+- 6193X 的两条 SerDes lane（port 0 和 port 9）能否**同时**跑 10G（共享 PLL/DFE 资源）。
+- `managed = "in-band-status"` 对 10GBASE-R（无 AN）是否合适，还是应该交给 phylink 轮询 PCS。
+- 88E6193X 的 port 9 在 10G 下的流控/DFE 是否需要额外的微调（mainline 无板级特调）。
+
+这些都要等 NPU 换上带 DSA 驱动的内核后实测 —— 这正是下一步。
