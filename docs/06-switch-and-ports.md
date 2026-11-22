@@ -170,9 +170,44 @@ mvswitch 2 phy_write 4 0 0 0x9140
 mvswitch 2 link 1     → Link: UP, Duplex: FULL, Speed: 1000 Mbps
 ```
 
-> **踩坑记录**：插网线一定要插到底（听到"咔"）。我们一开始查了半天 PHY 寄存器，
+> **踩坑记录 1**：插网线一定要插到底（听到"咔"）。我们一开始查了半天 PHY 寄存器，
 > 结果是网线没插紧 —— BMSR 的 link 位一直为 0。判断顺序应该是：
 > 先看 `mvswitch 2 link N`，再看 PHY BMSR，最后才怀疑配置。
+
+> **踩坑记录 2（本轮最费时的坑）**：**复位脉宽必须 ≥2 s**。
+> Linux 里用 `gpioset 2 17=0` 会立刻退出、释放引脚，脉宽≈0，芯片停在半初始化状态：
+> `PORT_CONTROL(0x04)` 读回 `0x7c`（PortState=0 **Disabled**）。
+> 此时所有 `link` 都显示 UP、`eth0` 甚至能 10Gbps/Full，但**一帧都不转发**。必须用
+> `gpioset -m time -s 2 2 17=0`，或者在 U-Boot 里 `gpio clear C17; sleep 2; gpio set C17`。
+
+> **踩坑记录 3**：Marvell U-Boot 自带的 `switch init` **不等价于**原厂的 `sw_init_2`。
+> `switch init` 之后 port 9 的 CMODE 变成 `0xF`（MAC 模式，CMODE 写不动了），
+> 铜口 PHY 也不复位 —— 网络是坏的。要用 6.4 里这套原厂序列。
+
+这套序列就是原厂 U-Boot 环境变量 `sw_init_p0..p3` / `sw_init_2` 的内容，
+`fw_printenv` 可直接看到（详见 [12-measurements.md](12-measurements.md#1212)）。
+
+### Linux 侧等价做法（原厂 `xgs-mdio`，无需 U-Boot）
+
+NPU 的 Buildroot 里有 Sophos 自己的工具 `xgs-mdio`，支持 Amethyst Clause-45：
+
+```sh
+xgs-mdio -a 0 2 <port>.<reg>            # 交换机端口寄存器（读）
+xgs-mdio -a 0 2 <port>.<reg> <val>      # 写
+xgs-mdio -d <port> 0 2 <dev>.<reg>      # dev 空间（dev 4 = SerDes/PCS）
+xgs-mdio -y <port> ...                  # 内置 PHY（Clause-22 风格）
+```
+
+例：把 SFP 口（port 9）切到 10GBASE-R 并起链路 ——
+
+```sh
+xgs-mdio -a 0 2 9.0 0xd
+xgs-mdio -d 9 0 2 4.0xf002 0x804d
+xgs-mdio -d 9 0 2 4.0x2000 0x9140
+xgs-mdio -a 0 2 9.0        # → 0xf4d（LINK=1, 10 Gbps, CMODE=0xD）
+```
+
+注意 CMODE 只在端口处于 `0x9`（刚硬复位）时可写；`0xF` 状态下写了会被硬件还原（详见 12.11）。
 
 ## 6.5 Linux 侧怎么用这些口（三条路）
 

@@ -10,9 +10,14 @@
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | 串口控制台 | ✅ | 两个系统都能进 |
-| NPU root shell | ✅ | 空密码 |
-| 交换机初始化 | ✅ | U-Boot `mvswitch`，实测能跑通 |
-| NPU 网络（eth0） | ✅ | 10G 到交换机，配好 IP 就能用 |
+| NPU root shell | ✅ | 已设密码（原厂为空密码） |
+| SFP 口 10 Gbps | ✅ 链路 / ⛔ 转发 | 10GBASE-SR 实测量到 10 Gbps UP；转发需 DSA 驱动 |
+| 整机存储备份 | ✅ | eMMC 7.28 GiB + mtd0/1，SHA256 校验通过 |
+| 交换机初始化 | ✅ | 原厂 `sw_init_2` 序列（U-Boot env）已完整复现，见 [12.12](12-measurements.md#1212) |
+| NPU 网络（eth0） | ✅ | CPU 口 10 Gbps，配好 IP 就能用（ping/SSH/93 MB/s 实测） |
+| SFP 口 10 Gbps 链路 | ✅ | 10GBASE-SR 模块实测 `Link: UP, Speed: 10 Gbps`，见 [12.11](12-measurements.md#1211) |
+| SFP 口 10 Gbps 转发 | ❌ | 需 mainline `mv88e6xxx` DSA 驱动（厂商 4.14 内核无交换机驱动） |
+| 完整存储备份 | ✅ | eMMC 7.28 GiB 整盘 + boot0/1 + mtd0/1，SHA256 全部校验通过 |
 | PCIe 链路 | ✅ | 端点一直在线 |
 | x86 网络 | ❌ | 需要 NTB 或网关方案 |
 | 交换机 mainline 驱动 | ❌ | 内核无 DSA/mv88e6xxx |

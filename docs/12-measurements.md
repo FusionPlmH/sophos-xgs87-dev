@@ -9,9 +9,11 @@
 | LED 由 PCA9555 驱动（参考项目说法） | **不成立**（本板 rev 07） | ✅ 实测 |
 | `mvswitch dev_write` 语义 | Clause-45 间接，device 4 = SerDes/PCS | ✅ 实测 + 上游源码 |
 | 交换机型号 | 88E6193（product 0x193，Amethyst/Peridot 寻址） | ✅ 实测 + 上游源码 |
-| SFP 口当前模式 | **1000BASE-X**，无模块，链路 down | ✅ 实测 |
-| SFP 是否支持 2.5G/10G | 未测（需要模块） | ⛔ 无模块 |
-| x86 能否复位 NPU | 没有 ACPI 描述的 GPIO；候选只剩 MCP2210/硬连 | ⚠️ 部分 |
+| SFP 口当前模式 | 原厂默认 **1000BASE-X**；改成 10GBASE-R 后 **10 Gbps 链路成功** | ✅ 实测（见 12.11） |
+| SFP 是否支持 2.5G/10G | **10GBASE-SR 模块 + 10G 对端 = 10 Gbps UP**；2.5G 未测 | ✅ 10G 实测 |
+| CPU 口速率 | 交换机 port 0 ↔ NPU Comphy-4 SFI0，**10 Gbps UP** | ✅ 实测 |
+| 原厂交换机初始化序列 | 从 U-Boot env 的 `sw_init_p0..p3` 完整挖出并复现 | ✅ 实测（见 12.12） |
+| x86 能否复位 NPU | 反向确认：**x86 重启会复位 NPU 与交换机** | ✅ 实测 |
 | NTB: 1 MiB BAR 对齐 / dma-coherent | 需要驱动才能验证 | ⛔ 需移植内核 |
 | NTB: MSI vs MSI-X | 设备同时提供 MSI 和 MSI-X（16 向量） | ✅ 能力实测 |
 | 端口 5-8 是否引出 | PHY 存在但无链路；面板只有 4 个座 | ⚠️ 部分 |
@@ -212,3 +214,178 @@ mvswitch 2 link <port>
 lspci -vvv -s 03:00.0
 cat /sys/kernel/debug/gpio | head -60
 ```
+
+---
+
+## 12.11 SFP+ 口 10 Gbps 实测（成功）
+
+现场条件：SFP 笼里插 **10GBASE-SR** 模块（EEPROM byte0=`0x03`, byte3=`0x10`），另一端接家用路由器的 10G SFP+ 口。
+
+**结论：链路能起，速率 10 Gbps 全双工。**
+
+### 步骤（U-Boot 或 Linux 均可）
+
+```sh
+# U-Boot
+mvswitch 2 write      9 0 0xd            # PORT_STATUS.CMODE = 0xD（10GBASE-R 编码）
+mvswitch 2 dev_write  9 4 f002 0x804d    # SerDes/PCS 配置
+mvswitch 2 dev_write  9 4 2000 0x9140    # PCS BMCR：reset + AN enable
+mvswitch 2 link 9                        # 约 3 秒后
+
+# Linux 等价（用原厂 xgs-mdio，Amethyst Clause-45）
+xgs-mdio -a 0 2 9.0 0xd
+xgs-mdio -d 9 0 2 4.0xf002 0x804d
+xgs-mdio -d 9 0 2 4.0x2000 0x9140
+```
+
+实测输出：
+
+```
+Port: 0x9, Link: UP, Duplex: FULL, Speed: 10 Gbps
+Read - switch port: 0x9, reg: 0x0, val: 0xF4D      # bit11 LINK=1, speed=3, CMODE=0xD
+```
+
+### CMODE 能不能写，取决于端口当前状态
+
+| 端口当前 CMODE | 写 0xD 的结果 |
+|---|---|
+| `0x9`（芯片刚硬复位，1000BASE-X） | **生效**，读回 `0x34D`→链路起来后 `0xF4D` |
+| `0xF`（`switch init`/原厂 init 之后，MAC 模式） | 写入瞬间读回 `0xD`，再读又变回 `0xF`（被硬件忽略） |
+
+所以「先硬复位交换芯片，再写 CMODE」是唯一可靠的顺序。
+
+### CPU 口本来就是 10G
+
+- 交换机 port 0：CMODE `0xD`，`init_speed=10G`（平台库），对端是 NPU 的 Comphy-4 SFI0 10.3125 Gbps。
+- Linux 里 `mvpp2` 打印：`mvpp2 f2000000.ethernet eth0: configuring for inband/10gbase-kr link mode` → `Link is Up - 10Gbps/Full - flow control off`。
+- 打开 port 0 的 PCS（`dev_write 0 4 f002 804d` + `2000 9140`）后，port 0 立刻变 `0x0F4D`。
+
+### 已验证到什么程度
+
+- ✅ 物理/PCS 层：SFP 10G 链路、CPU 10G 链路都实测 UP。
+- ✅ 数据面：LAN1（1G）↔ 交换机 ↔ CPU 口（10G）↔ `eth0` 全程可用 —— ping、SSH、**93 MB/s** 的整盘 dump 都跑在这条路上。
+- ⛔ **SFP 10G 同时转发**未验证：4.14 厂商内核**根本没有交换机驱动**，二层完全靠 U-Boot 的寄存器初始化；要在 10G SerDes 口上正常收发需要 mainline `mv88e6xxx` DSA 驱动（见 12.15）。
+
+---
+
+## 12.12 原厂交换机初始化序列（U-Boot env 里挖出来的）
+
+`fw_printenv` 里有完整配方，这是**整台机器网络能不能通的根**：
+
+```
+sw_init_p0=gpio clear C17; sleep 2; gpio set C17; sleep 2
+sw_init_p1=for i in '0 1 2 3 4 5 6 7 8 9' ; do mvswitch 2 write $i 4 0x7f ; done
+sw_init_p2=for i in '0 9'; do mvswitch 2 dev_write $i 4 f002 804d ; mvswitch 2 dev_write $i 4 2000 9140 ; done
+sw_init_p3=for i in '1 2 3 4 5 6 7 8' ; do mvswitch 2 phy_write $i 0 0 9140 ; done
+sw_init_2=run sw_init_p0; run sw_init_p1; run sw_init_p2; run sw_init_p3
+```
+
+含义：
+
+| 变量 | 作用 |
+|---|---|
+| `sw_init_p0` | 交换芯片**硬复位**（`C17` = CP GPIO2 pin17 = 全局 gpio 81，Linux 里是 `gpioset 2 17=…`），低电平保持 2 s |
+| `sw_init_p1` | 每个端口 `PORT_CONTROL(0x04)=0x7f` → PortState=Forwarding |
+| `sw_init_p2` | 两个 SerDes 口（0 和 9）的 PCS 初始化 |
+| `sw_init_p3` | 铜口内置 PHY 复位（page0 reg0 = 0x9140） |
+
+### 三个致命坑（都实测踩过）
+
+1. **hush 的 for 循环是坏的**：`for i in '0 1 2 …'` 会把整串当成**一个单词**，循环体只跑一次、参数错乱。
+   → 必须逐口显式写：`mvswitch 2 write 0 4 0x7f`、`mvswitch 2 write 1 4 0x7f` …
+2. **复位脉宽必须 ≥2 s**：Linux 里 `gpioset 2 17=0` 会立刻退出释放引脚（脉宽≈0），芯片停在半初始化状态。
+3. **半初始化 = 链路 UP 但不转发**：`PORT_CONTROL(0x04)` 读回 `0x7c`（PortState=0 Disabled）。此时 `link` 全绿、`eth0` 甚至能 10Gbps/Full，但**一帧都不通** —— 这是本轮最费时间的坑。
+4. 硬复位后铜口 PHY 需要 `phy_write <port> 0 0 0x9140` 才会重新协商，否则 PORT_STATUS 一直是 `0x100F`。
+
+### 复现结果
+
+按上面 4 步逐条执行后（U-Boot）：
+
+```
+Port: 0x0, Link: UP, Duplex: FULL, Speed: 10 Gbps      ← CPU 口
+Port: 0x1, Link: UP, Duplex: FULL, Speed: 1000 Mbps    ← LAN1（接路由器/PC）
+Port: 0x9, Link: UP, Duplex: FULL, Speed: 1000 Mbps    ← SFP（原厂 1G 模式）
+```
+
+随后 `boot` 进 Linux、`ifconfig eth0 192.168.1.1 netmask 255.255.255.0 up`，
+PC 侧 `ping 192.168.1.1` 与 SSH 全部正常。
+
+> 注意：`switch init`（Marvell U-Boot 自带命令）与 `sw_init_2`（原厂 env）**不等价**。
+> `switch init` 之后 port 9 会变成 CMODE `0xF` + 铜口 PHY 不动，网络是坏的。
+
+---
+
+## 12.13 完整存储备份（已完成，SHA256 全部校验通过）
+
+NPU 侧 `mount -o remount,ro /`，通过 SSH（1 GbE，**93 MB/s**）流式导出到 PC：
+
+| 文件 | 大小 (bytes) | sha256（前后一致） |
+|---|---|---|
+| `mmcblk0-full.img` | 7 818 182 656 | `3e8cd812…29b04e8f` |
+| `mmcblk0boot0.bin` | 4 194 304 | `bb9f8df6…0de3d3af` |
+| `mmcblk0boot1.bin` | 4 194 304 | `bb9f8df6…0de3d3af`（与 boot0 全同，即全 0） |
+| `mtd0-uboot.bin` | 4 128 768 | `fe13a2a3…031c2473`（与早前 dump 逐字节一致） |
+| `mtd1-uboot-env.bin` | 65 536 | `6cb5a3b3…5c83669b` |
+
+镜像里的分区表（MBR）：
+
+| 分区 | 起始 LBA | 扇区数 | 大小 | 用途 |
+|---|---|---|---|---|
+| p1 | 2048 | 1 024 000 | 500 MiB | 最老的 Sophos 槽（可写 OpenWrt） |
+| p2 | 1 026 048 | 3 121 152 | 1524 MiB | Sophos 槽 |
+| p3 | 4 147 200 | 3 121 152 | 1524 MiB | **原厂系统（root=）** |
+| p4 | 7 268 352 | 204 800 | 100 MiB | `/persistent` (VPD) |
+
+恢复：
+
+```sh
+# 整盘（NPU Linux 或 U-Boot 环境里）
+dd if=mmcblk0-full.img of=/dev/mmcblk0 bs=1M conv=fsync
+# 单分区，例如 p3
+dd if=mmcblk0-full.img of=/dev/mmcblk0p3 bs=1M skip=4050 count=3048 conv=fsync
+```
+
+`mmcblk0-full.img` 等文件**不入 git**（原厂固件版权 + 体积），只留在本地 PC。
+
+---
+
+## 12.14 平台数据库：原厂对这块板的权威描述
+
+`/opt/sophos/plt/AMDA0200-0002R03.txt`（"Desktop XGS 87w"，rev 03 及以后）：
+
+```
+npu0.device1=88E6193X
+npu0.device1.mdio=mdio22:0:2          # 交换机在 MDIO addr 2
+npu0.eth4.port=1:9                    # SFP = 交换机 port 9
+npu0.eth4.init_speed=1G               # ← 原厂只把 SFP 当 1G 口！
+npu0.bp0.init_speed=10G               # CPU 背板 10G
+npu0.bp0.port0=0:0 / port1=1:0        # 背板两端
+npu0.phy4.pin.tx_disable=gpio:1:7     # SFP 控制脚
+npu0.phy4.pin.rx_los=gpio:1:1
+npu0.phy4.pin.tx_fault=gpio:1:2
+npu0.phy4.pin.present=-gpio:1:3       # 低有效
+npu0.phy4.MVL6193LEDcontrol=0xe1      # RJ45 的是 0xe3
+npu0.eth0..3.port=1:1 .. 1:4          # 面板 1-4 = 交换机 port 1-4
+npu0.sff.event=phys:1:4
+```
+
+**重要推论**：10 Gbps SFP **不是原厂支持的配置**（`init_speed=1G`），是我们额外做出来的；
+但硬件（SerDes + 模块 + 交换机 PCS）确实支持，见 12.11。
+
+---
+
+## 12.15 同平台参考项目（重要情报）
+
+<https://github.com/nicologiuliani6/openwrt-sophos-xgs107> —— **XGS 87/107 桌面机，同一块 PCB（丝印 1.40）**：
+
+| 项目事实 | 对我们的意义 |
+|---|---|
+| 目标板 `sophos,xgs107w-npu`，DTS `cn9130-sophos-xgs107w`，`kmod-dsa-mv88e6xxx` | 直接给出这块板的 mainline 设备树方向 |
+| mainline 6.x 内核，用 `mv88e6xxx` DSA 驱动交换机 | **替代** U-Boot 寄存器初始化，二层才可控（含 SerDes/10G） |
+| CPU 口在 DTS 里是 `10gbase-r`（我们是 `10gbase-kr`） | 说明 CPU 链路可以不用 in-band AN |
+| NPU↔x86 用 PCIe NTB（`pci-epf-vntb` + `ntb_netdev`），不用 Sophos 私有数据面 | 摆脱 `usfp`/host 握手依赖 |
+| SFP 笼在他们那边**未测**（"untested (no module)"） | 我们的 10G 结论是新的、可反馈上游 |
+| 他们的 U-Boot env 里也有 `sw_init_p0..p3`（与本机一致） | 交叉验证：原厂初始化流程确认无误 |
+| 备份/恢复文档：`bootcmd_emmc3` 永远能回原厂槽 p3；SPI U-Boot 永不写 | 刷机风险可控 |
+
+我们的适配路线因此可以非常明确：**不自研交换机驱动，直接用 OpenWrt mvebu/cortexa72 + 这块板的 DTS**。
