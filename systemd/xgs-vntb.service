@@ -1,0 +1,13 @@
+[Unit]
+Description=PCIe endpoint + vNTB link to the x86 host
+After=xgs-ports-up.service
+Before=xgs-mgmt-bridge.service
+Wants=xgs-ports-up.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/xgs-vntb.sh
+
+[Install]
+WantedBy=multi-user.target

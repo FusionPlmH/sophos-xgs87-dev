@@ -1,0 +1,12 @@
+[Unit]
+Description=NTB link to the NPU (ntb0 -> 192.168.100.2)
+After=network-pre.target sys-kernel-config.mount
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/xgs-ntb-up.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -132,3 +132,38 @@ NPU 把 `ntb0` 加进 `br-mgmt`，x86 在 `ntb0` 上静态地址（如 `192.168.
 - **USB 网卡**：x86 有 XHCI，前面板 USB 插个 USB-Ethernet 就有独立管理口——不占交换机口、不改内核。
   `x86-info.txt` 里已经有 `MCP2210 USB-SPI` 在用，说明这条路径是通的。
 - **串口**：AMI BIOS 1906 支持 Console Redirection，可把 x86 控制台引到 COM。
+
+---
+
+## 17.6 结果：已打通（2026-11-23）
+
+```
+x86 : eth0 UP 192.168.100.2/24   carrier=1
+NPU : br-mgmt 192.168.100.1/24   (p8 + eth0 同在桥里)
+ping 192.168.100.1 -> 0% loss, rtt 1.7-11 ms
+```
+
+两侧都是 oneshot systemd 服务，重启自动恢复：
+`xgs-vntb.service`（NPU，见 [xgs-vntb.sh](xgs-vntb.sh)）、`xgs-ntb.service`（x86，见 [xgs-ntb-up.sh](xgs-ntb-up.sh)）。
+
+### 真正踩到的四个坑（按发现顺序）
+
+| # | 现象 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | configfs 里 `controllers/` 和 `functions/` 都是空的 | Debian 内核 `CONFIG_PCI_ENDPOINT=y` 但 **`PCI_ENDPOINT_CONFIGFS=n`**，`pci-epc-core`/`pci-epf-core` 里的 cfs 钩子被编成空函数 | 我们自己的 `pcie_dw_plat.ko` 和 `pci_epf_vntb.ko` 在初始化时**自己调** `pci_ep_cfs_add_epc_group()` / `pci_ep_cfs_add_epf_group()`，两个文件都要 `-DCONFIG_PCI_ENDPOINT_CONFIGFS=1` 才能拿到真原型 |
+| 2 | 端点 `ctrl=BAR0, db=BAR1, mw=BAR2`，主机按 `ctrl=0, db=2, mw=4` 找 | 这颗 PCIe EP **只实现偶数 BAR**（1/3/5 读回全 0，写了也被丢弃），而 `pci_epc_get_next_free_bar()` 是按 0,1,2 顺序发号 | `pci_epc_features.bar[1/3/5].type = BAR_RESERVED` |
+| 3 | 两侧都在 peer spad 读写时 oops（x86: `…d00210`，NPU: `0x83601028` 越过 DRAM 末端） | `.align = SZ_1M` 让 vNTB 把 **`ctrl_size` 也 ALIGN 到 1 MiB**，`spad_offset` 变成 1 MiB，布局 2 MiB 而 BAR 只有 1 MiB | **align 只约束"缓冲区放哪"，不约束内部布局**：`ctrl_size`/`spad_size` 用 `roundup_pow_of_two()`，对齐交给 `pci_epf_alloc_space()` |
+| 4 | 主机 MSI-X 空向量表 → `IO_PAGE_FAULT address=0x0` | DW 核宣称 MSI-X 但只发 MSI | 端点 `.msix_capable = false`；主机 `ntb_hw_epf` 改为先申请 MSI |
+
+另外两个操作层面的坑：
+
+- 端点改写 header 后，**主机必须 `remove` + `rescan`**，只 `rescan` 不会重读已存在设备的 ID（`/sys/.../vendor` 是枚举时缓存的）。
+- 主机模块必须用**与内核同版本**的源码编（6.12.94），用 6.12.117 的源码会引用 `.94` 还没有的 `ntb_get_dma_dev`。
+
+### 还留下的问题
+
+- **RTT 偏高（1.7–11 ms）**：`pci-epf-vntb` 靠轮询控制区收主机门铃，`msecs_to_jiffies(1)` 在 HZ=250 下是 4 ms。
+  要更快得改成高精度定时器或让内核 HZ=1000。
+- 单次吞吐未测（x86 上没有 iperf3）；xgs107 参考值是 630 Mbit/s / 1.7 Gbit/s。
+- **软重启仍然会卡在 shutdown**（`br-mgmt` + DSA 摘端口的嫌疑最大），目前只能断电。这跟 NTB 无关，单独处理。
+
