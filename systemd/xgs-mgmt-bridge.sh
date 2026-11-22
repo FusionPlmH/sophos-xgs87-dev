@@ -22,6 +22,19 @@ ip link show "$BR" >/dev/null 2>&1 || ip link add name "$BR" type bridge
 ip link set "$BR" type bridge forward_delay 0 2>/dev/null || true
 ip link set "$PORT" master "$BR"
 ip link set "$PORT" up
+
+# The x86 host reaches us as an NTB netdev; put it on the same segment so one
+# front-panel port serves both machines.  Match on the vntb bus so a stray
+# "eth0" can never be picked up by accident.
+for n in /sys/class/net/*; do
+	dev=$(basename "$n")
+	[ "$dev" = "$PORT" ] && continue
+	[ -e "$n/device" ] || continue
+	case "$(readlink -f "$n/device")" in
+	*/0001:*) ip link set "$dev" master "$BR" 2>/dev/null && \
+		ip link set "$dev" up && echo "xgs-mgmt-bridge: added $dev (ntb)";;
+	esac
+done
 # Stable MAC: adopt the port's own address instead of the random one the
 # kernel picks while the port has no carrier.
 ip link set "$BR" address "$(cat "/sys/class/net/$PORT/address")" 2>/dev/null || true
