@@ -97,16 +97,19 @@ CONFIG_NTB 缺失
 
 ### 中优先级
 
-- [ ] SFP 口速率能力（1G / 2.5G / 10G）
-- [ ] LED 极性确认
+- [ ] SFP 口速率上限（**已测得当前是 1000BASE-X**，2.5G/10G 需模块才能测）
+- [ ] LED：**已证伪**"PCA9555 驱动面板灯"（rev 07 实测无影响），需要重新测绘
+      或用 PHY 自带 LED 控制
 - [ ] MCP2210 读写 SPI NOR 的工具（救砖用）
-- [ ] `dev_write … f002/2000` 的含义（反汇编 U-Boot 或查 datasheet）
+- [ ] `dev_write … 4 f002/2000` 的字段含义（已确认是 SerDes/PCS 块，细节需 datasheet）
 
 ### 低优先级
 
-- [ ] 端口 5-8 在本机型是否引出
+- [ ] 端口 5-8 在本机型是否引出（PHY 存在，面板只有 4 座；需看 PCB）
 - [ ] 温度/功耗监控（NPU thermal zone、x86 k10temp）
 - [ ] x86 的 i2c-dev / gpio 暴露
+
+> 本轮实测的完整数据见 [12-measurements.md](12-measurements.md)。
 
 ## 9.6 和参考项目的差异对照
 

@@ -62,6 +62,7 @@
 | [docs/09-adaptation-notes.md](docs/09-adaptation-notes.md) | 做 OpenWrt / 自研固件要改什么，已知缺口 |
 | [docs/10-ideas.md](docs/10-ideas.md) | **这台机器独特设计的最佳用法**（重点，持续更新） |
 | [docs/11-roadmap.md](docs/11-roadmap.md) | 下一步实验清单 |
+| [docs/12-measurements.md](docs/12-measurements.md) | **实测记录**：把"推断"逐条验证（LED、dev_write、SFP、PCIe、GPIO） |
 | [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
 | [tools/](tools/) | 采集/转换脚本（设备树转 DTS、脱敏） |
 

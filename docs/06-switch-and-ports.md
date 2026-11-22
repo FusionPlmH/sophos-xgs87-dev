@@ -54,16 +54,23 @@ mdio@12a200 {
 
 背板定义：`npu0.bp0.port0=0:0`（CN9130）、`npu0.bp0.port1=1:0`（交换机 port 0）。
 
-### 指示灯（PCA9555 @ i2c-0 0x20）
+### 指示灯（PCA9555 @ i2c-0 0x20）—— ⚠️ 本机实测不适用
 
-| 面板 | green（速率） | amber（link/act 推测） |
+原厂 platform 文件里定义的映射（**rev 1.40 板子的假设**）：
+
+| 面板 | 声称 green | 声称 amber |
 |---|---|---|
 | 1 | `gpio:3:0` | `gpio:3:1` |
 | 2 | `gpio:3:2` | `gpio:3:3` |
 | 3 | `gpio:3:4` | `gpio:3:5` |
 | 4 | `gpio:3:6` | `gpio:3:7` |
 
-（`gpio:3:N` = 第 4 个 gpiochip 的第 N 脚；极性原厂按低有效用，未逐一验证。）
+**本机（rev 07）实测推翻了它**：把 PCA9555 的 16 个输出整体拉低 / 拉高，
+面板 LED 状态**没有任何变化**，只有插了网线的口（LAN1/LAN4）亮 —— 说明这些灯是
+**PHY 直接驱动**的，与 PCA9555 无关。详见 [12-measurements.md](12-measurements.md) §12.7。
+
+> 做 OpenWrt 时不要照抄参考项目的 `gpio-leds` 节点；用 PHY 的 LED 控制寄存器
+> （`MVL6193LEDcontrol=0xe3`）或者重新测绘。
 
 ### SFP（F1）
 
@@ -101,13 +108,42 @@ mvswitch <mii_add> link  <port>                         # 链路状态/速率
 ### 实测记录
 
 ```
-mvswitch 2 read 1 4      → 0x7F        # Port Control：bits[1:0]=0b11 = Forwarding
-mvswitch 2 read 9 4      → 0x7F
-mvswitch 2 read 1 0      → 0x100F      # Port Status: bit12=duplex, bit11=link(0)
+mvswitch 2 read 0 0 → 0x0F4D   # CPU 口: LINK, DUPLEX, speed=3(10G), CMODE=0xD
+mvswitch 2 read 1 0 → 0x1E4F   # LAN1:  LINK, DUPLEX, speed=2(1G),  CMODE=0xF(内置PHY)
+mvswitch 2 read 4 0 → 0x1E0F   # LAN4:  LINK, DUPLEX, speed=2(1G),  CMODE=0xF
+mvswitch 2 read 9 0 → 0x0249   # SFP:   LINK=0, CMODE=0x9(1000BASE-X)
+mvswitch 2 read 1 4 → 0x7F     # Port Control: bits[1:0]=0b11 = Forwarding
+mvswitch 2 read 9 4 → 0x7F
 mvswitch 2 phy_read 1 0 0 → 0x1140     # BMCR: AN enable + full + 1G
-mvswitch 2 phy_read 1 0 1 → 0x7949     # BMSR: link bit = 0
+mvswitch 2 phy_read 1 0 1 → 0x7949     # BMSR: link bit = 0（当时线没插好）
 mvswitch 2 phy_write 1 0 0 0x2100 → 读回 0x2100   # 强制 100M 全双工，写入有效
 ```
+
+位定义（来自上游 U-Boot 源码 `mv88e6xxx-util.h`）：
+`bit11=LINK, bit10=DUPLEX, bits[9:8]=SPEED(0=10M,1=100M,2=1G,3=2.5G/10G), bits[3:0]=CMODE`。
+
+### `dev_write` 的真实语义（已由上游源码 + 实测确认）
+
+`mvswitch <mii> dev_write <port> <dev> <reg> <val>` **不是**"写端口寄存器"，
+而是 **Clause-45 间接访问**：
+
+```
+SMI_DATA = reg ; SMI_CMD = OP_45_WRITE_ADDR | (port << 5) | dev
+SMI_DATA = val ; SMI_CMD = OP_45_WRITE_DATA | (port << 5) | dev
+```
+
+所以 U-Boot env 里的 `dev_write 0 4 f002 804d` = 对 **(port 0, device 4, register 0xF002)** 写 0x804D。
+
+实测这两个寄存器：
+
+| port | dev4/0xF002 | dev4/0x2000 | 说明 |
+|---|---|---|---|
+| 0（10G CPU） | 0x004D | 0x1140 | 有 SerDes/PCS 块 |
+| 9（SFP） | 0x004D | 0x1140 | 同一块 |
+| 1-8 | 0xFFFF | 0xFFFF | 内置 PHY，没有这块 |
+
+写入值会自清 bit15（0x804D→0x004D，0x9140→0x1140），和 MDIO BMCR 行为一致。
+**结论：device 4 = 两个 SerDes 口（0 与 9）的 PCS/SerDes；当前都配成自协商 1G。**
 
 ### 让面板口亮起来的完整流程（实测）
 
@@ -171,7 +207,9 @@ mvswitch 2 link 1     → Link: UP, Duplex: FULL, Speed: 1000 Mbps
 
 ## 6.7 未验证 / 待确认
 
-- [ ] SFP 口是 1G 还是支持 2.5G/10G（88E6193X 的 port 9 能力待查 datasheet）
-- [ ] LED 极性（green/amber 哪个是高有效）
-- [ ] `dev_write … 4 f002/2000` 这两个寄存器到底写了什么（需要 datasheet 或反汇编）
-- [ ] 端口 5-8 在 4 口机型上是引到哪的（可能未引出）
+- [ ] **SFP 是否支持 2.5G/10G**：当前实测是 1000BASE-X（PORT_STATUS CMODE=0x9）；
+      需要插对应速率的模块才能确认上限
+- [ ] LED 到底接在哪（本机实测：与 PCA9555 无关，跟随 PHY link）
+- [ ] `dev_write … 4 f002/2000` 这两个寄存器在 PCS 里的具体含义（已知是 SerDes 块，
+      写 0x804D/0x9140 分别是 reset+AN，字段级定义需要 datasheet）
+- [ ] 端口 5-8 在 4 口机型是否引出（PHY 存在，但面板只有 4 个座；需看 PCB）
