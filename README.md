@@ -68,6 +68,7 @@
 | [docs/15-performance.md](docs/15-performance.md) | **性能标定**：CPU 实测 1.6 GHz、小包/大包转发、加密能力、厂家 BSP 与固件 dump 的可采纳项清单 |
 | [docs/16-eip197-activated.md](docs/16-eip197-activated.md) | **EIP197 硬件加密激活成功**（一行补丁）、正确性验证、与 ARMv8 CE 的性能对比、每字节 CPU 成本实测、为何最终不启用 |
 | [docs/17-x86-npu-shared-mgmt.md](docs/17-x86-npu-shared-mgmt.md) | **x86 与 NPU 共享 p8 管理口**：PCIe EP 现状（x86 已枚举 `11ab:7080`）、阶段 1 桥接方案、阶段 2 NTB 内核与 DT 改动 |
+| [docs/18-same-soc-platforms.md](docs/18-same-soc-platforms.md) | **同族平台调研**：上游 Sophos DTS、88E6193X 的 PTP/TCAM 真相、mvpp2 旋钮、PCIe EP 的 `dbi2` 陷阱、EIP197 与 MUSDK 的结构性不兼容、CPU 频率的 SAR/ATF 本质、以及明确不适用的方向 |
 | [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
 | [tools/](tools/) | 采集/转换脚本（设备树转 DTS、脱敏） |
 
