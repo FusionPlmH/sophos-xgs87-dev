@@ -1,0 +1,666 @@
+=== DMI
+# dmidecode 3.6
+Getting SMBIOS data from sysfs.
+SMBIOS 3.0.0 present.
+
+Handle 0x0000, DMI type 0, 24 bytes
+BIOS Information
+	Vendor: American Megatrends Inc.
+	Version: 1906
+	Release Date: 09/06/2021
+	Address: 0xF0000
+	Runtime Size: 64 kB
+	ROM Size: 8 MB
+	Characteristics:
+		PCI is supported
+		BIOS is upgradeable
+		BIOS shadowing is allowed
+		Boot from CD is supported
+		Selectable boot is supported
+		BIOS ROM is socketed
+		EDD is supported
+		5.25"/1.2 MB floppy services are supported (int 13h)
+		3.5"/720 kB floppy services are supported (int 13h)
+		3.5"/2.88 MB floppy services are supported (int 13h)
+		Print screen service is supported (int 5h)
+		Serial services are supported (int 14h)
+		Printer services are supported (int 17h)
+		ACPI is supported
+		USB legacy is supported
+		BIOS boot specification is supported
+		Targeted content distribution is supported
+		UEFI is supported
+
+Handle 0x0001, DMI type 1, 27 bytes
+System Information
+	Manufacturer: Sophos
+	Product Name: XGS
+	Version: 87r1
+	Serial Number: <redacted-serial>
+	UUID: <uuid>
+	Wake-up Type: Power Switch
+	SKU Number: Default string
+	Family: Default string
+
+Handle 0x0002, DMI type 2, 15 bytes
+Base Board Information
+	Manufacturer: Sophos
+	Product Name: XGS
+	Version: 07
+	Serial Number: <redacted-serial>
+	Asset Tag: Default string
+	Features:
+		Board is a hosting board
+		Board is replaceable
+	Location In Chassis: Default string
+	Chassis Handle: 0x0003
+	Type: Motherboard
+	Contained Object Handles: 0
+
+Handle 0x0003, DMI type 3, 22 bytes
+Chassis Information
+	Manufacturer: Default string
+	Type: Desktop
+	Lock: Not Present
+	Version: Default string
+	Serial Number: Default string
+	Asset Tag: Default string
+	Boot-up State: Safe
+	Power Supply State: Safe
+	Thermal State: Safe
+	Security Status: None
+	OEM Information: 0x00000000
+	Height: Unspecified
+	Number Of Power Cords: 1
+	Contained Elements: 0
+	SKU Number: Default string
+
+Handle 0x0005, DMI type 11, 5 bytes
+OEM Strings
+	String 1: Default string
+
+Handle 0x0007, DMI type 7, 19 bytes
+Cache Information
+	Socket Designation: L1 CACHE
+	Configuration: Enabled, Not Socketed, Level 1
+	Operational Mode: Write Back
+	Location: Internal
+	Installed Size: 160 kB
+	Maximum Size: 160 kB
+	Supported SRAM Types:
+		Pipeline Burst
+	Installed SRAM Type: Pipeline Burst
+	Speed: 1 ns
+	Error Correction Type: Multi-bit ECC
+	System Type: Unified
+	Associativity: 2-way Set-associative
+
+Handle 0x0008, DMI type 7, 19 bytes
+Cache Information
+	Socket Designation: L2 CACHE
+	Configuration: Enabled, Not Socketed, Level 2
+	Operational Mode: Write Back
+	Location: Internal
+	Installed Size: 1 MB
+	Maximum Size: 1 MB
+	Supported SRAM Types:
+		Pipeline Burst
+	Installed SRAM Type: Pipeline Burst
+	Speed: 1 ns
+	Error Correction Type: Multi-bit ECC
+	System Type: Unified
+	Associativity: 16-way Set-associative
+
+Handle 0x000D, DMI type 32, 20 bytes
+System Boot Information
+	Status: No errors detected
+
+Handle 0x0010, DMI type 16, 23 bytes
+Physical Memory Array
+	Location: System Board Or Motherboard
+	Use: System Memory
+	Error Correction Type: Multi-bit ECC
+	Maximum Capacity: 32 GB
+	Error Information Handle: Not Provided
+	Number Of Devices: 2
+
+Handle 0x0011, DMI type 19, 31 bytes
+Memory Array Mapped Address
+	Starting Address: 0x00000000000
+	Ending Address: 0x000FFFFFFFF
+	Range Size: 4 GB
+	Physical Array Handle: 0x0010
+	Partition Width: 2
+
+Handle 0x0012, DMI type 17, 40 bytes
+Memory Device
+	Array Handle: 0x0010
+	Error Information Handle: Not Provided
+	Total Width: 64 bits
+	Data Width: 64 bits
+	Size: 2 GB
+	Form Factor: SODIMM
+	Set: None
+	Locator: DIMM 0
+	Bank Locator: CHANNEL A
+	Type: DDR4
+	Type Detail: Synchronous Unbuffered (Unregistered)
+	Speed: 1600 MT/s
+	Manufacturer: <BAD INDEX>
+	Serial Number: 00000000
+	Asset Tag: A1_AssetTagNum0
+	Part Number:                     
+	Rank: 1
+	Configured Memory Speed: 1600 MT/s
+	Minimum Voltage: 1.2 V
+	Maximum Voltage: 1.2 V
+	Configured Voltage: 1.2 V
+
+Handle 0x0013, DMI type 17, 40 bytes
+Memory Device
+	Array Handle: 0x0010
+	Error Information Handle: Not Provided
+	Total Width: 64 bits
+	Data Width: 64 bits
+	Size: 2 GB
+	Form Factor: SODIMM
+	Set: None
+	Locator: DIMM 0
+	Bank Locator: CHANNEL B
+	Type: DDR4
+	Type Detail: Synchronous Unbuffered (Unregistered)
+	Speed: 1600 MT/s
+	Manufacturer: <BAD INDEX>
+	Serial Number: 00000000
+	Asset Tag: A1_AssetTagNum1
+	Part Number:                     
+	Rank: 1
+	Configured Memory Speed: 1600 MT/s
+	Minimum Voltage: 1.2 V
+	Maximum Voltage: 1.2 V
+	Configured Voltage: 1.2 V
+
+Handle 0x0016, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0000
+	Internal Connector Type: None
+	External Reference Designator: USB
+	External Connector Type: Access Bus (USB)
+	Port Type: USB
+
+Handle 0x0017, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0001
+	Internal Connector Type: None
+	External Reference Designator: USB
+	External Connector Type: Access Bus (USB)
+	Port Type: USB
+
+Handle 0x0018, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0002
+	Internal Connector Type: None
+	External Reference Designator: USB
+	External Connector Type: Access Bus (USB)
+	Port Type: USB
+
+Handle 0x0019, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0003
+	Internal Connector Type: None
+	External Reference Designator: USB
+	External Connector Type: Access Bus (USB)
+	Port Type: USB
+
+Handle 0x001A, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: U0004
+	Internal Connector Type: None
+	External Reference Designator: Network
+	External Connector Type: RJ-45
+	Port Type: Network Port
+
+Handle 0x001B, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0005
+	Internal Connector Type: None
+	External Reference Designator: SATA HDD
+	External Connector Type: None
+	Port Type: SATA
+
+Handle 0x001C, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0006
+	Internal Connector Type: None
+	External Reference Designator: SATA ODD
+	External Connector Type: None
+	Port Type: SATA
+
+Handle 0x001D, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0007
+	Internal Connector Type: None
+	External Reference Designator: Dp0
+	External Connector Type: None
+	Port Type: Video Port
+
+Handle 0x001E, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0008
+	Internal Connector Type: None
+	External Reference Designator: Dp1
+	External Connector Type: None
+	Port Type: Video Port
+
+Handle 0x001F, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0009
+	Internal Connector Type: None
+	External Reference Designator: Dp2
+	External Connector Type: None
+	Port Type: Video Port
+
+Handle 0x0020, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0010
+	Internal Connector Type: None
+	External Reference Designator: Microphone In
+	External Connector Type: Mini Jack (headphones)
+	Port Type: Audio Port
+
+Handle 0x0021, DMI type 8, 9 bytes
+Port Connector Information
+	Internal Reference Designator: J0011
+	Internal Connector Type: None
+	External Reference Designator: Head Phone
+	External Connector Type: Mini Jack (headphones)
+	Port Type: Audio Port
+
+Handle 0x0022, DMI type 9, 17 bytes
+System Slot Information
+	Designation: J0012
+	Type: PCI Express x8
+	Data Bus Width: 4x or x4
+	Current Usage: In Use
+	Length: Short
+	ID: 0
+	Characteristics:
+		3.3 V is provided
+		Opening is shared
+		PME signal is supported
+	Bus Address: 0000:00:03.1
+
+Handle 0x0025, DMI type 4, 48 bytes
+Processor Information
+	Socket Designation: P0
+	Type: Central Processor
+	Family: R-Series
+	Manufacturer: AuthenticAMD
+	ID: FF FB 8B 17 01 0F 66 00
+	Signature: Family 11, Model 15, Stepping 15
+	Flags:
+		FPU (Floating-point unit on-chip)
+		CX8 (CMPXCHG8 instruction supported)
+		APIC (On-chip APIC hardware supported)
+		SEP (Fast system call)
+		PSE-36 (36-bit page size extension)
+		PSN (Processor serial number present and enabled)
+		DS (Debug store)
+		ACPI (ACPI supported)
+	Version: AMD Embedded R-Series RX-216TD                 
+	Voltage: 1.0 V
+	External Clock: 100 MHz
+	Max Speed: 1600 MHz
+	Current Speed: 1600 MHz
+	Status: Populated, Enabled
+	Upgrade: None
+	L1 Cache Handle: 0x0007
+	L2 Cache Handle: 0x0008
+	L3 Cache Handle: Not Provided
+	Serial Number: Not Specified
+	Asset Tag: Not Specified
+	Part Number: Not Specified
+	Core Count: 2
+	Core Enabled: 2
+	Thread Count: 2
+	Characteristics:
+		64-bit capable
+
+=== lspci -nn
+00:00.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Root Complex [1022:1576]
+00:00.2 IOMMU [0806]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) I/O Memory Management Unit [1022:1577]
+00:02.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Host Bridge [1022:157b]
+00:03.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Host Bridge [1022:157b]
+00:03.1 PCI bridge [0604]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Root Port [1022:157c]
+00:08.0 Encryption controller [1080]: Advanced Micro Devices, Inc. [AMD] Carrizo Platform Security Processor [1022:1578]
+00:09.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Carrizo Audio Dummy Host Bridge [1022:157d]
+00:09.2 Audio device [0403]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Audio Controller [1022:157a]
+00:10.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] FCH USB XHCI Controller [1022:7914] (rev 20)
+00:11.0 SATA controller [0106]: Advanced Micro Devices, Inc. [AMD] FCH SATA Controller [AHCI mode] [1022:7901] (rev 49)
+00:12.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] FCH USB EHCI Controller [1022:7908] (rev 49)
+00:14.0 SMBus [0c05]: Advanced Micro Devices, Inc. [AMD] FCH SMBus Controller [1022:790b] (rev 4a)
+00:14.3 ISA bridge [0601]: Advanced Micro Devices, Inc. [AMD] FCH LPC Bridge [1022:790e] (rev 11)
+00:14.7 SD Host controller [0805]: Advanced Micro Devices, Inc. [AMD] FCH SD Flash Controller [1022:7906] (rev 01)
+00:18.0 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Function 0 [1022:1570]
+00:18.1 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Function 1 [1022:1571]
+00:18.2 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Function 2 [1022:1572]
+00:18.3 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Function 3 [1022:1573]
+00:18.4 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Function 4 [1022:1574]
+00:18.5 Host bridge [0600]: Advanced Micro Devices, Inc. [AMD] Family 15h (Models 60h-6fh) Processor Function 5 [1022:1575]
+03:00.0 Ethernet controller [0200]: Marvell Technology Group Ltd. Device [11ab:7080]
+=== lspci -vv (marvell)
+03:00.0 Ethernet controller: Marvell Technology Group Ltd. Device 7080
+	Control: I/O- Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B- DisINTx-
+	Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast >TAbort- <TAbort- <MAbort- >SERR- <PERR- INTx-
+	Latency: 0
+	Interrupt: pin A routed to IRQ 255
+	IOMMU group: 10
+	Region 0: Memory at fe000000 (64-bit, non-prefetchable) [size=1M]
+	Region 2: Memory at fd000000 (64-bit, non-prefetchable) [size=16M]
+	Region 4: Memory at fc000000 (32-bit, non-prefetchable) [virtual] [size=16M]
+	Capabilities: [40] Power Management version 3
+		Flags: PMEClk- DSI+ D1+ D2+ AuxCurrent=375mA PME(D0+,D1+,D2-,D3hot+,D3cold-)
+		Status: D0 NoSoftRst- PME-Enable- DSel=0 DScale=0 PME-
+	Capabilities: [50] MSI: Enable+ Count=1/32 Maskable+ 64bit+
+		Address: 0000000000000000  Data: 0000
+		Masking: 00000000  Pending: 00000000
+	Capabilities: [70] Express (v2) Endpoint, IntMsgNum 0
+		DevCap:	MaxPayload 512 bytes, PhantFunc 0, Latency L0s unlimited, L1 unlimited
+			ExtTag- AttnBtn- AttnInd- PwrInd- RBE+ FLReset- SlotPowerLimit 0W TEE-IO-
+		DevCtl:	CorrErr- NonFatalErr- FatalErr- UnsupReq-
+			RlxdOrd+ ExtTag- PhantFunc- AuxPwr- NoSnoop+
+			MaxPayload 128 bytes, MaxReadReq 512 bytes
+		DevSta:	CorrErr- NonFatalErr- FatalErr- UnsupReq- AuxPwr- TransPend-
+		LnkCap:	Port #0, Speed 8GT/s, Width x4, ASPM L0s L1, Exit Latency L0s <512ns, L1 <16us
+			ClockPM- Surprise- LLActRep- BwNot- ASPMOptComp+
+		LnkCtl:	ASPM Disabled; RCB 64 bytes, LnkDisable- CommClk-
+			ExtSynch- ClockPM- AutWidDis- BWInt- AutBWInt-
+		LnkSta:	Speed 8GT/s, Width x2 (downgraded)
+			TrErr- Train- SlotClk+ DLActive- BWMgmt- ABWMgmt-
+		DevCap2: Completion Timeout: Range ABCD, TimeoutDis+ NROPrPrP- LTR+
+			 10BitTagComp- 10BitTagReq- OBFF Not Supported, ExtFmt+ EETLPPrefix+, MaxEETLPPrefixes 4
+			 EmergencyPowerReduction Not Supported, EmergencyPowerReductionInit-
+			 FRS- TPHComp+ ExtTPHComp-
+			 AtomicOpsCap: 32bit- 64bit- 128bitCAS-
+		DevCtl2: Completion Timeout: 50us to 50ms, TimeoutDis-
+			 AtomicOpsCtl: ReqEn-
+			 IDOReq- IDOCompl- LTR- EmergencyPowerReductionReq-
+			 10BitTagReq- OBFF Disabled, EETLPPrefixBlk-
+		LnkCap2: Supported Link Speeds: 2.5-8GT/s, Crosslink- Retimer- 2Retimers- DRS-
+		LnkCtl2: Target Link Speed: 8GT/s, EnterCompliance- SpeedDis-
+			 Transmit Margin: Normal Operating Range, EnterModifiedCompliance- ComplianceSOS-
+			 Compliance Preset/De-emphasis: -6dB de-emphasis, 0dB preshoot
+		LnkSta2: Current De-emphasis Level: -6dB, EqualizationComplete+ EqualizationPhase1+
+			 EqualizationPhase2+ EqualizationPhase3+ LinkEqualizationRequest-
+			 Retimer- 2Retimers- CrosslinkRes: unsupported
+	Capabilities: [b0] MSI-X: Enable+ Count=16 Masked-
+		Vector table: BAR=0 offset=00001000
+		PBA: BAR=0 offset=00001800
+	Capabilities: [100 v2] Advanced Error Reporting
+		UESta:	DLP- SDES- TLP- FCP- CmpltTO- CmpltAbrt- UnxCmplt- RxOF- MalfTLP-
+			ECRC- UnsupReq- ACSViol- UncorrIntErr- BlockedTLP- AtomicOpBlocked- TLPBlockedErr-
+			PoisonTLPBlocked- DMWrReqBlocked- IDECheck- MisIDETLP- PCRC_CHECK- TLPXlatBlocked-
+		UEMsk:	DLP- SDES- TLP- FCP- CmpltTO- CmpltAbrt- UnxCmplt- RxOF- MalfTLP-
+			ECRC- UnsupReq- ACSViol- UncorrIntErr+ BlockedTLP- AtomicOpBlocked- TLPBlockedErr-
+			PoisonTLPBlocked- DMWrReqBlocked- IDECheck- MisIDETLP- PCRC_CHECK- TLPXlatBlocked-
+		UESvrt:	DLP+ SDES+ TLP- FCP+ CmpltTO- CmpltAbrt- UnxCmplt- RxOF+ MalfTLP+
+			ECRC- UnsupReq- ACSViol- UncorrIntErr+ BlockedTLP- AtomicOpBlocked- TLPBlockedErr-
+			PoisonTLPBlocked- DMWrReqBlocked- IDECheck- MisIDETLP- PCRC_CHECK- TLPXlatBlocked-
+		CESta:	RxErr- BadTLP- BadDLLP- Rollover- Timeout- AdvNonFatalErr- CorrIntErr- HeaderOF-
+		CEMsk:	RxErr- BadTLP- BadDLLP- Rollover- Timeout- AdvNonFatalErr+ CorrIntErr+ HeaderOF-
+		AERCap:	First Error Pointer: 00, ECRCGenCap+ ECRCGenEn- ECRCChkCap+ ECRCChkEn-
+			MultHdrRecCap- MultHdrRecEn- TLPPfxPres- HdrLogCap-
+		HeaderLog: 00000000 00000000 00000000 00000000
+	Capabilities: [148 v1] Alternative Routing-ID Interpretation (ARI)
+		ARICap:	MFVC- ACS-, Next Function: 0
+		ARICtl:	MFVC- ACS-, Function Group: 0
+	Capabilities: [158 v1] Secondary PCI Express
+		LnkCtl3: LnkEquIntrruptEn- PerformEqu-
+		LaneErrStat: 0
+	Capabilities: [178 v1] Single Root I/O Virtualization (SR-IOV)
+		IOVCap:	Migration- 10BitTagReq- IntMsgNum 0
+		IOVCtl:	Enable- Migration- Interrupt- MSE- ARIHierarchy- 10BitTagReq-
+		IOVSta:	Migration-
+		Initial VFs: 6, Total VFs: 6, Number of VFs: 0, Function Dependency Link: 00
+		VF offset: 2, stride: 1, Device ID: 7081
+		Supported Page Size: 00000553, System Page Size: 00000001
+		Region 0: Memory at 0000000000000000 (64-bit, non-prefetchable)
+		Region 2: Memory at 0000000000000000 (64-bit, non-prefetchable)
+		Region 4: Memory at 0000000000000000 (64-bit, non-prefetchable)
+		VF Migration: offset: 00000000, BIR: 0
+	Capabilities: [1b8 v1] Transaction Processing Hints
+		Device specific mode supported
+		No steering table available
+	Capabilities: [244 v1] Latency Tolerance Reporting
+		Max snoop latency: 0ns
+		Max no snoop latency: 0ns
+	Capabilities: [24c v1] L1 PM Substates
+		L1SubCap: PCI-PM_L1.2+ PCI-PM_L1.1+ ASPM_L1.2+ ASPM_L1.1+ L1_PM_Substates+
+			  PortCommonModeRestoreTime=10us PortTPowerOnTime=10us
+		L1SubCtl1: PCI-PM_L1.2- PCI-PM_L1.1- ASPM_L1.2- ASPM_L1.1-
+			   T_CommonMode=0us LTR1.2_Threshold=0ns
+		L1SubCtl2: T_PwrOn=10us
+	Capabilities: [25c v1] Physical Resizable BAR
+		BAR 0: current size: 1MB, supported: 1MB
+		BAR 2: current size: 16MB, supported: 16MB
+		BAR 4: current size: 16MB, supported: 16MB
+		BAR 5: current size: 1MB, supported: 1MB
+
+=== lsusb -t
+/:  Bus 001.Port 001: Dev 001, Class=root_hub, Driver=ehci-pci/2p, 480M
+    |__ Port 001: Dev 002, If 0, Class=Hub, Driver=hub/4p, 480M
+        |__ Port 003: Dev 003, If 0, Class=Human Interface Device, Driver=usbhid, 12M
+/:  Bus 002.Port 001: Dev 001, Class=root_hub, Driver=xhci_hcd/4p, 480M
+/:  Bus 003.Port 001: Dev 001, Class=root_hub, Driver=xhci_hcd/4p, 5000M
+=== lsblk
+NAME          SIZE TYPE FSTYPE MOUNTPOINT ROTA MODEL
+mmcblk0      14.7G disk                      0 
+├─mmcblk0p1   476M part vfat   /boot/efi     0 
+└─mmcblk0p2  14.2G part ext4   /             0 
+mmcblk0boot0    4M disk                      0 
+mmcblk0boot1    4M disk                      0 
+=== partitions
+major minor  #blocks  name
+
+ 179        0   15388672 mmcblk0
+ 179        1     487424 mmcblk0p1
+ 179        2   14899200 mmcblk0p2
+ 179      256       4096 mmcblk0boot0
+ 179      512       4096 mmcblk0boot1
+=== mmc
+/sys/class/mmc_host/mmc0: 
+=== efibootmgr
+BootCurrent: 0000
+Timeout: 5 seconds
+BootOrder: 0000,0002,0001
+Boot0000* debian	HD(1,GPT,<uuid>,0x800,0xee000)/File(\EFI\DEBIAN\SHIMX64.EFI)
+      dp: 04 01 2a 00 01 00 00 00 00 08 00 00 00 00 00 00 00 e0 0e 00 00 00 00 00 4b 53 88 ba 99 3d e7 4c a9 b4 33 13 a3 7b 81 31 02 02 / 04 04 34 00 5c 00 45 00 46 00 49 00 5c 00 44 00 45 00 42 00 49 00 41 00 4e 00 5c 00 53 00 48 00 49 00 4d 00 58 00 36 00 34 00 2e 00 45 00 46 00 49 00 00 00 / 7f ff 04 00
+Boot0001* grub	VenHw(<uuid>)
+      dp: 01 04 14 00 e7 75 e2 99 a0 75 37 4b a2 e6 c5 38 5e 6c 00 cb / 7f ff 04 00
+Boot0002* debian	HD(1,GPT,<uuid>,0x800,0xee000)/File(\EFI\DEBIAN\GRUBX64.EFI)0000424f
+      dp: 04 01 2a 00 01 00 00 00 00 08 00 00 00 00 00 00 00 e0 0e 00 00 00 00 00 4b 53 88 ba 99 3d e7 4c a9 b4 33 13 a3 7b 81 31 02 02 / 04 04 34 00 5c 00 45 00 46 00 49 00 5c 00 44 00 45 00 42 00 49 00 41 00 4e 00 5c 00 47 00 52 00 55 00 42 00 58 00 36 00 34 00 2e 00 45 00 46 00 49 00 00 00 / 7f ff 04 00
+    data: 00 00 42 4f
+=== acpi tables
+APIC
+CRAT
+data
+DSDT
+dynamic
+FACP
+FACS
+FIDT
+FPDT
+HPET
+IVRS
+MCFG
+SSDT1
+SSDT2
+SSDT3
+TPM2
+UEFI
+WSMT
+=== serial
+cat: /proc/tty/driver/serial: Permission denied
+=== i2c/spi
+/sys/bus/i2c/devices/:
+i2c-0
+i2c-1
+i2c-2
+i2c-3
+i2c-4
+
+/sys/bus/spi/devices/:
+=== usb devices
+/sys/bus/usb/devices/1-0:1.0: : 
+/sys/bus/usb/devices/1-1: 0438:7900 
+/sys/bus/usb/devices/1-1.3: 04d8:00de MCP2210 USB to SPI Master
+/sys/bus/usb/devices/1-1.3:1.0: : 
+/sys/bus/usb/devices/1-1:1.0: : 
+/sys/bus/usb/devices/2-0:1.0: : 
+/sys/bus/usb/devices/3-0:1.0: : 
+/sys/bus/usb/devices/usb1: 1d6b:0002 EHCI Host Controller
+/sys/bus/usb/devices/usb2: 1d6b:0002 xHCI Host Controller
+/sys/bus/usb/devices/usb3: 1d6b:0003 xHCI Host Controller
+=== hidraw
+crw------- 1 root root 243, 0 Nov 22 21:27 /dev/hidraw0
+=== gpio
+export
+gpiochip512
+unexport
+=== thermal/hwmon
+cat: '/sys/class/thermal/thermal_zone*/type': No such file or directory
+cat: '/sys/class/thermal/thermal_zone*/temp': No such file or directory
+/sys/class/thermal/thermal_zone*  
+/sys/class/hwmon/hwmon0 fam15h_power
+/sys/class/hwmon/hwmon1 k10temp
+=== modules
+Module                  Size  Used by
+edac_mce_amd           28672  0
+kvm_amd               221184  0
+ccp                   163840  1 kvm_amd
+kvm                  1396736  1 kvm_amd
+binfmt_misc            28672  1
+irqbypass              12288  1 kvm
+crct10dif_pclmul       12288  1
+ghash_clmulni_intel    16384  0
+sha512_ssse3           53248  0
+nls_ascii              12288  1
+sha256_ssse3           32768  0
+sha1_ssse3             32768  0
+nls_cp437              16384  1
+vfat                   24576  1
+fat                   102400  1 vfat
+aesni_intel           122880  0
+gf128mul               16384  1 aesni_intel
+snd_hda_intel          61440  0
+crypto_simd            16384  1 aesni_intel
+snd_intel_dspcfg       40960  1 snd_hda_intel
+evdev                  28672  2
+cryptd                 28672  2 crypto_simd,ghash_clmulni_intel
+snd_intel_sdw_acpi     16384  1 snd_intel_dspcfg
+pcspkr                 12288  0
+snd_hda_codec         217088  1 snd_hda_intel
+acpi_cpufreq           32768  0
+k10temp                12288  0
+snd_hda_core          143360  2 snd_hda_intel,snd_hda_codec
+fam15h_power           12288  0
+snd_hwdep              20480  1 snd_hda_codec
+snd_pcm               188416  3 snd_hda_intel,snd_hda_codec,snd_hda_core
+snd_timer              53248  1 snd_pcm
+snd                   151552  5 snd_hwdep,snd_hda_intel,snd_hda_codec,snd_timer,snd_pcm
+soundcore              16384  1 snd
+button                 24576  0
+dm_mod                221184  0
+parport_pc             40960  0
+ppdev                  24576  0
+lp                     20480  0
+parport                81920  3 parport_pc,lp,ppdev
+efi_pstore             12288  0
+configfs               69632  1
+nfnetlink              20480  1
+ip_tables              28672  0
+x_tables               53248  1 ip_tables
+autofs4                57344  2
+hid_generic            12288  0
+usbhid                 77824  0
+hid                   262144  2 usbhid,hid_generic
+ext4                 1146880  1
+crc16                  12288  1 ext4
+mbcache                16384  1 ext4
+jbd2                  200704  1 ext4
+raid10                 77824  0
+raid456               200704  0
+async_raid6_recov      20480  1 raid456
+async_memcpy           16384  2 raid456,async_raid6_recov
+async_pq               16384  2 raid456,async_raid6_recov
+async_xor              16384  3 async_pq,raid456,async_raid6_recov
+async_tx               16384  5 async_pq,async_memcpy,async_xor,raid456,async_raid6_recov
+xor                    20480  1 async_xor
+raid6_pq              122880  3 async_pq,raid456,async_raid6_recov
+libcrc32c              12288  1 raid456
+crc32c_generic         12288  0
+raid1                  61440  0
+raid0                  28672  0
+md_mod                229376  4 raid1,raid10,raid0,raid456
+bochs                  16384  0
+drm_vram_helper        28672  1 bochs
+drm_ttm_helper         16384  2 bochs,drm_vram_helper
+ttm                   106496  2 drm_vram_helper,drm_ttm_helper
+drm_kms_helper        253952  3 bochs,drm_vram_helper,drm_ttm_helper
+drm                   774144  5 drm_kms_helper,bochs,drm_vram_helper,drm_ttm_helper,ttm
+xhci_pci               24576  0
+ehci_pci               16384  0
+mmc_block              61440  2
+xhci_hcd              364544  1 xhci_pci
+ehci_hcd              110592  1 ehci_pci
+ahci                   49152  0
+libahci                61440  1 ahci
+libata                466944  2 libahci,ahci
+usbcore               409600  5 xhci_hcd,ehci_pci,usbhid,ehci_hcd,xhci_pci
+sdhci_pci              98304  0
+sp5100_tco             20480  0
+scsi_mod              331776  1 libata
+cqhci                  32768  1 sdhci_pci
+watchdog               49152  1 sp5100_tco
+sdhci                  86016  1 sdhci_pci
+crc32_pclmul           12288  0
+mmc_core              253952  4 sdhci,cqhci,mmc_block,sdhci_pci
+crc32c_intel           16384  3
+i2c_piix4              28672  0
+i2c_smbus              16384  1 i2c_piix4
+scsi_common            16384  2 scsi_mod,libata
+usb_common             16384  3 xhci_hcd,usbcore,ehci_hcd
+efivarfs               28672  1
+=== cpuid / cpu
+model name	: AMD Embedded R-Series RX-216TD
+=== dmidecode memory
+	Size: 2 GB
+	Type: DDR4
+	Speed: 1600 MT/s
+	Manufacturer: <BAD INDEX>
+	Part Number:                     
+	Configured Memory Speed: 1600 MT/s
+	Size: 2 GB
+	Type: DDR4
+	Speed: 1600 MT/s
+	Manufacturer: <BAD INDEX>
+	Part Number:                     
+	Configured Memory Speed: 1600 MT/s
+=== kernel
+Linux debian 6.12.94+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.94-1 (2026-06-20) x86_64 GNU/Linux
+=== fstab
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# systemd generates mount units based on this file, see systemd.mount(5).
+# Please run 'systemctl daemon-reload' after making changes here.
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+# / was on /dev/mmcblk0p2 during installation
+UUID=<uuid> /               ext4    errors=remount-ro 0       1
+# /boot/efi was on /dev/mmcblk0p1 during installation
+UUID=<efi-uuid>  /boot/efi       vfat    umask=0077      0       1
+=== end

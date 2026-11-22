@@ -1,0 +1,871 @@
+=== uname
+Linux marvell 4.14.207-10.22.03 #1 SMP PREEMPT Thu Jun 1 16:45:10 EDT 2023 aarch64 GNU/Linux
+=== cmdline
+console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p3 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+=== cpuinfo
+processor	: 0
+BogoMIPS	: 50.00
+Features	: fp asimd aes pmull sha1 sha2 crc32 cpuid
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd08
+CPU revision	: 3
+
+processor	: 1
+BogoMIPS	: 50.00
+Features	: fp asimd aes pmull sha1 sha2 crc32 cpuid
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd08
+CPU revision	: 3
+
+processor	: 2
+BogoMIPS	: 50.00
+Features	: fp asimd aes pmull sha1 sha2 crc32 cpuid
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd08
+CPU revision	: 3
+
+processor	: 3
+BogoMIPS	: 50.00
+Features	: fp asimd aes pmull sha1 sha2 crc32 cpuid
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd08
+CPU revision	: 3
+
+=== meminfo
+MemTotal:        1566660 kB
+MemFree:         1227452 kB
+MemAvailable:    1451432 kB
+Buffers:            2676 kB
+Cached:           278232 kB
+               total        used        free      shared  buff/cache   available
+Mem:            1529          46        1198           0         284        1417
+Swap:              0           0           0
+=== mtd
+dev:    size   erasesize  name
+mtd0: 003f0000 00001000 "U-Boot"
+mtd1: 00010000 00001000 "U-Boot-env"
+=== partitions
+major minor  #blocks  name
+
+   1        0       4096 ram0
+   1        1       4096 ram1
+   1        2       4096 ram2
+   1        3       4096 ram3
+   1        4       4096 ram4
+   1        5       4096 ram5
+   1        6       4096 ram6
+   1        7       4096 ram7
+   1        8       4096 ram8
+   1        9       4096 ram9
+   1       10       4096 ram10
+   1       11       4096 ram11
+   1       12       4096 ram12
+   1       13       4096 ram13
+   1       14       4096 ram14
+   1       15       4096 ram15
+  31        0       4032 mtdblock0
+  31        1         64 mtdblock1
+ 179        0    7634944 mmcblk0
+ 179        1     512000 mmcblk0p1
+ 179        2    1560576 mmcblk0p2
+ 179        3    1560576 mmcblk0p3
+ 179        4     102400 mmcblk0p4
+ 179       64       4096 mmcblk0boot1
+ 179       32       4096 mmcblk0boot0
+=== mounts
+/dev/root / ext4 rw,noatime,data=ordered 0 0
+devtmpfs /dev devtmpfs rw,relatime,size=651872k,nr_inodes=162968,mode=755 0 0
+proc /proc proc rw,relatime 0 0
+devpts /dev/pts devpts rw,relatime,gid=5,mode=620,ptmxmode=666 0 0
+tmpfs /dev/shm tmpfs rw,relatime,mode=777 0 0
+tmpfs /tmp tmpfs rw,relatime 0 0
+tmpfs /run tmpfs rw,nosuid,nodev,relatime,mode=755 0 0
+sysfs /sys sysfs rw,relatime 0 0
+/dev/mmcblk0p4 /persistent ext4 rw,sync,noatime,data=ordered 0 0
+=== lspci
+=== lsusb
+Bus 003 Device 001: ID 1d6b:0002
+Bus 001 Device 001: ID 1d6b:0002
+Bus 004 Device 001: ID 1d6b:0003
+Bus 002 Device 001: ID 1d6b:0003
+=== net
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eth0             UP             192.168.1.1/24 fe80::<redacted>/64 
+mvmgmt0          DOWN           fe80::<redacted>/10 
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+eth0             UP             7c:5a:1c:xx:xx:xx <BROADCAST,MULTICAST,UP,LOWER_UP> 
+mvmgmt0          DOWN           7c:5a:1c:xx:xx:xx <NO-CARRIER,BROADCAST,UP> 
+=== eth0
+Settings for eth0:
+	Supported ports: [ TP AUI BNC MII FIBRE Backplane ]
+	Supported link modes:   2500baseX/Full 
+	                        10000baseT/Full 
+	                        10000baseKR/Full 
+	                        1000baseX/Full 
+	                        10000baseCR/Full 
+	                        10000baseSR/Full 
+	                        10000baseLR/Full 
+	                        10000baseLRM/Full 
+	                        10000baseER/Full 
+	                        5000baseT/Full 
+	Supported pause frame use: Symmetric Receive-only
+	Supports auto-negotiation: Yes
+	Supported FEC modes: Not reported
+	Advertised link modes:  10000baseKR/Full 
+	                        1000baseX/Full 
+	                        10000baseCR/Full 
+	                        10000baseSR/Full 
+	                        10000baseLR/Full 
+	                        10000baseLRM/Full 
+	                        10000baseER/Full 
+	Advertised pause frame use: Symmetric Receive-only
+	Advertised auto-negotiation: Yes
+	Advertised FEC modes: Not reported
+	Speed: 10000Mb/s
+	Duplex: Full
+	Port: MII
+	PHYAD: 0
+	Transceiver: internal
+=== ethtool -i
+driver: mvpp2
+version: 1.0
+firmware-version: 
+expansion-rom-version: 
+bus-info: eth0
+supports-statistics: yes
+supports-test: no
+supports-eeprom-access: no
+supports-register-dump: no
+supports-priv-flags: yes
+=== mdio
+f212a600.mdio-mii:00
+=== i2c
+i2c-1	i2c       	mv64xxx_i2c adapter             	I2C adapter
+i2c-0	i2c       	mv64xxx_i2c adapter             	I2C adapter
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+00:          -- -- -- -- -- -- -- -- -- -- -- -- -- 
+10: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+20: UU -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+30: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+40: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+50: -- -- -- -- -- -- -- 57 -- -- -- -- -- -- -- -- 
+60: -- -- -- -- 64 -- -- -- -- -- -- -- -- -- -- -- 
+70: -- -- -- -- -- -- -- --                         
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+00:          -- -- -- -- -- -- -- -- -- -- -- -- -- 
+10: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+20: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+30: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+40: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+50: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+60: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+70: -- -- -- -- -- -- -- --                         
+=== gpio
+export
+gpiochip0
+gpiochip32
+gpiochip496
+gpiochip64
+unexport
+cat: /sys/kernel/debug/gpio: No such file or directory
+=== leds
+=== thermal
+52858
+52858
+51676
+52070
+52070
+55122
+=== interrupts
+           CPU0       CPU1       CPU2       CPU3       
+  1:          0          0          0          0     GICv2  25 Level     vgic
+  3:     332900        400        392        385     GICv2  30 Level     arch_timer
+  4:          0          0          0          0     GICv2  27 Level     kvm guest timer
+  8:       1406          0          0          0     GICv2  51 Level     ttyS0
+ 10:      16233          0          0          0     GICv2  48 Level     mmc0
+ 17:          0          0          0          0  f03f0100.interrupt-controller  17 Level     arm-pmu
+ 20:          0          0          0          0      pMSI 2048 Edge      f0440000.xor
+ 21:          0          0          0          0      pMSI 4096 Edge      f0460000.xor
+ 22:          0          0          0          0      pMSI 6144 Edge      f26a0000.xor
+ 23:          0          0          0          0      pMSI 8192 Edge      f26c0000.xor
+ 24:          0          0          0          0  ICU.f21e0000  95 Level     f2760000.trng
+ 25:      23057          0          0          0  ICU.f21e0000  39 Level     eth0
+ 26:          0          0          0          0  ICU.f21e0000  43 Level     eth0
+ 27:          0          0          0          0  ICU.f21e0000  47 Level     eth0
+ 28:          0          0          0          0  ICU.f21e0000  51 Level     eth0
+ 29:          5          0          0          0  ICU.f21e0000 129 Level     eth0
+ 30:          0          0          0          0  ICU.f21e0000 106 Level     xhci-hcd:usb1
+ 31:          0          0          0          0  ICU.f21e0000 105 Level     xhci-hcd:usb3
+ 32:          0          0          0          0  ICU.f21e0000  77 Level     f2284000.rtc
+ 33:        515          0          0          0  ICU.f21e0000 120 Level     mv64xxx_i2c
+ 34:        211          0          0          0  ICU.f21e0000 121 Level     mv64xxx_i2c
+ 35:          0          0          0          0    AP SEI  18 Level     f06f8000.system-controller:thermal-sensor@80
+IPI0:        29         47         45         45       Rescheduling interrupts
+IPI1:         0         99         99         99       Function call interrupts
+IPI2:         0          0          0          0       CPU stop interrupts
+IPI3:         0          0          0          0       CPU stop (for crash dump) interrupts
+IPI4:         0          0          0          0       Timer broadcast interrupts
+IPI5:         0          2          2          2       IRQ work interrupts
+IPI6:         0          0          0          0       CPU wake-up interrupts
+Err:          0
+=== modules
+mv_nwa_target 24576 0 - Live 0xffff000000e91000 (O)
+mv_pcinet_trgt 28672 0 - Live 0xffff000000e86000 (O)
+mv_armada_ep 36864 2 mv_nwa_target,mv_pcinet_trgt, Live 0xffff000000e77000 (O)
+mv_facility_trgt_dma 16384 1 mv_armada_ep, Live 0xffff000000e6f000 (O)
+uio_pdrv_genirq 16384 0 - Live 0xffff000000e67000
+mv_dmax2_uio 16384 0 - Live 0xffff000000e5f000 (O)
+musdk_cma 16384 0 - Live 0xffff000000e57000 (O)
+mvmdio_uio 16384 0 - Live 0xffff000000e50000 (O)
+=== uboot env
+eth1addr=00:51:82:11:22:01
+eth2addr=00:51:82:11:22:02
+eth3addr=00:51:82:11:22:03
+eth4addr=00:51:82:11:22:04
+arch=arm
+cpu=armv8
+soc=mvebu
+fdt_set_partno=fdt addr $fdt_addr_r; fdt set /usfp_rh assembly_partno $partno
+bootargs_emmc1=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p1 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+bootargs_emmc2=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p2 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+bootargs_emmc3=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p3 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+bootcmd_emmc1=ext4load mmc 0:1 $kernel_addr_r /boot/Image; ext4load mmc 0:1 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootcmd_emmc2=ext4load mmc 0:2 $kernel_addr_r /boot/Image; ext4load mmc 0:2 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootcmd_emmc3=ext4load mmc 0:3 $kernel_addr_r /boot/Image; ext4load mmc 0:3 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootdelay=3
+kernel_addr_r=0x7000000
+fdt_addr_r=0x6f00000
+sw_init_p0=gpio clear C17; sleep 2; gpio set C17; sleep 2
+sw_init_p1=for i in '0 1 2 3 4 5 6 7 8 9' ; do mvswitch 2 write $i 4 0x7f ; done
+sw_init_p2=for i in '0 9'; do mvswitch 2 dev_write $i 4 f002 804d ; mvswitch 2 dev_write $i 4 2000 9140 ; done
+sw_init_p3=for i in '1 2 3 4 5 6 7 8' ; do mvswitch 2 phy_write $i 0 0 9140 ; done
+sw_init_2=run sw_init_p0; run sw_init_p1; run sw_init_p2; run sw_init_p3
+partno=AMDA0200-0001
+ethaddr=7c:5a:1c:xx:xx:xx
+bootcmd=ext4load mmc 0:3 $kernel_addr_r /boot/Image; ext4load mmc 0:3 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootargs=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p3 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+=== ps
+  PID TTY          TIME CMD
+    1 ?        00:00:03 init
+    2 ?        00:00:00 kthreadd
+    4 ?        00:00:00 kworker/0:0H
+    5 ?        00:00:00 kworker/u8:0
+    6 ?        00:00:00 mm_percpu_wq
+    7 ?        00:00:00 ksoftirqd/0
+    8 ?        00:00:00 rcu_preempt
+    9 ?        00:00:00 rcu_sched
+   10 ?        00:00:00 rcu_bh
+   11 ?        00:00:00 migration/0
+   12 ?        00:00:00 cpuhp/0
+   13 ?        00:00:00 cpuhp/1
+   14 ?        00:00:00 migration/1
+   15 ?        00:00:00 ksoftirqd/1
+   16 ?        00:00:00 kworker/1:0
+   17 ?        00:00:00 kworker/1:0H
+   18 ?        00:00:00 rcuop/1
+   19 ?        00:00:00 rcuos/1
+   20 ?        00:00:00 rcuob/1
+   21 ?        00:00:00 cpuhp/2
+   22 ?        00:00:00 migration/2
+   23 ?        00:00:00 ksoftirqd/2
+   24 ?        00:00:00 kworker/2:0
+   25 ?        00:00:00 kworker/2:0H
+   26 ?        00:00:00 rcuop/2
+   27 ?        00:00:00 rcuos/2
+   28 ?        00:00:00 rcuob/2
+   29 ?        00:00:00 cpuhp/3
+   30 ?        00:00:00 migration/3
+   31 ?        00:00:00 ksoftirqd/3
+   32 ?        00:00:00 kworker/3:0
+   33 ?        00:00:00 kworker/3:0H
+   34 ?        00:00:00 rcuop/3
+   35 ?        00:00:00 rcuos/3
+   36 ?        00:00:00 rcuob/3
+   37 ?        00:00:00 kdevtmpfs
+   38 ?        00:00:00 netns
+   39 ?        00:00:00 kworker/u8:1
+  635 ?        00:00:00 khungtaskd
+  636 ?        00:00:00 oom_reaper
+  637 ?        00:00:00 writeback
+  639 ?        00:00:00 kcompactd0
+  640 ?        00:00:00 ksmd
+  641 ?        00:00:00 khugepaged
+  642 ?        00:00:00 crypto
+  643 ?        00:00:00 kintegrityd
+  645 ?        00:00:00 kblockd
+  667 ?        00:00:00 ata_sff
+  694 ?        00:00:00 md
+  697 ?        00:00:00 edac-poller
+  711 ?        00:00:00 watchdogd
+  800 ?        00:00:00 rpciod
+  801 ?        00:00:00 xprtiod
+  856 ?        00:00:00 kauditd
+  873 ?        00:00:00 kswapd0
+  958 ?        00:00:00 nfsiod
+  973 ?        00:00:00 xfsalloc
+  974 ?        00:00:00 xfs_mru_cache
+ 1111 ?        00:00:00 kworker/1:1
+ 1112 ?        00:00:00 kworker/2:1
+ 1113 ?        00:00:00 kworker/3:1
+ 1191 ?        00:00:00 hwrng
+ 1275 ?        00:00:00 nvme-wq
+ 1305 ?        00:00:00 spi1
+ 1318 ?        00:00:00 spi2
+ 1439 ?        00:00:00 ixgbe
+ 1441 ?        00:00:00 ixgbevf
+ 1443 ?        00:00:00 i40e
+ 1446 ?        00:00:00 i40evf
+ 1448 ?        00:00:00 fm10k
+ 1471 ?        00:00:00 stats-wq-eth0
+ 1480 ?        00:00:00 mlx4
+ 1503 ?        00:00:00 vfio-irqfd-clea
+ 1599 ?        00:00:00 irq/35-f06f8000
+ 1610 ?        00:00:00 raid5wq
+ 1636 ?        00:00:00 irq/10-mmc0
+ 1676 ?        00:00:00 kworker/0:2
+ 1681 ?        00:00:00 ipv6_addrconf
+ 1682 ?        00:00:00 dsa_ordered
+ 1711 ?        00:00:00 mmcqd/0
+ 1712 ?        00:00:00 mmcqd/0boot0
+ 1713 ?        00:00:00 mmcqd/0boot1
+ 1726 ?        00:00:00 kworker/0:1H
+ 1727 ?        00:00:00 jbd2/mmcblk0p3-
+ 1728 ?        00:00:00 ext4-rsv-conver
+ 1745 ?        00:00:00 syslogd
+ 1748 ?        00:00:00 klogd
+ 1758 ?        00:00:00 watchdog
+ 1803 ?        00:00:00 xgs_log_fwd
+ 1823 ?        00:00:00 jbd2/mmcblk0p4-
+ 1824 ?        00:00:00 ext4-rsv-conver
+ 1867 ?        00:00:00 armada_target_s
+ 2093 ?        00:00:00 xgs-sff-event
+ 2099 ?        00:00:00 xgs-healthmond
+ 4119 ?        00:00:00 sshd
+ 5475 ?        00:00:00 kworker/0:1
+ 7040 ?        00:00:00 kworker/0:0
+ 7435 ?        00:00:00 sshd
+ 7437 ?        00:00:00 sshd
+ 7439 ?        00:00:00 sh
+ 7468 ?        00:00:00 sleep
+ 7472 ?        00:00:00 ps
+=== mtd1 strings
+	eth1addr=00:51:82:11:22:01
+eth2addr=00:51:82:11:22:02
+eth3addr=00:51:82:11:22:03
+eth4addr=00:51:82:11:22:04
+arch=arm
+cpu=armv8
+soc=mvebu
+fdt_set_partno=fdt addr $fdt_addr_r; fdt set /usfp_rh assembly_partno $partno
+bootargs_emmc1=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p1 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+bootargs_emmc2=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p2 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+bootargs_emmc3=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p3 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+bootcmd_emmc1=ext4load mmc 0:1 $kernel_addr_r /boot/Image; ext4load mmc 0:1 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootcmd_emmc2=ext4load mmc 0:2 $kernel_addr_r /boot/Image; ext4load mmc 0:2 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootcmd_emmc3=ext4load mmc 0:3 $kernel_addr_r /boot/Image; ext4load mmc 0:3 $fdt_addr_r /boot/cn9130-senao-xgs.dtb; run fdt_set_partno; booti $kernel_addr_r - $fdt_addr_r
+bootdelay=3
+kernel_addr_r=0x7000000
+fdt_addr_r=0x6f00000
+sw_init_p0=gpio clear C17; sleep 2; gpio set C17; sleep 2
+sw_init_p1=for i in '0 1 2 3 4 5 6 7 8 9' ; do mvswitch 2 write $i 4 0x7f ; done
+sw_init_p2=for i in '0 9'; do mvswitch 2 dev_write $i 4 f002 804d ; mvswitch 2 dev_write $i 4 2000 9140 ; done
+=== emmc p1
+total 21
+drwxr-xr-x 18 root root 1024 Jun  1  2021 .
+drwxr-xr-x  4 root root 4096 Jul 27 08:08 ..
+lrwxrwxrwx  1 root root    7 Mar 26  2021 bin -> usr/bin
+drwxr-xr-x  2 root root 1024 Jun  1  2021 boot
+drwxr-xr-x  4 root root 1024 Mar 26  2021 dev
+drwxr-xr-x 13 root root 1024 Jun  1  2021 etc
+lrwxrwxrwx  1 root root    7 Mar 26  2021 lib -> usr/lib
+lrwxrwxrwx  1 root root    3 Mar 26  2021 lib64 -> lib
+drwxr-xr-x  2 root root 1024 Mar 26  2021 libexec
+lrwxrwxrwx  1 root root   11 Mar 26  2021 linuxrc -> bin/busybox
+drwxr-xr-x  2 root root 1024 Mar 26  2021 media
+drwxr-xr-x  3 root root 1024 Mar 26  2021 mnt
+drwxr-xr-x  3 root root 1024 Mar 26  2021 opt
+drwxr-xr-x  2 root root 1024 Mar 26  2021 persistent
+drwxr-xr-x  2 root root 1024 Mar 26  2021 proc
+drwx------  3 root root 1024 Mar 26  2021 root
+drwxr-xr-x  3 root root 1024 Mar 26  2021 run
+lrwxrwxrwx  1 root root    8 Mar 26  2021 sbin -> usr/sbin
+drwxr-xr-x  3 root root 1024 Jun  1  2021 share
+=== emmc p2
+total 72
+drwxr-xr-x 18 1005 1007 4096 Oct 13  2023 .
+drwxr-xr-x  5 root root 4096 Jul 27 08:08 ..
+lrwxrwxrwx  1 root root    7 Oct 13  2023 bin -> usr/bin
+drwxr-xr-x  2 root root 4096 Oct 13  2023 boot
+drwxr-xr-x  4 root root 4096 Oct 13  2023 dev
+drwxr-xr-x 13 1005 1007 4096 Oct 13  2023 etc
+lrwxrwxrwx  1 root root    7 Oct 13  2023 lib -> usr/lib
+lrwxrwxrwx  1 root root    3 Oct 13  2023 lib64 -> lib
+drwxr-xr-x  2 root root 4096 Oct 13  2023 libexec
+lrwxrwxrwx  1 root root   11 Oct 13  2023 linuxrc -> bin/busybox
+drwxr-xr-x  2 root root 4096 Mar 30  2022 media
+drwxr-xr-x  3 root root 4096 Oct 13  2023 mnt
+drwxr-xr-x  3 1005 1007 4096 Jul  5  2023 opt
+drwxr-xr-x  2 root root 4096 Feb  7  2023 persistent
+drwxr-xr-x  2 root root 4096 Mar 30  2022 proc
+drwx------  3 root root 4096 Oct 13  2023 root
+drwxr-xr-x  3 root root 4096 Oct 13  2023 run
+lrwxrwxrwx  1 root root    8 Oct 13  2023 sbin -> usr/sbin
+drwxr-xr-x  3 root root 4096 Oct 13  2023 share
+=== boot
+total 21752
+-rw-r--r-- 1 root root 20656640 Apr 20  2024 Image
+-rw-r--r-- 1 root root    30323 Apr 20  2024 cn9130-senao-xgs.dtb
+-rw-r--r-- 1 root root    65536 Apr 20  2024 xgsdt1-boot-env.bin
+-rw-r--r-- 1 root root  1512656 Apr 20  2024 xgsdt1-boot.img
+=== dmesg
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 4.14.207-10.22.03 (jenkins@bsp-build-00) (gcc version 7.3.0 (Marvell Inc. Version: Marvell GCC7 build 249.0)) #1 SMP PREEMPT Thu Jun 1 16:45:10 EDT 2023
+[    0.000000] Boot CPU: AArch64 Processor [410fd083]
+[    0.000000] Machine model: Model: Marvell CN9130 Senao XGS board
+[    0.000000] earlycon: uart8250 at MMIO32 0x00000000f0512000 (options '')
+[    0.000000] bootconsole [uart8250] enabled
+[    0.000000] efi: Getting EFI parameters from FDT:
+[    0.000000] efi: UEFI not found.
+[    0.000000] cma: Reserved 256 MiB at 0x000000006f400000
+[    0.000000] NUMA: No NUMA configuration found
+[    0.000000] NUMA: Faking a node at [mem 0x0000000000000000-0x000000007fffffff]
+[    0.000000] NUMA: NODE_DATA [mem 0x7ffc7f00-0x7ffc99ff]
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000000000000000-0x000000007fffffff]
+[    0.000000]   Normal   empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x0000000003ffffff]
+[    0.000000]   node   0: [mem 0x0000000004200000-0x00000000043fffff]
+[    0.000000]   node   0: [mem 0x0000000005400000-0x000000003effffff]
+[    0.000000]   node   0: [mem 0x000000005b000000-0x000000007fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000007fffffff]
+[    0.000000] On node 0 totalpages: 404992
+[    0.000000]   DMA zone: 6328 pages used for memmap
+[    0.000000]   DMA zone: 0 pages reserved
+[    0.000000]   DMA zone: 404992 pages, LIFO batch:31
+[    0.000000] psci: probing for conduit method from DT.
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.000000] psci: Using standard PSCI v0.2 function IDs
+[    0.000000] psci: Trusted OS resident on physical CPU 0x0
+[    0.000000] psci: SMC Calling Convention v1.1
+[    0.000000] percpu: Embedded 26 pages/cpu s67992 r8192 d30312 u106496
+[    0.000000] pcpu-alloc: s67992 r8192 d30312 u106496 alloc=26*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 [0] 2 [0] 3 
+[    0.000000] Detected PIPT I-cache on CPU0
+[    0.000000] CPU features: kernel page table isolation disabled by kernel configuration
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total 4kB pages: 398664
+[    0.000000] Policy zone: DMA
+[    0.000000] Kernel command line: console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro pci=pcie_bus_safe root=/dev/mmcblk0p3 cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
+[    0.000000] PID hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.000000] Memory: 1303748K/1619968K available (14140K kernel code, 908K rwdata, 4308K rodata, 768K init, 383K bss, 54076K reserved, 262144K cma-reserved)
+[    0.000000] Virtual kernel memory layout:
+[    0.000000]     modules : 0xffff000000000000 - 0xffff000008000000   (   128 MB)
+[    0.000000]     vmalloc : 0xffff000008000000 - 0xffff7dffbfff0000   (129022 GB)
+[    0.000000]       .text : 0xffff000008080000 - 0xffff000008e50000   ( 14144 KB)
+[    0.000000]     .rodata : 0xffff000008e50000 - 0xffff000009290000   (  4352 KB)
+[    0.000000]       .init : 0xffff000009290000 - 0xffff000009350000   (   768 KB)
+[    0.000000]       .data : 0xffff000009350000 - 0xffff000009433200   (   909 KB)
+[    0.000000]        .bss : 0xffff000009433200 - 0xffff000009493148   (   384 KB)
+[    0.000000]     fixed   : 0xffff7dfffe7fb000 - 0xffff7dfffec00000   (  4116 KB)
+[    0.000000]     PCI I/O : 0xffff7dfffee00000 - 0xffff7dffffe00000   (    16 MB)
+[    0.000000]     vmemmap : 0xffff7e0000000000 - 0xffff800000000000   (  2048 GB maximum)
+[    0.000000]               0xffff7e0000000000 - 0xffff7e0002000000   (    32 MB actual)
+[    0.000000]     memory  : 0xffff800000000000 - 0xffff800080000000   (  2048 MB)
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] Preemptible hierarchical RCU implementation.
+[    0.000000] 	RCU restricting CPUs from NR_CPUS=96 to nr_cpu_ids=4.
+[    0.000000] 	Tasks RCU enabled.
+[    0.000000] RCU: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=4
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] GIC: Adjusting CPU interface base to 0x00000000f022f000
+[    0.000000] GIC: Using split EOI/Deactivate mode
+[    0.000000] GICv2m: DT overriding V2M MSI_TYPER (base:160, num:32)
+[    0.000000] GICv2m: range[mem 0xf0280000-0xf0280fff], SPI[160:191]
+[    0.000000] GICv2m: DT overriding V2M MSI_TYPER (base:192, num:32)
+[    0.000000] GICv2m: range[mem 0xf0290000-0xf0290fff], SPI[192:223]
+[    0.000000] GICv2m: DT overriding V2M MSI_TYPER (base:224, num:32)
+[    0.000000] GICv2m: range[mem 0xf02a0000-0xf02a0fff], SPI[224:255]
+[    0.000000] GICv2m: DT overriding V2M MSI_TYPER (base:256, num:32)
+[    0.000000] GICv2m: range[mem 0xf02b0000-0xf02b0fff], SPI[256:287]
+[    0.000000] NO_HZ: Full dynticks CPUs: 1-3.
+[    0.000000] 	Offload RCU callbacks from CPUs: 1-3.
+[    0.000000] arch_timer: cp15 timer(s) running at 25.00MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x5c40939b5, max_idle_ns: 440795202646 ns
+[    0.000002] sched_clock: 56 bits at 25MHz, resolution 40ns, wraps every 4398046511100ns
+[    0.008299] Console: colour dummy device 80x25
+[    0.012845] Calibrating delay loop (skipped), value calculated using timer frequency.. 50.00 BogoMIPS (lpj=100000)
+[    0.023371] pid_max: default: 32768 minimum: 301
+[    0.028122] Security Framework initialized
+[    0.033021] Dentry cache hash table entries: 262144 (order: 9, 2097152 bytes)
+[    0.040648] Inode-cache hash table entries: 131072 (order: 8, 1048576 bytes)
+[    0.047851] Mount-cache hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.054688] Mountpoint-cache hash table entries: 4096 (order: 3, 32768 bytes)
+[    0.078049] ASID allocator initialised with 65536 entries
+[    0.091554] Hierarchical SRCU implementation.
+[    0.104162] EFI services will not be available.
+[    0.116785] smp: Bringing up secondary CPUs ...
+[    0.149799] Detected PIPT I-cache on CPU1
+[    0.149828] CPU1: Booted secondary processor [410fd083]
+[    0.177813] Detected PIPT I-cache on CPU2
+[    0.177834] CPU2: Booted secondary processor [410fd083]
+[    0.205832] Detected PIPT I-cache on CPU3
+[    0.205848] CPU3: Booted secondary processor [410fd083]
+[    0.205888] smp: Brought up 1 node, 4 CPUs
+[    0.238375] SMP: Total of 4 processors activated.
+[    0.243242] CPU features: detected: 32-bit EL0 Support
+[    0.248735] CPU: All CPU(s) started at EL2
+[    0.252941] alternatives: patching kernel code
+[    0.257833] devtmpfs: initialized
+[    0.263188] random: get_random_u32 called from bucket_table_alloc+0x110/0x260 with crng_init=0
+[    0.276168] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.286117] futex hash table entries: 1024 (order: 5, 131072 bytes)
+[    0.295399] xor: measuring software checksum speed
+[    0.340381]    8regs     :  7346.000 MB/sec
+[    0.384656]    8regs_prefetch:  5969.000 MB/sec
+[    0.429312]    32regs    :  7910.000 MB/sec
+[    0.473593]    32regs_prefetch:  6722.000 MB/sec
+[    0.478353] xor: using function: 32regs (7910.000 MB/sec)
+[    0.483869] pinctrl core: initialized pinctrl subsystem
+[    0.489771] DMI not present or invalid.
+[    0.493952] NET: Registered protocol family 16
+[    0.499780] vdso: 2 pages (1 code @ ffff000009356000, 1 data @ ffff000009355000)
+[    0.507704] vdso: 2 pages (1 code @ ffff000008e57000, 1 data @ ffff000009355000)
+[    0.515223] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[    0.526631] DMA: preallocated 256 KiB pool for atomic allocations
+[    0.533014] Serial: AMBA PL011 UART driver
+[    0.573961] HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.660937] raid6: int64x1  gen()  1000 MB/s
+[    0.733361] raid6: int64x1  xor()   888 MB/s
+[    0.805801] raid6: int64x2  gen()  1423 MB/s
+[    0.878195] raid6: int64x2  xor()  1165 MB/s
+[    0.950637] raid6: int64x4  gen()  2062 MB/s
+[    1.023046] raid6: int64x4  xor()  1369 MB/s
+[    1.095514] raid6: int64x8  gen()  1967 MB/s
+[    1.167919] raid6: int64x8  xor()  1261 MB/s
+[    1.240335] raid6: neonx1   gen()  2092 MB/s
+[    1.312728] raid6: neonx1   xor()  1857 MB/s
+[    1.385143] raid6: neonx2   gen()  2804 MB/s
+[    1.457527] raid6: neonx2   xor()  2690 MB/s
+[    1.529942] raid6: neonx4   gen()  3615 MB/s
+[    1.602325] raid6: neonx4   xor()  3219 MB/s
+[    1.674749] raid6: neonx8   gen()  4109 MB/s
+[    1.747115] raid6: neonx8   xor()  3542 MB/s
+[    1.751481] raid6: using algorithm neonx8 gen() 4109 MB/s
+[    1.756981] raid6: .... xor() 3542 MB/s, rmw enabled
+[    1.762036] raid6: using neon recovery algorithm
+[    1.767082] ACPI: Interpreter disabled.
+[    1.771659] vgaarb: loaded
+[    1.774641] SCSI subsystem initialized
+[    1.782543] libata version 3.00 loaded.
+[    1.782642] usbcore: registered new interface driver usbfs
+[    1.788463] usbcore: registered new interface driver hub
+[    1.794160] usbcore: registered new device driver usb
+[    1.799696] pps_core: LinuxPPS API ver. 1 registered
+[    1.804952] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    1.814319] PTP clock support registered
+[    1.818599] EDAC MC: Ver: 3.0.0
+[    1.826587] clocksource: Switched to clocksource arch_sys_counter
+[    1.832870] VFS: Disk quotas dquot_6.6.0
+[    1.836983] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    1.844068] pnp: PnP ACPI: disabled
+[    1.852202] NET: Registered protocol family 2
+[    1.858648] TCP established hash table entries: 16384 (order: 5, 131072 bytes)
+[    1.866047] TCP bind hash table entries: 16384 (order: 6, 262144 bytes)
+[    1.872962] TCP: Hash tables configured (established 16384 bind 16384)
+[    1.879989] UDP hash table entries: 1024 (order: 3, 32768 bytes)
+[    1.886107] UDP-Lite hash table entries: 1024 (order: 3, 32768 bytes)
+[    1.892780] NET: Registered protocol family 1
+[    1.905360] RPC: Registered named UNIX socket transport module.
+[    1.911425] RPC: Registered udp transport module.
+[    1.916220] RPC: Registered tcp transport module.
+[    1.921035] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    1.927624] PCI: CLS 0 bytes, default 128
+[    1.928104] hw perfevents: enabled with armv8_cortex_a72 PMU driver, 7 counters available
+[    1.936655] kvm [1]: 8-bit VMID
+[    1.940488] kvm [1]: vgic interrupt IRQ1
+[    1.944539] kvm [1]: Hyp mode initialized successfully
+[    1.951943] audit: initializing netlink subsys (disabled)
+[    1.958080] audit: type=2000 audit(1.848:1): state=initialized audit_enabled=0 res=1
+[    1.966042] workingset: timestamp_bits=44 max_order=19 bucket_order=0
+[    1.977236] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    1.989254] NFS: Registering the id_resolver key type
+[    1.994429] Key type id_resolver registered
+[    1.999014] Key type id_legacy registered
+[    2.003103] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+[    2.009943] Installing knfsd (copyright (C) 1996 okir@monad.swb.de).
+[    2.016485] jffs2: version 2.2. (NAND) \xc2\xa9 2001-2006 Red Hat, Inc.
+[    2.022935] SGI XFS with security attributes, no debug enabled
+[    2.033742] 9p: Installing v9fs 9p2000 file system support
+[    2.041201] async_tx: api initialized (async)
+[    2.045727] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 245)
+[    2.053241] io scheduler noop registered
+[    2.057329] io scheduler cfq registered (default)
+[    2.062160] io scheduler mq-deadline registered
+[    2.066834] io scheduler kyber registered
+[    2.072907] armada-ap806-pinctrl f06f4000.system-controller:pinctrl: registered pinctrl driver
+[    2.082619] armada-cp110-pinctrl f2440000.system-controller:pinctrl: registered pinctrl driver
+[    2.093693] armada-pcie-ep f2600000.pcie-ep: PCIE EP probe deferred
+[    2.104041] mv_xor_v2 f0440000.xor: Marvell Version 2 XOR driver
+[    2.110641] mv_xor_v2 f0460000.xor: Marvell Version 2 XOR driver
+[    2.117288] mv_xor_v2 f26a0000.xor: Marvell Version 2 XOR driver
+[    2.124107] mv_xor_v2 f26c0000.xor: Marvell Version 2 XOR driver
+[    2.132989] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+[    2.141328] console [ttyS0] disabled
+[    2.165293] f0512000.serial: ttyS0 at MMIO 0xf0512000 (irq = 8, base_baud = 12500000) is a 16550A
+[    2.174400] console [ttyS0] enabled
+[    2.181648] bootconsole [uart8250] disabled
+[    2.191164] omap_rng f2760000.trng: Random Number Generator ver. 203b34c
+[    2.197921] random: fast init done
+[    2.201466] random: crng init done
+[    2.205147] octeontx2-rm
+[    2.207717] octeontx2-dpi: Marvell OcteonTX2 DPI-DMA Driver
+[    2.213461] octeontx2-sdp
+[    2.216140] gti-watchdog
+[    2.218748] No board info available!
+[    2.226096] brd: module loaded
+[    2.232884] loop: module loaded
+[    2.237058] megaraid cmm: 2.20.2.7 (Release Date: Sun Jul 16 00:01:03 EST 2006)
+[    2.244877] megaraid: 2.20.5.1 (Release Date: Thu Nov 16 15:32:35 EST 2006)
+[    2.251940] megasas: 07.702.06.00-rc1
+[    2.255732] mpt3sas version 15.100.00.00 loaded
+[    2.263252] m25p80 spi1.0: mx25l3205d (4096 Kbytes)
+[    2.268534] 2 ofpart partitions found on MTD device spi1.0
+[    2.274067] Creating 2 MTD partitions on "spi1.0":
+[    2.278910] 0x000000000000-0x0000003f0000 : "U-Boot"
+[    2.284367] 0x0000003f0000-0x000000400000 : "U-Boot-env"
+[    2.292311] libphy: Fixed MDIO Bus: probed
+[    2.298681] tun: Universal TUN/TAP device driver, 1.6
+[    2.305001] thunder-xcv, ver 1.0
+[    2.308448] thunder-BGX, ver 1.0
+[    2.311782] thunder-nic, ver 1.0
+[    2.315276] thunder-nicvf, ver 1.0
+[    2.318760] octeontx-fpa, ver 1.0
+[    2.322136] octeontx-fpavf, ver 1.0
+[    2.325861] octeontx-rst, ver 1.0
+[    2.329238] octeontx-sso, ver 1.0
+[    2.332665] octeontx-ssow, ver 1.0
+[    2.336157] octeontx-pko, ver 1.0
+[    2.339555] octeontx-lbk, ver 1.0
+[    2.342950] octeontx-tim, ver 1.0
+[    2.346326] octeontx-pki, ver 1.0
+[    2.349733] octeontx-dpi, ver 1.0
+[    2.353122] octeontx-sli, ver 0.1
+[    2.356732] e100: Intel(R) PRO/100 Network Driver, 3.5.24-k2-NAPI
+[    2.362944] e100: Copyright(c) 1999-2006 Intel Corporation
+[    2.368507] e1000: Intel(R) PRO/1000 Network Driver - version 7.3.21-k8-NAPI
+[    2.375615] e1000: Copyright (c) 1999-2006 Intel Corporation.
+[    2.381429] e1000e: Intel(R) PRO/1000 Network Driver - 3.2.6-k
+[    2.387297] e1000e: Copyright(c) 1999 - 2015 Intel Corporation.
+[    2.393325] igb: Intel(R) Gigabit Ethernet Network Driver - version 5.4.0-k
+[    2.400328] igb: Copyright (c) 2007-2014 Intel Corporation.
+[    2.405969] igbvf: Intel(R) Gigabit Virtual Function Network Driver - version 2.4.0-k
+[    2.413861] igbvf: Copyright (c) 2009 - 2012 Intel Corporation.
+[    2.419860] ixgbe: Intel(R) 10 Gigabit PCI Express Network Driver - version 5.1.0-k
+[    2.427577] ixgbe: Copyright (c) 1999-2016 Intel Corporation.
+[    2.437441] ixgbevf: Intel(R) 10 Gigabit PCI Express Virtual Function Network Driver - version 4.1.0-k
+[    2.446803] ixgbevf: Copyright (c) 2009 - 2015 Intel Corporation.
+[    2.457017] i40e: Intel(R) Ethernet Connection XL710 Network Driver - version 2.1.14-k
+[    2.464982] i40e: Copyright (c) 2013 - 2014 Intel Corporation.
+[    2.474967] ixgb: Intel(R) PRO/10GbE Network Driver - version 1.0.135-k2-NAPI
+[    2.482147] ixgb: Copyright (c) 1999-2008 Intel Corporation.
+[    2.487894] i40evf: Intel(R) 40-10 Gigabit Virtual Function Network Driver - version 3.0.0-k
+[    2.496407] Copyright (c) 2013 - 2015 Intel Corporation.
+[    2.505817] Intel(R) Ethernet Switch Host Interface Driver - version 0.21.7-k
+[    2.513001] Copyright(c) 2013 - 2017 Intel Corporation.
+[    2.522580] libphy: orion_mdio_bus: probed
+[    2.526719] mdio_bus f212a200.mdio-mii: /cp0/config-space/mdio@12a200/switch@2 has invalid PHY address
+[    2.536123] mdio_bus f212a200.mdio-mii: scan phy switch at address 0
+[    2.542516] mdio_bus f212a200.mdio-mii: scan phy switch at address 1
+[    2.548909] mdio_bus f212a200.mdio-mii: scan phy switch at address 2
+[    2.555304] mdio_bus f212a200.mdio-mii: scan phy switch at address 3
+[    2.561696] mdio_bus f212a200.mdio-mii: scan phy switch at address 4
+[    2.568088] mdio_bus f212a200.mdio-mii: scan phy switch at address 5
+[    2.574475] mdio_bus f212a200.mdio-mii: scan phy switch at address 6
+[    2.580866] mdio_bus f212a200.mdio-mii: scan phy switch at address 7
+[    2.587258] mdio_bus f212a200.mdio-mii: scan phy switch at address 8
+[    2.593644] mdio_bus f212a200.mdio-mii: scan phy switch at address 9
+[    2.600029] mdio_bus f212a200.mdio-mii: scan phy switch at address 10
+[    2.606502] mdio_bus f212a200.mdio-mii: scan phy switch at address 11
+[    2.612975] mdio_bus f212a200.mdio-mii: scan phy switch at address 12
+[    2.619447] mdio_bus f212a200.mdio-mii: scan phy switch at address 13
+[    2.625919] mdio_bus f212a200.mdio-mii: scan phy switch at address 14
+[    2.632390] mdio_bus f212a200.mdio-mii: scan phy switch at address 15
+[    2.638863] mdio_bus f212a200.mdio-mii: scan phy switch at address 16
+[    2.645336] mdio_bus f212a200.mdio-mii: scan phy switch at address 17
+[    2.651809] mdio_bus f212a200.mdio-mii: scan phy switch at address 18
+[    2.658281] mdio_bus f212a200.mdio-mii: scan phy switch at address 19
+[    2.664753] mdio_bus f212a200.mdio-mii: scan phy switch at address 20
+[    2.671226] mdio_bus f212a200.mdio-mii: scan phy switch at address 21
+[    2.677698] mdio_bus f212a200.mdio-mii: scan phy switch at address 22
+[    2.684170] mdio_bus f212a200.mdio-mii: scan phy switch at address 23
+[    2.690642] mdio_bus f212a200.mdio-mii: scan phy switch at address 24
+[    2.697114] mdio_bus f212a200.mdio-mii: scan phy switch at address 25
+[    2.703587] mdio_bus f212a200.mdio-mii: scan phy switch at address 26
+[    2.710060] mdio_bus f212a200.mdio-mii: scan phy switch at address 27
+[    2.716532] mdio_bus f212a200.mdio-mii: scan phy switch at address 28
+[    2.723004] mdio_bus f212a200.mdio-mii: scan phy switch at address 29
+[    2.729477] mdio_bus f212a200.mdio-mii: scan phy switch at address 30
+[    2.735949] mdio_bus f212a200.mdio-mii: scan phy switch at address 31
+[    2.742548] libphy: orion_mdio_bus: probed
+[    2.772346] mvpp2 f2000000.ethernet eth0: Using firmware node mac address 7c:5a:1c:xx:xx:xx
+[    2.838228] sky2: driver version 1.30
+[    2.841996] octeontx2-af: Marvell OcteonTX2 RVU Admin Function Driver
+[    2.848680] octeontx2-nicpf: Marvell OcteonTX2 NIC Physical Function Driver
+[    2.855777] octeontx2-nicvf: Marvell OcteonTX2 NIC Virtual Function Driver
+[    2.867204] PPP generic driver version 2.4.2
+[    2.871649] PPP MPPE Compression module registered
+[    2.876640] usbcore: registered new interface driver asix
+[    2.882172] usbcore: registered new interface driver ax88179_178a
+[    2.888386] usbcore: registered new interface driver dm9601
+[    2.894021] usbcore: registered new interface driver CoreChips
+[    2.899958] usbcore: registered new interface driver smsc75xx
+[    2.905781] usbcore: registered new interface driver smsc95xx
+[    2.911628] usbcore: registered new interface driver net1080
+[    2.917353] usbcore: registered new interface driver plusb
+[    2.922940] usbcore: registered new interface driver MOSCHIP usb-ethernet driver
+[    2.930513] marvell,pci-ep-uio 0.pci-ep-uio: PCI EP probe deferred
+[    2.936886] VFIO - User Level meta-driver version: 0.3
+[    2.946879] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    2.953589] ehci-pci: EHCI PCI platform driver
+[    2.958168] ehci-platform: EHCI generic platform driver
+[    2.963527] ehci-orion: EHCI orion driver
+[    2.967652] ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+[    2.973911] ohci-pci: OHCI PCI platform driver
+[    2.978448] ohci-platform: OHCI generic platform driver
+[    2.985060] xhci-hcd f2500000.usb3: xHCI Host Controller
+[    2.990475] xhci-hcd f2500000.usb3: new USB bus registered, assigned bus number 1
+[    2.998274] xhci-hcd f2500000.usb3: hcc params 0x0a000990 hci version 0x100 quirks 0x0000000000010010
+[    3.007595] xhci-hcd f2500000.usb3: irq 30, io mem 0xf2500000
+[    3.013653] hub 1-0:1.0: USB hub found
+[    3.017444] hub 1-0:1.0: 1 port detected
+[    3.021591] xhci-hcd f2500000.usb3: xHCI Host Controller
+[    3.026969] xhci-hcd f2500000.usb3: new USB bus registered, assigned bus number 2
+[    3.034495] xhci-hcd f2500000.usb3: Host supports USB 3.0  SuperSpeed
+[    3.041012] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    3.049368] hub 2-0:1.0: USB hub found
+[    3.053149] hub 2-0:1.0: 1 port detected
+[    3.058402] xhci-hcd f2510000.usb3: xHCI Host Controller
+[    3.063819] xhci-hcd f2510000.usb3: new USB bus registered, assigned bus number 3
+[    3.071602] xhci-hcd f2510000.usb3: hcc params 0x0a000990 hci version 0x100 quirks 0x0000000000010010
+[    3.080909] xhci-hcd f2510000.usb3: irq 31, io mem 0xf2510000
+[    3.086941] hub 3-0:1.0: USB hub found
+[    3.090726] hub 3-0:1.0: 1 port detected
+[    3.094864] xhci-hcd f2510000.usb3: xHCI Host Controller
+[    3.100213] xhci-hcd f2510000.usb3: new USB bus registered, assigned bus number 4
+[    3.107779] xhci-hcd f2510000.usb3: Host supports USB 3.0  SuperSpeed
+[    3.114274] usb usb4: We don't know the algorithms for LPM for this host, disabling LPM.
+[    3.122672] hub 4-0:1.0: USB hub found
+[    3.126449] hub 4-0:1.0: 1 port detected
+[    3.130765] usbcore: registered new interface driver usb-storage
+[    3.138110] mousedev: PS/2 mouse device common for all mice
+[    3.144489] armada38x-rtc f2284000.rtc: registered as rtc0
+[    3.150485] i2c /dev entries driver
+[    3.154628] i2c i2c-0: Not using recovery: no recover_bus() found
+[    3.160979] pca953x 0-0020: 0-0020 supply vcc not found, using dummy regulator
+[    3.170283] i2c i2c-1: Not using recovery: no recover_bus() found
+[    3.176605] pca953x 1-0020: 1-0020 supply vcc not found, using dummy regulator
+[    3.184059] pca953x 1-0020: failed reading register
+[    3.189004] pca953x: probe of 1-0020 failed with error -5
+[    3.194897] Cavium generic PTP Driver, ver 1.0
+[    3.199516] Cavium Thunder PTP Driver, ver 1.0
+[    3.204565] armada_thermal f06f8000.system-controller:thermal-sensor@80: firmware support
+[    3.294639] (NULL device *): hwmon_device_register() is deprecated. Please convert the driver to use hwmon_device_register_with_info().
+[    3.307208] sbsa-gwdt f0610000.watchdog: Initialized with 10s timeout @ 25000000 Hz, action=0.
+[    3.316435] device-mapper: ioctl: 4.37.0-ioctl (2017-09-20) initialised: dm-devel@redhat.com
+[    3.397740] CPUidle arm: Failed to register cpuidle driver
+[    3.403388] sdhci: Secure Digital Host Controller Interface driver
+[    3.409807] sdhci: Copyright(c) Pierre Ossman
+[    3.414381] Synopsys Designware Multimedia Card Interface Driver
+[    3.420741] sdhci-pltfm: SDHCI platform and OF driver helper
+[    3.470592] mmc0: SDHCI controller on f06e0000.sdhci [f06e0000.sdhci] using ADMA 64-bit
+[    3.482811] usbcore: registered new interface driver usbhid
+[    3.488887] usbhid: USB HID core driver
+[    3.493546] optee: probing for conduit method from DT.
+[    3.498986] optee: api uid mismatch
+[    3.502744] ip_tables: (C) 2000-2006 Netfilter Core Team
+[    3.512739] NET: Registered protocol family 10
+[    3.521531] Segment Routing with IPv6
+[    3.525255] NET: Registered protocol family 17
+[    3.529741] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[    3.546959] 8021q: 802.1Q VLAN Support v1.8
+[    3.551202] 9pnet: Installing 9P2000 support
+[    3.555543] Key type dns_resolver registered
+[    3.559885] mpls_gso: MPLS GSO support
+[    3.564072] registered taskstats version 1
+[    3.569127] Btrfs loaded, crc32c=crc32c-arm64-ce
+[    3.575779] marvell,pci-ep-uio 0.pci-ep-uio: Registered UIO PCI EP successfully
+[    3.583623] armada38x-rtc f2284000.rtc: setting system clock to 2105-07-27 07:51:26 UTC (4278124286)
+[    3.593196] cp0-xhci0-vbus: disabling
+[    3.596897] cp0-xhci1-vbus: disabling
+[    3.600753] md: Waiting for all devices to be available before autodetect
+[    3.607622] md: If you don't use raid, use raid=noautodetect
+[    3.613581] md: Autodetecting RAID arrays.
+[    3.617723] md: autorun ...
+[    3.620585] md: ... autorun DONE.
+[    3.624007] Waiting for root device /dev/mmcblk0p3...
+[    3.638936] mmc0: new HS200 MMC card at address 0001
+[    3.644094] mmcblk0: mmc0:0001 H8G4a2 7.28 GiB 
+[    3.648747] mmcblk0boot0: mmc0:0001 H8G4a2 partition 1 4.00 MiB
+[    3.654767] mmcblk0boot1: mmc0:0001 H8G4a2 partition 2 4.00 MiB
+[    3.660790] mmcblk0rpmb: mmc0:0001 H8G4a2 partition 3 4.00 MiB, chardev (237:0)
+[    3.669228]  mmcblk0: p1 p2 p3 p4
+[    3.681451] EXT4-fs (mmcblk0p3): mounted filesystem with ordered data mode. Opts: (null)
+[    3.689630] VFS: Mounted root (ext4 filesystem) readonly on device 179:3.
+[    3.697427] devtmpfs: mounted
+[    3.700780] Freeing unused kernel memory: 768K
+[    3.760737] EXT4-fs (mmcblk0p3): re-mounted. Opts: (null)
+[    4.164486] EXT4-fs (mmcblk0p4): mounted filesystem with ordered data mode. Opts: (null)
+[    4.699055] mvmdio_uio: loading out-of-tree module taints kernel.
+[    4.705460] mvmdio-uio: bus 0 added at mdio
+[    4.714617] mvmdio-uio: bus 1 added at mdio
+[    4.900947] Registered cma device: musdk-cma
+[    4.918851] Registered uio device having 2 register maps attached
+[    4.930759] Registered uio device having 2 register maps attached
+[    4.946477] Registered uio device having 2 register maps attached
+[    4.954859] Registered uio device having 2 register maps attached
+[    4.992618] pcinet_dma_copy f0400000.dma-xor: Base regs [mem 0xf0400000-0xf0400fff]
+[    5.006762] pcinet_dma_copy f0400000.dma-xor: Marvell Version 2 XOR driver
+[    5.020757] pcinet_dma_copy f0420000.dma-xor: Base regs [mem 0xf0420000-0xf0420fff]
+[    5.040307] pcinet_dma_copy f0420000.dma-xor: Marvell Version 2 XOR driver
+[    5.063938] armada-ep cp0:armada-ep: probing Armada PCI-EP device
+[    5.070142] armada-ep cp0:armada-ep: BAR0 address @ ffff80006ba00000 size 0x100000
+[    5.087718] armada-ep cp0:armada-ep: BAR2 address @ ffff00000a000000 size 0x1000000
+[    5.101260] armada-ep cp0:armada-ep: Copying target barmap info to end of mapped memory
+[    5.118623] armada-ep cp0:armada-ep: Remapped host memory @ ffff000880000000 size 0x1000000000
+[    5.135382] armada-ep cp0:armada-ep: fclts_cnf->fclts_nr=5
+[    5.140998] armada-ep cp0:armada-ep: facility dma thresholds: H2T > 8, T2H > 32 bytes
+[    5.181093] armada-ep cp0:armada-ep: pcinet: mvmgmt0: netdev registered, ifindex = 3
+[    5.188986] armada-ep cp0:armada-ep: pcinet: status_ptr:ffff00000aefd018
+[    5.202598] armada-ep cp0:armada-ep: pcinet: Status written
+[    5.208215] armada-ep cp0:armada-ep: pcinet: mvmgmt0: driver init done
+[    5.365348] armada-ep cp0:armada-ep: pcinet: mvmgmt0: started
+[    5.378625] IPv6: ADDRCONF(NETDEV_UP): mvmgmt0: link is not ready
+[    5.702808] coresight-axim f0840000.axim-ddr-rd: AXIM 4.0 2.0 initialized
+[    5.709907] coresight-axim f0841000.axim-ddr-wr: AXIM 4.0 2.0 initialized
+[    5.722736] coresight-axim f0848000.axim-sb-rd: AXIM 4.0 2.0 initialized
+[    5.740835] coresight-axim f0849000.axim-sb-wr: AXIM 4.0 2.0 initialized
+[    5.754762] coresight-axim f23c5000.axim-cp-rd: AXIM 4.0 1.0 initialized
+[    5.768589] coresight-axim f23c6000.axim-cp-wr: AXIM 4.0 1.0 initialized
+[    5.781487] coresight-axim f23c0000.axim-ppv2-rd: AXIM 4.0 1.0 initialized
+[    5.794537] coresight-axim f23c1000.axim-ppv2-wr: AXIM 4.0 1.0 initialized
+[   12.996124] Waiting for host driver handshake to complete
+[  144.754097] mvpp2 f2000000.ethernet eth0: configuring for inband/10gbase-kr link mode
+[  144.762243] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+[  144.768395] 8021q: adding VLAN 0 to HW filter on device eth0
+[  144.812643] mvpp2 f2000000.ethernet eth0: Link is Up - 10Gbps/Full - flow control off
+[  144.820530] IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+[  144.832113] mvpp2 f2000000.ethernet eth0: Link is Down
+[  144.925648] mvpp2 f2000000.ethernet eth0: Link is Up - 10Gbps/Full - flow control off
+[  393.032716] EXT4-fs (mmcblk0p3): re-mounted. Opts: (null)
+[ 1045.372837] EXT4-fs (mmcblk0p1): mounted filesystem with ordered data mode. Opts: (null)
+[ 1045.440036] EXT4-fs (mmcblk0p2): mounted filesystem with ordered data mode. Opts: (null)
+=== done

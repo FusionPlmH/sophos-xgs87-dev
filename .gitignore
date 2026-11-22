@@ -1,0 +1,11 @@
+# large local artifacts (keep out of git history)
+*.tar.gz
+*.img
+*.bin
+!reference/mtd/*.bin.gz
+
+# os noise
+Thumbs.db
+.DS_Store
+__pycache__/
+*.pyc
