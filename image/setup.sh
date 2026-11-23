@@ -68,10 +68,11 @@ if [ "$VARIANT" = full ]; then
 fi
 
 # --- accounts ---------------------------------------------------------------
-# One unprivileged account with sudo; root is locked and cannot log in over
-# ssh.  This is a network appliance, not a shell box.
+# The only login account in the image.  There is deliberately no usable root
+# account: root stays uid 0 for the system, but it has no password and cannot
+# log in over ssh, so everything is done as admin through sudo.
+useradd --create-home --shell /bin/bash --groups sudo admin
 echo "admin:P@ssw0rd" | chpasswd
-usermod -aG sudo admin
 passwd -l root
 cat > /etc/ssh/sshd_config.d/10-xgs87.conf <<'EOF'
 PermitRootLogin no
