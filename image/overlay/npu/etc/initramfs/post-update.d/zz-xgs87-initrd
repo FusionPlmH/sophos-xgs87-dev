@@ -1,0 +1,16 @@
+#!/bin/sh
+# Keep /boot/initrd.img pointing at the newest initramfs.
+#
+# bootcmd_deb references a fixed initrd name too, so the generated
+# initramfs-<version> is copied to it after every update.
+set -eu
+
+version="$1"
+src="/boot/initrd.img-$version"
+
+[ -f "$src" ] || exit 0
+
+cp -f "$src" /boot/initrd.img.tmp
+sync
+mv -f /boot/initrd.img.tmp /boot/initrd.img
+echo "xgs87: /boot/initrd.img <- $src"

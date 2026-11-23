@@ -31,10 +31,11 @@ if [ "$SIDE" = npu ]; then
 spi-orion
 clkfix
 EOF
-	install -D -m755 /opt/xgs87/image/overlay/npu/etc/kernel/postinst.d/zz-xgs87-image \
-		/etc/kernel/postinst.d/zz-xgs87-image
-	install -D -m755 /opt/xgs87/image/overlay/npu/etc/initramfs/post-update.d/zz-xgs87-initrd \
-		/etc/initramfs/post-update.d/zz-xgs87-initrd
+	# The two boot hooks arrive with image/overlay/npu (they land in
+	# /etc/kernel/postinst.d and /etc/initramfs/post-update.d, already
+	# executable); just make sure the directories exist.
+	chmod 755 /etc/kernel/postinst.d/zz-xgs87-image \
+		  /etc/initramfs/post-update.d/zz-xgs87-initrd
 	systemctl enable xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-lan-uplink \
 		xgs-lan-dhcp xgs-netconsole
 else

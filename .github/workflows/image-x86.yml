@@ -53,12 +53,12 @@ jobs:
 
       - name: Build rootfs
         run: |
-          sudo ./image/build.sh --arch amd64 --variant "${{ steps.vars.outputs.variant }}" \
+          sudo bash ./image/build.sh --arch amd64 --variant "${{ steps.vars.outputs.variant }}" \
             --out "out/xgs87-x86-${{ steps.vars.outputs.variant }}.tar.zst"
 
       - name: Build bootable image
         run: |
-          sudo ./image/mkdisk.sh \
+          sudo bash ./image/mkdisk.sh \
             --rootfs "out/xgs87-x86-${{ steps.vars.outputs.variant }}.tar.zst" \
             --out "out/xgs87-x86-${{ steps.vars.outputs.variant }}.img" \
             --size "${{ github.event.inputs.size || '4G' }}"

@@ -1,0 +1,19 @@
+#!/bin/sh
+# Keep /boot/Image in sync with the kernel dpkg just installed.
+#
+# U-Boot's bootcmd_deb loads a fixed filename from mmc 0:2:
+#     ext4load mmc 0:2 ${kernel_addr_r} /boot/Image
+# so every distro kernel upgrade has to land there, as the uncompressed image
+# booti expects.  Debian's arm64 vmlinuz is an EFI stub with the arm64 magic at
+# offset 0x38, which booti accepts, so a plain copy is enough.
+set -eu
+
+version="$1"
+src="/boot/vmlinuz-$version"
+
+[ -f "$src" ] || exit 0
+
+cp -f "$src" /boot/Image.tmp
+sync
+mv -f /boot/Image.tmp /boot/Image
+echo "xgs87: /boot/Image <- $src"

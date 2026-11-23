@@ -52,12 +52,12 @@ jobs:
 
       - name: Build rootfs (native arm64)
         run: |
-          sudo ./image/build.sh --arch arm64 --variant "${{ steps.vars.outputs.variant }}" \
+          sudo bash ./image/build.sh --arch arm64 --variant "${{ steps.vars.outputs.variant }}" \
             --out "out/xgs87-npu-${{ steps.vars.outputs.variant }}.tar.zst"
 
       - name: Build the board DTB
         run: |
-          ./tools/build/build-dtb.sh
+          bash ./tools/build/build-dtb.sh
           cp out/cn9130-sophos-xgs87w-sfp10g.dtb \
              "out/cn9130-sophos-xgs87w-sfp10g-${GITHUB_SHA:0:7}.dtb"
 
