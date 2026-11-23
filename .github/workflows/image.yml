@@ -43,7 +43,7 @@ jobs:
     if: contains(fromJSON('["all","x86","usb"]'), inputs.target)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install mmdebstrap
         run: |
@@ -80,7 +80,7 @@ jobs:
           ls -lh out/
           df -h / | tail -1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: xgs87-x86
           path: |
@@ -93,7 +93,7 @@ jobs:
     if: contains(fromJSON('["all","npu","usb"]'), inputs.target)
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Confirm we are actually on aarch64
         run: uname -m && test "$(uname -m)" = aarch64
@@ -129,7 +129,7 @@ jobs:
           tar --use-compress-program=unzstd -tf out/debian-npu.tar.zst \
             | grep -E '^\./(boot|usr/local/sbin|etc/systemd/system)/' | head -12
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: xgs87-npu
           path: |
@@ -143,9 +143,9 @@ jobs:
     if: contains(fromJSON('["all","usb"]'), inputs.target)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: out
           pattern: xgs87-*
@@ -183,7 +183,7 @@ jobs:
           ls -lh out/
           df -h / | tail -1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: xgs87-usb
           path: out/debian-usb.img.zst
@@ -200,9 +200,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: out
           pattern: xgs87-*
