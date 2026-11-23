@@ -9,3 +9,8 @@ Thumbs.db
 .DS_Store
 __pycache__/
 *.pyc
+
+# locally built modules for the device; rebuild, do not commit
+*.ko
+*.o
+
