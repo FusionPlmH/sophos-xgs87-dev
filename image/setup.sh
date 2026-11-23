@@ -43,8 +43,7 @@ EOF
 	# executable); just make sure the directories exist.
 	chmod 755 /etc/kernel/postinst.d/zz-xgs87-image \
 		  /etc/initramfs/post-update.d/zz-xgs87-initrd
-	systemctl enable xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-net-up \
-		xgs-dhcp xgs-netconsole
+	systemctl enable xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-netconsole
 else
 	systemctl enable systemd-networkd xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole
 fi

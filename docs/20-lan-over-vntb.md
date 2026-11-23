@@ -1,90 +1,81 @@
-# 20 — 一条 PCIe 链路同时跑三套网络
+# 20 — 一条 PCIe 链路同时跑 WAN 和 LAN
 
-> 🏷 **状态（2026-11-23 复核）**：✅ **全部实测**：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、**netconsole 崩溃取证**。
+> 🏷 **状态（2026-11-24 复核）**：✅ 线路上实测过：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、**netconsole 崩溃取证**；
+> ⚠️ WAN/LAN 拆分（§20.2）只做过 netns + QEMU 验证，还没上真机。
 > ⚠️ `ramoops` 已证伪（每次复位都 DDR scrub），硬锁死 vs `PERST#` 仍待一次复现定案（§20.8）。
 
-> 目标：保留 x86 ↔ NPU 的 `192.168.100.0/24` 管理通道，同时让 x86 直接拿到家里路由器
-> `192.168.0.0/24` 的 DHCP 地址，不再需要单独给 x86 插网线；再把面板 `2/WAN` 单独划成
-> `br-wan`，让机器有一个真正的上游口（默认也是 DHCP）。
+> 目标：x86 和 NPU 之间只有一条 PCIe 链路，却要同时装下**上游 WAN**（面板 `2/WAN`，自己
+> DHCP 拿地址，管理也走这条路）和**下游 LAN**（面板 `1/LAN`，本机静态 `10.234.56.1/24`，
+> 不给下游发 DHCP）。
 
 ## 20.1 为什么必须用 VLAN
 
 x86 和 NPU 之间**只有** PCIe vNTB 这一个 netdev（`eth0` / `pci-vntb 0001:10:00.0`）。
-一个 netdev 只能属于一个桥，所以「管理段」和「家里 LAN」必须靠 802.1Q 分开：
+一个 netdev 只能属于一个桥，所以「WAN」和「LAN」必须靠 802.1Q 分开：
 
 ```
         x86                                    NPU
-  eth0.100 ─ 192.168.100.2/24 ─┐    ┌─ 192.168.100.1/24 ─ eth0.100
+  eth0.100 ─ DHCP ◄────────────┐    ┌─ br-wan ─ eth0.100 + p2 ──► 上游 / WAN / 管理
                                │    │
   eth0  ═══════════════════════╪════╪══════════════════════════ eth0   (无地址)
                                │    │
-  eth0.31  ─ DHCP ◄────────────┼────┼─ br-lan ─ eth0.31 + p1 p3 p4 ──► 家里路由器
-  eth0.32  ─ (无地址) ─────────┘    └─ br-wan ─ eth0.32 + p2      ──► 上游 / WAN
-                                   br-mgmt ─ eth0.100 + p8  ◄── 前面板 p8（access 口）
+  eth0.200 ─ 10.234.56.2/24 ───┘    └─ br-lan ─ eth0.200 + p1 ──► 下游设备（10.234.56.1）
 ```
 
 | 段 | VLAN | NPU 侧 | x86 侧 | 谁能访问 |
 |---|---|---|---|---|
-| 管理 | 100 | `br-mgmt` = `p8` + `eth0.100`，`192.168.100.1/24` | `eth0.100` = `192.168.100.2/24` | 前面板 p8 插笔记本，`.1`/`.2` 都在 |
-| 家里 LAN | 31 | `br-lan` = `p1 p3 p4` + `eth0.31`，默认 DHCP | `eth0.31`，systemd-networkd DHCP | 家里任意设备 → x86 的真实 LAN 地址 |
-| WAN | 32 | `br-wan` = `p2` + `eth0.32`，默认 DHCP | `eth0.32`，**不配地址**（`32-wan.network`） | 上游插 `2/WAN` 时 NPU 自己拿到公网/上游租约 |
+| WAN / 管理 | 100 | `br-wan` = `p2` + `eth0.100`，**DHCP**（自己拿上游地址） | `eth0.100`，systemd-networkd DHCP，默认路由也从这里来 | 插上面板 `2/WAN` 的上游 → NPU 和 x86 各拿一个租约 |
+| LAN | 200 | `br-lan` = `p1` + `eth0.200`，**静态 `10.234.56.1/24`，不跑 DHCP 服务** | `eth0.200` 静态 `10.234.56.2/24` | 面板 `1/LAN` 插笔记本（自己配 `10.234.56.x`）→ `.1` / `.2` |
 
-p8 依然是 **access 口**：直接插网线只看得到未打标签的 `192.168.100.0/24`，管理帧不会溢到面板上。
+`p3` / `p4` / `p8` 现在**不并入任何桥**（原来 `p4` 走家里内网、`p8` 是独立管理口，都退掉了）。
+想让前面板 `p8` 也能当调试口，把它加到 `net.conf` 的 `LAN_PORTS` 就行。
 
-交换机上三段用**不同的硬件 VLAN**：`br-mgmt` 留在默认 VLAN 1，`br-lan` / `br-wan` 显式用
-VLAN 31 / 32（`vlan_filtering 1` + `vlan_default_pvid 0`，桥自己的端口也要 `self` 加进去）。不这么做
-mv88e6xxx 会报 `p4: hw VLAN 1 already used by port 8 in br-mgmt`，两个段在交换芯片里
-其实是同一个广播域 —— 面板上的管理口和家里 LAN 会互通。
+交换机上两段用**不同的硬件 VLAN**：`br-wan` 用 VLAN 100，`br-lan` 用 VLAN 200
+（`vlan_filtering 1` + `vlan_default_pvid 0`，桥自己的端口也要 `self` 加进去）。
+两个桥都用默认 VLAN 1 的话，交换芯片里的广播域其实是同一个 —— 面板上的 WAN 和 LAN 会互通。
 
-实测：
-
-```
-x86:  eth0.100  192.168.100.2/24      ping 192.168.100.1  0% loss
-      eth0.31   192.168.0.63/24      default via 192.168.0.1 （家里路由器发的租约）
-```
-
-## 20.2 哪个口是家里 LAN / 哪个是 WAN
+## 20.2 哪个口是 LAN / 哪个是 WAN
 
 面板丝印和 DSA 端口号的对应：`1/LAN` = `p1`，**`2/WAN` = `p2`**，3 = `p3`，4 = `p4`，SFP = `sfp`。
 
-原来只有 `p4` 一条通道（`p4` 和 `sfp` **都**插在同一个家里 LAN 上，两边发 DHCP 都能拿到
-`192.168.0.x`）。现在按面板丝印把口分成两组，由 `/etc/xgs87/net.conf` 决定：
+全部由 `/etc/xgs87/net.conf` 决定（NPU 侧读它，`xgs-net-up.sh` 用 `.` 加载，所以是 shell 语法）：
 
-| 桥 | 默认端口 | VLAN | 默认模式 |
-|---|---|---|---|
-| `br-wan` | `p2`（面板 `2/WAN`） | 32 | `dhcp` |
-| `br-lan` | `p1` `p3` `p4` | 31 | `dhcp` |
-| `br-mgmt` | `p8` | 1（untagged access） | 固定 `192.168.100.1/24` |
+| 桥 | 默认端口 | VLAN | 默认模式 | 说明 |
+|---|---|---|---|---|
+| `br-wan` | `p2`（面板 `2/WAN`） | 100 | `dhcp` | 上游；自己拿租约，管理也走这条 |
+| `br-lan` | `p1`（面板 `1/LAN`） | 200 | `static` | `10.234.56.1/24`，**不跑 DHCP 服务** |
 
 ```sh
 # /etc/xgs87/net.conf  —— 取默认值就不用动这个文件
-WAN_PORTS="p2"          WAN_MODE="dhcp"     # static 时配 WAN_ADDR="203.0.113.2/24"
-LAN_PORTS="p1 p3 p4"    LAN_MODE="dhcp"     # static 时配 LAN_ADDR="192.168.0.66/24"
-LAN_VID="31"  WAN_VID="32"                  # 两条 vNTB VLAN，x86 上也有对应设备
+WAN_PORTS="p2"   WAN_MODE="dhcp"    WAN_VID="100"   # static 时配 WAN_ADDR="203.0.113.2/24"
+LAN_PORTS="p1"   LAN_MODE="static"  LAN_VID="200"   # LAN_ADDR="10.234.56.1/24"
 ```
 
 改完 `sudo systemctl restart xgs-net-up xgs-dhcp` 就生效，不用重启。
 
-> ⚠️ 不要把 `p4` 和 `sfp` 同时并进 `br-lan` —— 那是同一个 L2 域，会成环。
+x86 那一端（`systemd/x86/`）跟着这两条 VLAN 走：`100-wan.network` 在 `eth0.100` 上 DHCP，
+`200-lan.network` 在 `eth0.200` 上给静态 `10.234.56.2/24`。
 
-> ⚠️ 同一个桥里的端口共用一个广播域：`p1`/`p3`/`p4` 现在都在 `br-lan`，插在同一台交换机上
-> 一样会成环。
+> ⚠️ 下游设备要自己配 `10.234.56.x/24`，网关 `10.234.56.1`：这里的 LAN 没有 DHCP 服务，
+> 插上去不会自动拿到地址。
+
+> ⚠️ 同一个桥里的端口共用一个广播域 —— 以后往 `LAN_PORTS` 里加口，别把它们接到同一台交换机上。
 
 ## 20.3 踩到的坑：父设备必须 up
 
 第一版脚本只 `ip link set eth0.100 up`，忘了 `ip link set eth0 up`。结果 VLAN 设备全部
-停在 `LOWERLAYERDOWN`，`br-mgmt` 跟着 down：
+停在 `LOWERLAYERDOWN`，桥和它上面的地址跟着 down：
 
 ```
 eth0             DOWN
-eth0.100@eth0    LOWERLAYERDOWN 192.168.100.2/24
+eth0.200@eth0    LOWERLAYERDOWN 10.234.56.2/24
 ```
 
 VLAN 设备的 carrier 来自父设备，**父设备没有地址也必须 up**。三个脚本现在都显式做了：
 
 | 文件 | 位置 |
 |---|---|
-| `systemd/npu/xgs-mgmt-bridge.sh` | `ip link set "$NTB" up`（清地址之后） |
+| `systemd/npu/xgs-net-up.sh` | `ip link set "$NTB" up`（清地址之后） |
 | `systemd/npu/xgs-net-up.sh` | `ip link set "$NTB" up` |
 | `systemd/x86/xgs-ntb-up.sh` | `ip addr flush dev eth0` 之后 `ip link set eth0 up` |
 
@@ -175,7 +166,7 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 
 | 机制 | 位置 | 作用 |
 |---|---|---|
-| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `192.168.100.1`；任一异常持续约 60 s 就做**完整重置**（见 §20.10），然后重建 VLAN 和地址 |
+| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `10.234.56.1`；任一异常持续约 60 s 就做**完整重置**（见 §20.10），然后重建 VLAN 和地址 |
 | `/etc/sysctl.d/90-xgs-panic.conf` | 两边 | `kernel.panic=30`、`panic_on_oops=1`、`hardlockup_panic=1` |
 
 实测（2026-11-23）：**只重启 NPU，x86 不重启**，约 90 秒后链路自己回来：
@@ -184,7 +175,7 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 18:57:46 xgs-ntb-watch: link unhealthy, full reset
 18:57:46 ntb_hw_epf: endpoint unreachable, dropping spad read   ×1
 18:57:47 ntb_hw_epf: endpoint unreachable, dropping spad write  ×10
-18:57:5x xgs-ntb: eth0 UP / eth0.100 UP 192.168.100.2/24 / eth0.31 UP 192.168.0.50/24
+18:57:5x xgs-ntb: eth0 UP / eth0.100 UP (DHCP) / eth0.200 UP 10.234.56.2/24
 ```
 
 x86 的 uptime 全程连续（没有 panic、没有重启），NPU 侧 `eth0` 也随之变 UP。
@@ -201,7 +192,7 @@ x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal re
 | userspace | 5.6 s | 我们的单元合计不到 1 s |
 
 NPU 的 Linux 只要 **10.8 s**（kernel 3.8 + userspace 7.0），
-`xgs-ports-up` → `xgs-vntb` → `xgs-mgmt-bridge` → `xgs-net-up` → `xgs-dhcp` 串起来约 2.7 s。
+`xgs-ports-up` → `xgs-vntb` → `xgs-net-up` → `xgs-dhcp` 串起来约 2.7 s。
 
 ### NPU 仍会被牵连，但这是硬件的错
 
@@ -249,7 +240,7 @@ pstore: 0 records         ← console 后端明明在跑，却一条都没留下
 
 | 端 | unit | 做法 |
 |---|---|---|
-| NPU | `xgs-netconsole.service` | `modprobe netconsole`，双目标：①`192.168.100.2`（x86，走管理 VLAN）②`192.168.0.52`（PC，走 `br-lan`/`p4`，物理口）——这两项是示例地址/MAC，按你自己的监听机改 |
+| NPU | `xgs-netconsole.service` | `modprobe netconsole`，双目标都走 `br-lan`：①`10.234.56.2`（x86）②`10.234.56.50`（操作者的 PC，示例地址/MAC，按你自己的监听机改） |
 | x86 | `xgs-netconsole.service` | `nc -u -l -k 6666` → `/var/log/npu-netconsole.log` |
 | PC | [tools/on-pc/netconsole-listen.py](../tools/on-pc/netconsole-listen.py) | 收 UDP 6666 存文件 |
 
@@ -329,7 +320,7 @@ cp -a $D/mv88e6xxx.ko.xz.orig $D/mv88e6xxx.ko.xz
 depmod -a && reboot
 ```
 
-交换机一死，NPU 就只能从 console 进（p4 也没了），所以动 `mv88e6xxx` 之前必须确认
+交换机一死，NPU 就只能从 console 进（面板口全没了），所以动 `mv88e6xxx` 之前必须确认
 `/dev/ttyS2` 这条路是通的。
 
 ## 20.10 自愈：两个叠在一起的漏洞（都已修，实测通过）
@@ -339,7 +330,7 @@ depmod -a && reboot
 主机侧读到的 `carrier` 仍然是 1，而 NPU 那侧已经把链路丢了 —— 两边状态不一致，
 `carrier` 恒为 1，watcher 永远不动手。
 
-→ 现在同时检查 `carrier` 和**实际可达性**（ping `192.168.100.1`）。
+→ 现在同时检查 `carrier` 和**实际可达性**（ping `10.234.56.1`）。
 
 ### 漏洞二：`ntb_epf_spad_write()` 会在端点上写野指针（**这才是主因**）
 
@@ -371,7 +362,7 @@ NPU 重启后它自己重新编程了 BAR 尺寸寄存器和 inbound iATU，旧�
 所以恢复必须是**完整重置**，顺序不能改：
 
 ```
-down eth0.31 / eth0.100 / eth0
+down eth0.200 / eth0.100 / eth0
 rmmod ntb_netdev → ntb_transport → ntb_hw_epf     （顺序反了就等于把设备从活着的驱动脚下抽走）
 echo 1 > /sys/bus/pci/devices/0000:03:00.0/remove
 echo 1 > /sys/bus/pci/rescan                       （让主机重新读 BAR 尺寸并重新分配）
@@ -387,17 +378,16 @@ xgs-ntb-up.sh                                      （握手、重建 VLAN、补
 
 | 位置 | 地址 | 说明 |
 |---|---|---|
-| x86 | `192.168.0.50`（DHCP，MAC `02:58:47:53:00:31`） | 家里内网，可直连 SSH |
-| NPU | `192.168.0.66`（DHCP on `br-lan`） | 家里内网，可直连 SSH |
-| NPU | `br-wan` 上的 DHCP 租约 | 面板 `2/WAN` 插上游才拿到；`eth0.32` 在 x86 上一律不配地址，免得两边抢租约 |
-| x86 ↔ NPU 管理 | `192.168.100.2` ↔ `.1` | VLAN 100 走 vNTB，RTT **0.46 ms** |
-| 前面板 p8 | `br-mgmt` access 口 | 插笔记本同时访问 `.1` / `.2` |
+| NPU | `br-wan` 上的 DHCP 租约 | 面板 `2/WAN` 插上游才拿到；管理走这条地址 |
+| x86 | `eth0.100` 的 DHCP 租约（MAC `02:58:47:53:00:11`） | 同一段上游，默认路由从这里来 |
+| x86 ↔ NPU（LAN） | `10.234.56.2` ↔ `10.234.56.1` | VLAN 200 走 vNTB |
+| 面板 1/LAN | `br-lan` 静态 `10.234.56.1/24` | 插笔记本（自己配 `10.234.56.x`）可同时访问 `.1` / `.2` |
 
 ## 20.12 还是开着的问题
 
 1. `ntb_transport` 的 link-cleanup 在掉链时会把 NPU 卡住（两条 `qp 0: Link Cleanup` 之后静默），
    随后被复位。要根治得能在掉链瞬间抓到栈 —— 这颗芯片没有 pstore/ramoops，netconsole 又挂在
-   `br-lan` 上（掉链时桥端口全 down，发不出包；挂 `p4` 也不行，DSA 端口不支持 netpoll）。
+   `br-lan` 上（掉链时桥端口全 down，发不出包；直接挂 `p1` 也不行，DSA 端口不支持 netpoll）。
    下一步：给 DTB 加 `ramoops` 节点，让 panic/lockup 落盘。
 2. x86 上手工 `rmmod ntb_hw_epf` 仍会把它自己搞崩（`panic_on_oops` 之后 30 秒自重启）。
    关机流程（`xgs-ntb-stop.service`）是安全的，手工拆要小心。

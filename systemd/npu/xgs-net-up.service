@@ -1,7 +1,7 @@
 [Unit]
 Description=XGS 87: build br-wan / br-lan from /etc/xgs87/net.conf
 Documentation=file:/etc/xgs87/net.conf
-After=xgs-vntb.service xgs-mgmt-bridge.service
+After=xgs-vntb.service
 Wants=xgs-vntb.service
 
 [Service]

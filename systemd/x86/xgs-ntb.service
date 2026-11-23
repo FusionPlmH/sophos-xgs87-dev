@@ -1,5 +1,5 @@
 [Unit]
-Description=NTB link to the NPU (ntb0 -> 192.168.100.2)
+Description=NTB link to the NPU (eth0.100 WAN + eth0.200 LAN)
 After=network-pre.target sys-kernel-config.mount
 Wants=network-pre.target
 

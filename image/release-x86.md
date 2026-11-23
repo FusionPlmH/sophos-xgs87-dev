@@ -25,6 +25,10 @@ sudo dd if=debian-x86.img of=/dev/sdX bs=4M conv=fsync status=progress
 - 登录 **`admin` / `P@ssw0rd`**（在 `sudo` 组里）。**没有 root 账户**：`root` 已 `passwd -l`，
   sshd 里 `PermitRootLogin no`
 - 没有内置网口，唯一 netdev 是 vNTB → **NPU 起来之后**这台机器才有网络
+- 网络跟着 NPU 的两条 VLAN 走：
+  - `eth0.100`（WAN / 管理）跑 DHCP，地址和默认路由都是上游给的
+  - `eth0.200`（LAN）静态 `10.234.56.2/24`，NPU 在 `.1`；这段**没有** DHCP 服务
+  - 想改 WAN/LAN 的端口和模式，改 NPU 上的 `/etc/xgs87/net.conf`（见 `debian-npu` 的说明）
 - 刷坏了：用维护 U 盘 [`debian-usb`](https://github.com/FusionPlmH/sophos-xgs87-dev/releases/tag/debian-usb)
   开机，串口菜单选 `1` 整盘重写
 

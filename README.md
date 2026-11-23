@@ -8,10 +8,9 @@
 ## 现在是什么状态
 
 ```
-x86  192.168.0.50   Debian 13.6 / 6.12.94   ──┐  家里内网（DHCP，走 vNTB VLAN 31）
-NPU  192.168.0.66   Debian 13.6 / 6.12.117  ──┘
-x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
-前面板 p8 → br-mgmt access 口                  插笔记本可同时访问 .1 / .2
+x86  eth0.100  DHCP（上游）  ──┐  面板 2/WAN → br-wan（VLAN 100）
+x86  eth0.200  10.234.56.2/24 ┘  └─ 面板 1/LAN → br-lan（VLAN 200，NPU = .1）
+NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走这条路
 ```
 
 **2026-11-23 在现机上逐项复核过**，标记含义：✅ 实测通过 ｜ 📦 原厂档案 ｜ ❌ 不可用 ｜ ⚠️ 未验证。
@@ -29,8 +28,9 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 | **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`；`ap-cpu-clk` 段错误未修，降频/调频不可用 |
 | 风扇 | ✅有 / ❌不可控 | 整机一颗，上电即转；无 SuperIO、无 ACPI 风扇、DT 无 `fan` 节点（docs/19 §19.6） |
 | x86 ↔ NPU vNTB | ✅ | 单流 1.2 Gbit/s、RTT 0.6 ms（docs/20 §20.5） |
-| x86 借道拿家里内网地址 | ✅ | `192.168.0.50`，VLAN 31 透传 |
-| 一条链路跑管理段 + LAN | ✅ | VLAN 100 / VLAN 31（docs/20） |
+| x86 借道拿地址 | ✅ | `eth0.100` 走 WAN（DHCP）、`eth0.200` 走 LAN（静态 `10.234.56.2/24`） |
+| 一条链路跑 WAN + LAN | ✅ | VLAN 100（WAN）/ VLAN 200（LAN），两段在交换芯片上真隔离（docs/20 §20.1） |
+| 面板口分 WAN / LAN 且可配 | ✅ | `/etc/xgs87/net.conf`：`2/WAN` = `p2` → `br-wan`（VLAN 100，DHCP），`1/LAN` = `p1` → `br-lan`（VLAN 200，静态 `10.234.56.1/24`，不发 DHCP）（docs/20 §20.2） |
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
 | NPU 单独重启 → x86 自动恢复 | ✅ | `xgs-ntb-watch` 做完整重置（rmmod → remove/rescan → 重建），实测 90 s 自己回来、x86 不重启（docs/20 §20.10） |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
@@ -61,14 +61,15 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
                                                   │
                             ┌─────────────────────┴──────────────┐
                             │  88E6193X (SOHO Amethyst, 11 口)    │
-                            │  port1-4 → 面板 1/LAN 2 3 4  (1G)   │
+                            │  port1-4 → 面板 1/LAN 2/WAN 3 4 (1G) │
                             │  port9   → 面板 F1 SFP (10G)        │
                             │  port0   → CN9130 (10G XFI)         │
                             └────────────────────────────────────┘
 ```
 
 - **面板上 4 个 RJ45 + 1 个 SFP 全部挂在 NPU 的交换机上**，x86 自己没有网口 ——
-  它现在通过 vNTB 上的 VLAN 借道 NPU 上网。
+  它现在通过 vNTB 上的 VLAN 借道 NPU 上网。面板 `2/WAN` 单独划成 `br-wan` 接上游，
+  `1/LAN`、`3`、`4` 在 `br-lan` 上，两边默认都跑 DHCP。
 - x86 与 NPU 之间只有 **PCIe 端点** + **一路内部 UART**。
 - 原厂设计里 x86 做控制面/应用（Wi-Fi、管理界面），NPU 做数据面（交换、转发）。
   两家参考项目（[openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107)、

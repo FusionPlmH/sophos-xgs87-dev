@@ -21,7 +21,7 @@ set -u
 
 NTB_DEV=/sys/bus/ntb/devices/0000:03:00.0
 PCI_DEV=/sys/bus/pci/devices/0000:03:00.0
-PEER=192.168.100.1
+PEER=${PEER:-10.234.56.1}	# NPU 的 br-lan：它永远存在，不像 WAN 那样看上游
 INTERVAL=15
 LIMIT=4			# ~60 s of trouble before acting
 COOLDOWN=30		# s to let the other side settle after a reset
@@ -31,7 +31,7 @@ miss=0
 recover() {
 	logger -t xgs-ntb-watch "link unhealthy, full reset"
 
-	ip link set eth0.31 down 2>/dev/null
+	ip link set eth0.200 down 2>/dev/null
 	ip link set eth0.100 down 2>/dev/null
 	ip link set eth0 down 2>/dev/null
 
@@ -67,14 +67,14 @@ while :; do
 		miss=0
 		# make sure the plumbing survived whatever happened last time
 		ip link set eth0 up 2>/dev/null
-		for vid in 100 31; do
+		for vid in 100 200; do
 			vl=eth0.$vid
 			[ -e "/sys/class/net/$vl" ] || \
 				ip link add link eth0 name "$vl" type vlan id "$vid" 2>/dev/null
 			ip link set "$vl" up 2>/dev/null
 		done
-		ip addr show dev eth0.100 2>/dev/null | grep -q '192.168.100.2/' || \
-			ip addr add 192.168.100.2/24 dev eth0.100 2>/dev/null
+		ip addr show dev eth0.200 2>/dev/null | grep -q '10.234.56.2/' || \
+			ip addr add 10.234.56.2/24 dev eth0.200 2>/dev/null
 	else
 		miss=$((miss + 1))
 		if [ "$miss" -ge "$LIMIT" ]; then

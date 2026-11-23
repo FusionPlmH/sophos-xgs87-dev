@@ -17,14 +17,15 @@ report() {
 }
 
 macs=$(git grep -n -i -E '\b([0-9a-f]{2}:){5}[0-9a-f]{2}\b' |
-	grep -viE '00:51:82:11:22:0[1-4]|02:58:47:53:00:(11|31)|02:00:00:00:00:01|00:00:00:00:00:00|ff:ff:ff:ff:ff:ff' || true)
+	grep -viE '00:51:82:11:22:0[1-4]|02:58:47:53:00:(11|21)|02:00:00:00:00:01|00:00:00:00:00:00|ff:ff:ff:ff:ff:ff' || true)
 [ -z "$macs" ] || report "MAC addresses that are not part of the design" "$macs"
 
 ipv6=$(git grep -n -i -E '\bfe80:[0-9a-f:]*ff:fe[0-9a-f:]*' || true)
 [ -z "$ipv6" ] || report "EUI-64 link-local addresses (they embed a MAC)" "$ipv6"
 
-# 192.168.0/24 and 192.168.1/24 are the documentation examples, 192.168.100/24
-# is the appliance's own management segment.
+# 192.168.0/24 and 192.168.1/24 are the documentation examples, and
+# 192.168.100/24 is the old management segment (still tried by the installer
+# for images built before the WAN/LAN split).
 ips=$(git grep -n -E '\b192\.168\.[0-9]{1,3}\.[0-9]{1,3}\b' |
 	grep -vE '\b192\.168\.(0|1|100)\.[0-9]{1,3}\b' || true)
 [ -z "$ips" ] || report "addresses outside the documented example subnets" "$ips"

@@ -1,6 +1,9 @@
 # 17 x86 与 NPU 共享一个管理口（p8）
 
-> 🏷 **状态（2026-11-23 复核）**：✅ **已实现并验证**：vNTB 链路、四个真实 bug 的修法、x86 侧模块构建。
+> 🏷 **状态（2026-11-24 复核）**：⚠️ **已退役**。下面记录的是把 p8 做成共享管理口那一版
+> （`br-mgmt` + `192.168.100.0/24`）；2026-11-24 之后管理并进了 WAN（`br-wan`，VLAN 100，DHCP），
+> 面板 `1/LAN` 是独立的静态 LAN 段（`10.234.56.0/24`），`br-mgmt` 已经删掉。
+> 留在文档里是因为硬件事实和踩过的坑仍然有效：链路、四个真实 bug 的修法、x86 侧模块构建。
 
 目标：前面板 **p8** 同时作为 NPU（Debian）和 x86（Debian）的管理口——两台机器在同一个二层、
 各拿一个地址，机箱上只占一个口。
@@ -34,7 +37,7 @@ p8 在 DSA 起来后是 `LOWERLAYERDOWN`（admin up、无载波），说明 `xgs
 已经把它拉起来了，只差一个二层归属和 IP。
 
 下面的 networkd 写法是当时的计划；**实际落地用的是脚本**
-（[systemd/npu/xgs-mgmt-bridge.sh](../systemd/npu/xgs-mgmt-bridge.sh)），
+（当时的 `systemd/npu/xgs-mgmt-bridge.sh`，已删除），
 因为它还要顺手处理 vNTB 的 VLAN 和 `br-mgmt` 的 MAC 继承：
 
 ```ini

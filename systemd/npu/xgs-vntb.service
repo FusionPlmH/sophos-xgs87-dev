@@ -1,7 +1,7 @@
 [Unit]
 Description=PCIe endpoint + vNTB link to the x86 host
 After=xgs-ports-up.service
-Before=xgs-mgmt-bridge.service
+Before=xgs-net-up.service
 Wants=xgs-ports-up.service
 
 [Service]

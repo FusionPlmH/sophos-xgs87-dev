@@ -9,7 +9,11 @@
 set -eu
 
 PAYLOAD=${PAYLOAD:-$(cd "$(dirname "$0")" && pwd)}
-NPU=${NPU:-192.168.100.1}
+. "$PAYLOAD/lib.sh"
+NPU=$(find_npu 10) || {
+	echo "NPU 不可达（试过：$NPU_CANDIDATES）。vNTB 链路起来了吗？" >&2
+	exit 1
+}
 SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 
 PART=${1:-}

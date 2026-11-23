@@ -1,14 +1,11 @@
 #!/bin/sh
 # 按 /etc/xgs87/net.conf 把面板口分成 WAN / LAN 两个桥，并把两条 vNTB VLAN 接进去。
 #
-#   br-lan  = LAN_PORTS  + eth0.31   （家里内网，x86 也从这条拿地址）
-#   br-wan  = WAN_PORTS  + eth0.32   （面板 2/WAN）
+#   br-wan = WAN_PORTS + eth0.100   （面板 2/WAN，上游；自己 DHCP 拿地址）
+#   br-lan = LAN_PORTS + eth0.200   （面板 1/LAN，下游；静态 10.234.56.1/24）
 #
-# 管理段 br-mgmt（p8 + eth0.100）由 xgs-mgmt-bridge.sh 负责，这里不碰。
-#
-# 两个桥都用 vlan_filtering 且各自一个 VID：交换芯片默认 VLAN 1 已经被
-# br-mgmt 占着（p8），再让别的桥用 VLAN 1 会直接报
-# "hw VLAN 1 already used by port 8 in br-mgmt" 并把两个网段搅在一起。
+# 两个桥都用 vlan_filtering 且各自一个 VID：交换芯片默认 VLAN 1 谁都不用，
+# 免得两个网段在芯片里其实是同一个广播域。
 #
 # 幂等：可以反复跑。
 set -u
@@ -21,10 +18,11 @@ fi
 
 WAN_PORTS=${WAN_PORTS:-p2}
 WAN_MODE=${WAN_MODE:-dhcp}
-LAN_PORTS=${LAN_PORTS:-p1 p3 p4}
-LAN_MODE=${LAN_MODE:-dhcp}
-LAN_VID=${LAN_VID:-31}
-WAN_VID=${WAN_VID:-32}
+LAN_PORTS=${LAN_PORTS:-p1}
+LAN_MODE=${LAN_MODE:-static}
+LAN_ADDR=${LAN_ADDR:-10.234.56.1/24}
+LAN_VID=${LAN_VID:-200}
+WAN_VID=${WAN_VID:-100}
 
 RUN=/run/xgs87
 mkdir -p "$RUN"
@@ -56,6 +54,7 @@ fi
 }
 ip link set "$NTB" mtu 2022 2>/dev/null || true
 ip link set "$NTB" up
+modprobe 8021q 2>/dev/null
 
 # make_bridge <name> <vid> <ports...>
 make_bridge() {
@@ -67,6 +66,15 @@ make_bridge() {
 	ip link set "$br" type bridge stp_state 0 forward_delay 0 2>/dev/null || true
 	ip link set "$br" type bridge vlan_default_pvid 0 2>/dev/null || true
 	ip link set "$br" type bridge vlan_filtering 1 2>/dev/null || true
+
+	# 桥自己的 MAC 默认是随机生成的，DHCP 租约和 ssh known_hosts 每重启一次
+	# 就变一次。借第一个真实端口的 MAC 钉死它。
+	for p in "$@"; do
+		if [ -r "/sys/class/net/$p/address" ]; then
+			ip link set "$br" address "$(cat "/sys/class/net/$p/address")" 2>/dev/null || true
+			break
+		fi
+	done
 
 	vl=$NTB.$vid
 	ip link show "$vl" >/dev/null 2>&1 ||
@@ -92,11 +100,12 @@ make_bridge() {
 	ip link set "$br" up
 }
 
-# apply <bridge> <mode> [addr...]
+# apply_mode <bridge> <mode> <gateway|-> [addr...]
 apply_mode() {
 	br=$1
 	mode=$2
-	shift 2
+	gw=$3
+	shift 3
 	case "$mode" in
 	dhcp)
 		echo "$br" >> "$RUN/dhcp-ifaces"
@@ -106,6 +115,7 @@ apply_mode() {
 			ip addr show dev "$br" | grep -q " ${a%/*}/" ||
 				ip addr add "$a" dev "$br"
 		done
+		[ "$gw" = - ] || ip route replace default via "$gw" dev "$br"
 		;;
 	none) ;;
 	*) echo "xgs-net-up: $br 的 mode '$mode' 不认识（dhcp/static/none）" >&2 ;;
@@ -115,11 +125,11 @@ apply_mode() {
 echo "== WAN: $WAN_PORTS (VLAN $WAN_VID)  mode=$WAN_MODE"
 rc=0
 make_bridge br-wan "$WAN_VID" $WAN_PORTS &&
-	apply_mode br-wan "$WAN_MODE" ${WAN_ADDR:-} || rc=1
+	apply_mode br-wan "$WAN_MODE" "${WAN_GW:--}" ${WAN_ADDR:-} || rc=1
 
 echo "== LAN: $LAN_PORTS (VLAN $LAN_VID)  mode=$LAN_MODE"
 make_bridge br-lan "$LAN_VID" $LAN_PORTS &&
-	apply_mode br-lan "$LAN_MODE" ${LAN_ADDR:-} || rc=1
+	apply_mode br-lan "$LAN_MODE" "${LAN_GW:--}" ${LAN_ADDR:-} || rc=1
 
 for br in br-wan br-lan; do
 	echo "xgs-net-up: $br = $(ip -br a show "$br" 2>/dev/null | tr -s ' ')"

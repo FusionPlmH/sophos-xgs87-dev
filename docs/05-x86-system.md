@@ -40,12 +40,12 @@ x86 侧完全没有 MAC/PHY：
 ```
 lo               UNKNOWN  127.0.0.1/8
 eth0             UP       (无地址)                 ← vNTB，PCIe 上的虚拟网线
-eth0.100@eth0    UP       192.168.100.2/24         ← 管理段，对端 NPU .1
-eth0.31@eth0     UP       192.168.0.50/24 (DHCP)  ← 家里内网，经 NPU 的 p4 透传
+eth0.100@eth0    UP       DHCP                     ← WAN / 管理，经 NPU 的 p2 到上游
+eth0.200@eth0    UP       10.234.56.2/24           ← LAN，经 NPU 的 p1 到下游（NPU 是 .1）
 ```
 
-- 这条虚拟网线两侧**只有 x86 和 NPU**，所以想上真正的内网必须让 NPU 把某个面板口桥进来
-  （现在是 `p4`）。详见 [20](20-lan-over-vntb.md)。
+- 这条虚拟网线两侧**只有 x86 和 NPU**，所以想上真正的内网必须让 NPU 把面板口桥进来
+  （现在是 `p2` 走 WAN、`p1` 走 LAN）。详见 [20](20-lan-over-vntb.md)。
 - 需要的模块都在 `/lib/modules/$(uname -r)/extra/`：`ntb_core` / `ntb_hw_epf` /
   `ntb_transport` / `ntb_netdev`（Debian 不自带 NTB 栈，见 [tools/build](../tools/build/)）。
 - 装机脚本在 [systemd/x86/](../systemd/x86/)，安装步骤见 [systemd/README.md](../systemd/README.md)。
@@ -122,7 +122,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 3. 参考仓库里的 `install/x86-mbr.py` 针对的是 XGS 107 的 SATA+MBR，**不能直接照抄**。
 4. 系统盘只有 16 GB，规划好空间。
 5. 重装后要补的东西：NTB 栈模块（[tools/build/build-x86-vntb.sh](../tools/build/build-x86-vntb.sh)）、
-   [systemd/x86/](../systemd/x86/) 的 4 个 unit + `31-house-lan.network`、
+   [systemd/x86/](../systemd/x86/) 的 4 个 unit + `100-wan.network` / `200-lan.network`、
    GRUB 的 `GRUB_TIMEOUT=2` / `GRUB_RECORDFAIL_TIMEOUT=2`（否则每次开机多等 30 s）。
 
 ## 5.6 还能做什么

@@ -5,7 +5,7 @@ set -eu
 PKG=xgs87-npu
 VER=1.0.0
 
-systemctl disable --now xgs-dhcp xgs-net-up xgs-mgmt-bridge xgs-vntb \
+systemctl disable --now xgs-dhcp xgs-net-up xgs-vntb \
 	xgs-ports-up xgs-netconsole 2>/dev/null || true
 
 dkms remove "$PKG/$VER" --all || true

@@ -25,6 +25,17 @@ cp cn9130-sophos-xgs87w-sfp10g.dtb /mnt/boot/
 - 首次开机会把 root 分区扩到盘尾
 - 登录 **`admin` / `P@ssw0rd`**（`sudo`），**没有 root 账户**，SSH 拒绝 root 登录
 
+## 网络（面板口怎么分）
+
+开箱就是这样，全在 **`/etc/xgs87/net.conf`** 里，改完 `systemctl restart xgs-net-up xgs-dhcp` 生效：
+
+| 桥 | 面板口 | VLAN | 默认模式 |
+|---|---|---|---|
+| `br-wan` | `2/WAN`（`p2`） | 100 | `dhcp`，管理也走这条地址 |
+| `br-lan` | `1/LAN`（`p1`） | 200 | `static 10.234.56.1/24`，**不发 DHCP** |
+
+`p3`/`p4`/`p8` 默认不并入任何桥；想用前面板调试口就把 `p8` 加到 `LAN_PORTS`。
+
 ## 变体（自己构建时选）
 
 | 变体 | root 解开 | 1.5 GB 的 `p2` | 内核升级 |

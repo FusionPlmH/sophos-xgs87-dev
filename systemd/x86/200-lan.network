@@ -1,0 +1,11 @@
+# The x86 end of the LAN VLAN (面板 1/LAN -> br-lan -> eth0.200).
+#
+# Static, because nothing on the LAN hands out leases: the NPU is
+# 10.234.56.1/24 and this end is .2, so a laptop plugged into panel 1 can
+# reach both machines.  No gateway here -- the default route comes from
+# eth0.100 (100-wan.network).
+[Match]
+Name=eth0.200
+
+[Network]
+Address=10.234.56.2/24

@@ -11,7 +11,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 PAYLOAD=${PAYLOAD:-$HERE}
 TAR=$PAYLOAD/debian-npu.tar.zst
 DTB=$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)
-NPU=${NPU:-192.168.100.1}
+. "$PAYLOAD/lib.sh"
 SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 
 [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; exit 1; }
@@ -19,13 +19,10 @@ SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 
 echo "== 先把 vNTB 链路拉起来（U 盘的 x86 系统里就有这些单元）"
 systemctl start xgs-ntb xgs-ntb-watch 2>/dev/null || true
-for _ in $(seq 1 30); do
-	ping -c1 -W1 "$NPU" >/dev/null 2>&1 && break
-	sleep 1
-done
+NPU=$(find_npu 30) || NPU=
 
-if ping -c1 -W1 "$NPU" >/dev/null 2>&1; then
-	echo "== NPU 在线，直接推过去（走 vNTB，约 1 Gbit/s）"
+if [ -n "$NPU" ]; then
+	echo "== NPU 在线（$NPU），直接推过去（走 vNTB，约 1 Gbit/s）"
 	printf '目标分区 [/dev/mmcblk0p2]: '
 	read -r PART
 	PART=${PART:-/dev/mmcblk0p2}
@@ -68,11 +65,11 @@ if ping -c1 -W1 "$NPU" >/dev/null 2>&1; then
 	printf '按回车返回菜单...'
 	read -r _
 else
-	echo "== NPU 不可达。起 HTTP 服务，从 NPU 的控制台手动装："
-	# 别假设地址：vNTB 链路没起来时 eth0.100 根本不存在，bind 会失败
-	# （OSError: Cannot assign requested address）。
-	ADDR=$(ip -4 -br a show up 2>/dev/null |
-		awk '$1 != "lo" && $3 ~ /^[0-9]/ { print $3 }' | cut -d/ -f1 | head -1)
+	echo "== NPU 不可达（试过：$NPU_CANDIDATES）。起 HTTP 服务，从 NPU 的控制台手动装："
+	# 别假设地址：vNTB 链路没起来时 eth0.200 根本不存在，bind 会失败
+	# （OSError: Cannot assign requested address）。优先用 LAN 那段，
+	# NPU 修好后正好在同一个网段（10.234.56.0/24）。
+	ADDR=$(lan_addr)
 	PORT=${PORT:-8080}
 	if [ -z "$ADDR" ]; then
 		echo

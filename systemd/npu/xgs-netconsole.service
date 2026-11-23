@@ -1,7 +1,7 @@
 [Unit]
-Description=Send the kernel console to the x86 (mgmt VLAN) and the PC (house LAN)
-After=xgs-mgmt-bridge.service xgs-net-up.service
-Wants=xgs-mgmt-bridge.service xgs-net-up.service
+Description=Send the kernel console to the x86 and the operator PC (both on br-lan)
+After=xgs-net-up.service
+Wants=xgs-net-up.service
 
 # Why netconsole and not pstore: every boot runs mv_ddr training + a full DRAM
 # scrub, so the ramoops region is wiped before we can read it.  netconsole
@@ -11,12 +11,13 @@ Wants=xgs-mgmt-bridge.service xgs-net-up.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Two sinks: the x86 over the management VLAN, and an operator PC on the house
-# LAN (directly on br-lan, so it keeps receiving even when the PCIe link dies).
-# The house-LAN address/MAC are examples -- put your listener's real ones here.
+# Two sinks, both on br-lan (panel 1/LAN): the x86 at .2, and an operator PC.
+# br-lan is a local static address on this side, so it keeps receiving even
+# when the PCIe link dies.  The PC's address/MAC are examples -- put your
+# listener's real ones here.
 # Reload cleanly on restart (the module caches its config).
 ExecStartPre=-/sbin/modprobe -r netconsole
-ExecStart=/sbin/modprobe netconsole netconsole=6666@192.168.100.1/br-mgmt,6666@192.168.100.2/02:58:47:53:00:11;6666@192.168.0.66/br-lan,6666@192.168.0.52/02:00:00:00:00:01
+ExecStart=/sbin/modprobe netconsole netconsole=6666@10.234.56.1/br-lan,6666@10.234.56.2/02:58:47:53:00:21;6666@10.234.56.1/br-lan,6666@10.234.56.50/02:00:00:00:00:01
 
 [Install]
 WantedBy=multi-user.target

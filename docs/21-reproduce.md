@@ -60,7 +60,7 @@ DTB 是 NPU 启动必需：U-Boot 的 `bootcmd` 从 root 分区 `ext4load` 它�
 
 | 位置 | 占位符 | 换成 |
 |---|---|---|
-| `systemd/npu/xgs-netconsole.service` 第二个目标 | `192.168.0.66` / `192.168.0.52` / `02:00:00:00:00:01` | 你自己的 br-lan 地址和监听机 MAC |
+| `systemd/npu/xgs-netconsole.service` 第二个目标 | `10.234.56.50` / `02:00:00:00:00:01` | 你自己的 br-lan 监听机地址和 MAC |
 | 文档里的例子地址 | `192.168.0.0/24`（家里内网） | 你的内网 |
 | `reference/*` | `<redacted-serial>`、`7c:5a:1c:xx:xx:xx`、`fe80::<redacted>`、`<redacted-mac>` | 只在本地留副本，不要提交 |
 | 控制台账号 | `admin` / `P@ssw0rd`（`sudo` 要密码，root 锁定） | 装机后自己改 |

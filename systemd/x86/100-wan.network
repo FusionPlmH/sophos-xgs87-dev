@@ -1,0 +1,8 @@
+# The x86 end of the WAN / management VLAN: the NPU bridges this to p2, so
+# the lease comes from whatever is plugged into the panel 2/WAN port.  This
+# is also where the x86 gets its default route.
+[Match]
+Name=eth0.100
+
+[Network]
+DHCP=ipv4

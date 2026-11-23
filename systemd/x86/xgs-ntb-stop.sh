@@ -11,7 +11,7 @@ set -u
 
 systemctl stop xgs-ntb-watch.service 2>/dev/null
 
-ip link set eth0.31 down 2>/dev/null
+ip link set eth0.200 down 2>/dev/null
 ip link set eth0.100 down 2>/dev/null
 
 for m in ntb_netdev ntb_transport ntb_hw_epf; do
