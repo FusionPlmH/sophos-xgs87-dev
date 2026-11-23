@@ -54,5 +54,7 @@ sudo ./image/build.sh --arch arm64 --variant lean     # 必须在 arm64 上跑
 ## 出问题
 
 维护 U 盘 [`debian-usb`](https://github.com/FusionPlmH/sophos-xgs87-dev/releases/tag/debian-usb)
-菜单选 `2`：通过 vNTB 把这个 tar 解到 NPU 的 root 分区。NPU 完全起不来时，选项 `2` 会退化成
-HTTP 服务 + NPU 串口手动 `wget`/`tar`（x86 的 `/dev/ttyS2`，57600）。
+菜单选 `2`：NPU 上用 `nbd-server` 把 `p2` 导出来，x86 接成 `/dev/nbd0`，`mkfs.ext4` +
+解包 + 放 DTB **都在 x86 这边做**（NPU 不需要 tar/zstd/wget）。网络到不了 NPU 时，选项 `2`
+会自己走 `ttyS2` 串口登录、问出它的 `br-lan` 地址和 VLAN、在 x86 上镜像同样的 VLAN 再重试；
+两条都不通时它会打印在 NPU 控制台上手动起 `nbd-server` 的几行命令（菜单 `7` 就是那个串口）。
