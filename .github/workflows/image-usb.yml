@@ -1,0 +1,149 @@
+name: image usb
+
+# Builds the maintenance / diagnostic USB: the x86 disk image plus the NPU
+# rootfs in a third partition, with a menu on the serial console.  Both
+# root filesystems are built on native runners; the assembly runs on amd64.
+# Overwrites the fixed release `debian-usb`, notes from image/release-usb.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'installer/**'
+      - 'kernel/**'
+      - 'systemd/**'
+      - 'board/**'
+      - '.github/workflows/image-usb.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: image-usb-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  x86-rootfs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd dosfstools fdisk mtools
+
+      - name: Debian archive keys
+        run: |
+          cd /tmp
+          curl -fsS http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/ \
+            | grep -o 'debian-archive-keyring_[0-9.]*_all\.deb' | sort -uV | tail -1 > kr.name
+          curl -fsSLO "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$(cat kr.name)"
+          sudo dpkg -i "$(cat kr.name)"
+
+      - name: Build x86 rootfs
+        run: |
+          sudo bash ./image/build.sh --arch amd64 --variant full \
+            --out out/xgs87-x86-full.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-x86-rootfs
+          path: out/xgs87-x86-full.tar.zst
+          retention-days: 3
+
+  npu-rootfs:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm we are actually on aarch64
+        run: uname -m && test "$(uname -m)" = aarch64
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd device-tree-compiler
+
+      - name: Debian archive keys
+        run: |
+          cd /tmp
+          curl -fsS http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/ \
+            | grep -o 'debian-archive-keyring_[0-9.]*_all\.deb' | sort -uV | tail -1 > kr.name
+          curl -fsSLO "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$(cat kr.name)"
+          sudo dpkg -i "$(cat kr.name)"
+
+      - name: Build NPU rootfs and DTB
+        run: |
+          sudo bash ./image/build.sh --arch arm64 --variant full --out out/debian-npu.tar.zst
+          bash ./tools/build/build-dtb.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-npu-rootfs
+          path: |
+            out/debian-npu.tar.zst
+            out/cn9130-sophos-xgs87w-sfp10g.dtb
+          retention-days: 3
+
+  usb:
+    needs: [x86-rootfs, npu-rootfs]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Install the tooling mkusb.sh needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd dosfstools fdisk mtools e2fsprogs
+
+      - name: Build the x86 disk image
+        run: |
+          sudo bash ./image/mkdisk.sh \
+            --rootfs out/xgs87-x86-full.tar.zst \
+            --out out/debian-x86.img
+          zstd -T0 -10 -f --rm out/debian-x86.img
+
+      - name: Assemble the USB image
+        run: |
+          sudo bash ./installer/mkusb.sh \
+            --x86 out/debian-x86.img.zst \
+            --npu out/debian-npu.tar.zst \
+            --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
+            --out out/debian-usb.img
+
+      - name: Report
+        run: |
+          ls -lh out/
+          df -h / | tail -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-usb
+          path: out/debian-usb.img.zst
+          retention-days: 7
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: debian-usb
+        run: |
+          set -e
+          ls -lh out/
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file image/release-usb.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file image/release-usb.md
+          fi
+          for i in 1 2 3 4 5; do
+            gh release upload "$TAG" out/debian-usb.img.zst --clobber && break || sleep 5
+          done
+          gh release view "$TAG" --json assets --jq '.assets[].name'

@@ -66,14 +66,31 @@ zstd -dc xgs87-npu-full.tar.zst | tar -xpf - -C /mnt
 ⚠️ 根分区 1.5 GB 装不下 `full`（工具链约 500 MB）。要么用 `--variant base`，
 要么把根分区做到 ≥3 GB。
 
+## 维护 U 盘（diagnostic USB）
+
+`installer/mkusb.sh` 把 x86 整盘镜像 + NPU 的 rootfs 拼成一条可启动 U 盘，串口上出菜单，
+可以格式化重装 x86 / NPU、备份内置盘：
+
+```sh
+sudo ./installer/mkusb.sh \
+    --x86 out/debian-x86.img.zst \
+    --npu debian-npu.tar.zst \
+    --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
+    --out out/debian-usb.img
+```
+
+刷入和菜单说明见 [release-usb.md](release-usb.md)；从原厂 SFOS 第一次换系统见
+[docs/22-from-sfos.md](../docs/22-from-sfos.md)。
+
 ## GitHub Actions
 
-两个**独立**的 workflow，各自跑在原生架构的 runner 上（不做交叉编译、不用 qemu）：
+三个**独立**的 workflow，各自跑在原生架构的 runner 上（不做交叉编译、不用 qemu）：
 
 | workflow | runner | 产物 |
 |---|---|---|
 | [image-x86.yml](../.github/workflows/image-x86.yml) | `ubuntu-24.04`（amd64） | `xgs87-x86-*.img.zst`（可启动镜像）+ `xgs87-x86-*.tar.zst` |
 | [image-npu.yml](../.github/workflows/image-npu.yml) | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `xgs87-npu-*.tar.zst` + `cn9130-*.dtb` |
+| [image-usb.yml](../.github/workflows/image-usb.yml) | 两个原生 runner 各编一半 + amd64 拼盘 | `debian-usb.img.zst`（维护 U 盘） |
 
 push 到 `main`（且改到 `image/` `kernel/` `systemd/` `board/`）或者手动 `workflow_dispatch` 触发。
 
@@ -85,6 +102,7 @@ push 到 `main`（且改到 `image/` `kernel/` `systemd/` `board/`）或者手�
 |---|---|---|
 | `image-x86.yml` | `debian-x86` | `debian-x86.img.zst` |
 | `image-npu.yml` | `debian-npu` | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
+| `image-usb.yml` | `debian-usb` | `debian-usb.img.zst` |
 
 x86 的 `out/xgs87-x86-*.tar.zst` 只进 CI artifact（7 天），不发 release。
 

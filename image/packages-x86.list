@@ -12,3 +12,5 @@ grub-efi-amd64,grub-efi-amd64-signed,shim-signed,efibootmgr
 netcat-openbsd
 pciutils,usbutils,dmidecode
 iperf3,tcpdump
+# the maintenance USB built by installer/mkusb.sh runs on this side
+whiptail,python3-minimal

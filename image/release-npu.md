@@ -19,3 +19,6 @@ cp cn9130-sophos-xgs87w-sfp10g.dtb /mnt/boot/
 - 首次开机会把 root 分区扩到盘尾
 
 U-Boot 的 `bootcmd` 见仓库 `docs/03-boot-chain.md`。
+
+要重装或修复：维护 U 盘 [`debian-usb`](release-usb.md) 的菜单里选 `2`，它会通过 vNTB
+把这个 tar 解到 NPU 的 root 分区（NPU 起不来时菜单会退化成 HTTP + 串口手动安装）。

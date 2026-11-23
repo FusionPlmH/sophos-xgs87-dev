@@ -5,8 +5,9 @@
 # 所以用 lsblk 找出承载当前根的盘，把它排除掉。
 set -eu
 
-IMG=$(ls "$(dirname "$0")"/../debian-x86.img.zst 2>/dev/null | head -1)
-[ -n "$IMG" ] || { echo "找不到 debian-x86.img.zst"; exit 1; }
+PAYLOAD=${PAYLOAD:-$(cd "$(dirname "$0")" && pwd)}
+IMG=$(ls "$PAYLOAD"/debian-x86.img.zst 2>/dev/null | head -1)
+[ -n "$IMG" ] || { echo "找不到 $PAYLOAD/debian-x86.img.zst"; exit 1; }
 
 # 当前根所在的盘
 ROOTSRC=$(findmnt -n -o SOURCE /)
@@ -41,4 +42,5 @@ sync
 echo
 echo "写完。拔掉 U 盘，重启即可。首次开机会自动把 root 分区扩到盘尾。"
 echo "登录：admin / P@ssw0rd"
+printf '按回车返回菜单...'
 read -r _

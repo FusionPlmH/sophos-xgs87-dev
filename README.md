@@ -125,6 +125,7 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [docs/19-module-vs-kernel-rebuild.md](docs/19-module-vs-kernel-rebuild.md) | 模块 vs 重编内核、换模块的失联风险、风扇归属 |
 | [docs/20-lan-over-vntb.md](docs/20-lan-over-vntb.md) | **一条 PCIe 链路跑两套网络**、NPU 串口的真相、hrtimer 把 RTT 从 4 ms 打到 0.6 ms、模块替换实录 |
 | [docs/21-reproduce.md](docs/21-reproduce.md) | **换一台机器怎么把两套系统重新做出来**：构建步骤、占位符约定、发布前检查 |
+| [docs/22-from-sfos.md](docs/22-from-sfos.md) | **从原厂 SFOS 换成这套 Debian**：高级 shell、备份、维护 U 盘、没有 USB 启动时的退路 |
 | [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本，按 **`npu/` / `x86/`** 分目录 |
 | [kernel/npu/](kernel/npu/) | NPU 侧 out-of-tree 模块（DKMS 包：vNTB、`spi-orion`、`clkfix`） |
 | [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |

@@ -15,3 +15,6 @@ sudo dd if=debian-x86.img of=/dev/sdX bs=4M conv=fsync status=progress
 - 没有内置网口，唯一 netdev 是 vNTB，要等 NPU 起来才有网络
 
 想自己改内容：`./image/build.sh --arch amd64 --variant base|full`
+
+刷坏了要重装：用维护 U 盘 [`debian-usb`](release-usb.md)——插 U 盘、开机选它启动，
+串口菜单里选 `1`，它会把这个镜像整盘写回 eMMC。

@@ -109,6 +109,7 @@ tar --zstd -xOf out/xgs87-x86-full.tar.zst ./etc/group   | grep '^sudo:'
 |---|---|---|
 | `image-x86.yml` | `debian-x86` | `debian-x86.img.zst` |
 | `image-npu.yml` | `debian-npu` | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
+| `image-usb.yml` | `debian-usb` | `debian-usb.img.zst`（维护 U 盘，见 [release-usb.md](../image/release-usb.md)） |
 
 x86 的 rootfs tar 只作为 CI artifact 保留（7 天），不发 release——它和镜像里的内容一样，
 自己 build 也能得到。
