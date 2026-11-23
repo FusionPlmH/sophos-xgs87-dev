@@ -96,7 +96,6 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 | [docs/08-console-access.md](docs/08-console-access.md) | 进机方式与坑（含 57600 这件事的来龙去脉） |
 | [docs/09-adaptation-notes.md](docs/09-adaptation-notes.md) | 做 OpenWrt / 自研固件要改什么，已知缺口 |
 | [docs/10-ideas.md](docs/10-ideas.md) | **这台机器独特设计的最佳用法**（持续更新） |
-| [docs/11-roadmap.md](docs/11-roadmap.md) | 实验清单 |
 | [docs/12-measurements.md](docs/12-measurements.md) | 实测记录：LED、SFP 10G、原厂交换机初始化序列、PCIe、GPIO、备份 |
 | [docs/13-npu-os-plan.md](docs/13-npu-os-plan.md) | NPU 换系统方案：OpenWrt vs Debian、DTS 让 SFP 跑 10G、debootstrap |
 | [docs/14-npu-debian-hardware.md](docs/14-npu-debian-hardware.md) | Debian 下硬件补齐：SFP+ 10G、SPI NOR/MTD、`fw_printenv`、EIP197 |

@@ -71,7 +71,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 | 设备 | 用途 |
 |---|---|
 | `/dev/ttyS0` | x86 自己的控制台（COM5） |
-| `/dev/ttyS2` | **NPU 控制台**（0x3E8, irq 5, 115200） |
+| `/dev/ttyS2` | **NPU 控制台**（0x3E8, irq 5）；host 侧 `stty` 要设 **57600**（线上 115200，见 08） |
 
 `/dev/ttyS1` 和 `/dev/ttyS3` 是 AMD FCH 的 MMIO UART（`FEDC6000/FEDC8000`），
 线路上没接东西，`rx:0`。

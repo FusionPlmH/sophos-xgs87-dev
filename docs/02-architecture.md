@@ -7,7 +7,7 @@
 | | x86（AMD RX-216TD） | NPU（CN9130） |
 |---|---|---|
 | 角色 | 控制面 + 应用 | 数据面 |
-| 跑什么 | SFOS 主系统、Web 管理、Wi-Fi 驱动、日志、DPI 管理 | 极小的 Buildroot：只做包收发和交换机管理 |
+| 跑什么 | SFOS 主系统、Web 管理、Wi-Fi 驱动、日志、DPI 管理 | **原厂**：极小的 Buildroot，只做包收发和交换机管理<br>**现在**：Debian 13（见 [14](14-npu-debian-hardware.md)） |
 | 网络 | **没有自己的网口** | 4×1G + 1×SFP，全部挂在 88E6193X 上 |
 | 与对方 | PCIe 端点 + 串口 | PCIe 端点 + 串口 |
 
@@ -61,7 +61,7 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
 
 ## 2.4 通路三：串口（永远可用）
 
-x86 `/dev/ttyS2` ↔ NPU `ttyS0`，115200 8N1。
+x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 57600，见 [08](08-console-access.md)）。
 
 - 用途：救砖、看 boot log、进 U-Boot、在 NPU 没网时下命令。
 - 带宽：~11.5 KB/s，只适合控制，不适合传数据。
@@ -92,7 +92,8 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，115200 8N1。
           ├─ U-Boot 2019.10（SPI NOR）
           │    └─ 读 env，autoboot 3 s
           └─ bootcmd: ext4load mmc 0:3 /boot/Image + dtb → booti
-               └─ Linux 4.14.207 → /etc/init.d/S91xgsstartup
+               └─ 原厂：Linux 4.14.207 → /etc/init.d/S91xgsstartup
+                  现在：Debian 13 / 6.12.117 → systemd（xgs-ports-up → xgs-vntb → …）
 ```
 
 两边的启动是**各自独立**的：NPU 上电就自己跑，不需要 x86 做任何事。

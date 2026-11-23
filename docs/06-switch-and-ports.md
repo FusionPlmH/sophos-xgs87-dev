@@ -189,7 +189,7 @@ mvswitch 2 link 1     → Link: UP, Duplex: FULL, Speed: 1000 Mbps
 
 ### Linux 侧等价做法（原厂 `xgs-mdio`，无需 U-Boot）
 
-NPU 的 Buildroot 里有 Sophos 自己的工具 `xgs-mdio`，支持 Amethyst Clause-45：
+原厂 Buildroot 里有 Sophos 自己的工具 `xgs-mdio`（现在的 Debian 用标准 mdio-tools），支持 Amethyst Clause-45：
 
 ```sh
 xgs-mdio -a 0 2 <port>.<reg>            # 交换机端口寄存器（读）
