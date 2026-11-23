@@ -58,9 +58,10 @@ done
 [ -n "$KVER" ] || { echo "读不出内核版本" >&2; exit 1; }
 echo "   kernel $KVER"
 
-# 急救要用的模块（EP + ntb 是必须的，mmc 用来写 eMMC，8021q 只是顺手）
+# 急救要用的模块（EP + ntb 必须；mmc 用来写 eMMC）。急救全程用裸 eth0，
+# 不碰 VLAN，所以 8021q/vlan 不用带。
 KEEP="pci_ep_cfs pcie_dw_plat pci_epf_vntb ntb_core ntb_hw_epf ntb_transport ntb_netdev
-      sdhci sdhci-of-dwcmshc sdhci-acpi mmc_block dw_mmc 8021q vlan"
+      sdhci sdhci-of-dwcmshc mmc_block dw_mmc"
 mkdir -p "$R/lib/modules/$KVER"
 for m in $KEEP; do
 	f=$(find "$WORK/lib/modules/$KVER" -name "$m.ko*" | head -1)
