@@ -44,6 +44,9 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | 一条链路同时跑管理段 + 家里 LAN（VLAN 100 / 31），x86 拿到 DHCP | [20](20-lan-over-vntb.md) |
 | 掉链 / 关机不再 oops（peer_db 校验、spad 守卫、关机道别） | [20](20-lan-over-vntb.md) §20.7 |
 | 崩溃取证：netconsole 双目标（NPU → x86 + PC） | [20](20-lan-over-vntb.md) §20.8 |
+| 镜像构建：`image/` + 三个 CI workflow（x86 / npu / usb），自动发 release | [image/README.md](../image/README.md)、[21](21-reproduce.md) |
+| 维护（诊断）U 盘：整盘重装 x86、vNTB 推 NPU、备份内置盘 | [22](22-from-sfos.md)、[image/release-usb.md](../image/release-usb.md) |
+| 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
 
 ## 9.2 还没做完的
 
@@ -97,18 +100,26 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | 格式化 `/persistent`（p4） | 丢机型和 MAC 基址 | 只读使用 |
 | 往 `p1` 上放系统 | 那是原厂冷备槽，留着回滚 | 空着 |
 
-> ⚠️ NPU 的 1.5 GB 根分区**装不下 DKMS 工具链**（约 500 MB）。现在实测 1.4G/1.5G，
-> 只剩 276 MB。要长期用 DKMS，根分区得做到 ≥3 GB（见 [image/README.md](../image/README.md)）。
+> ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（解开约 900 MB）。现在实测 1.4G/1.5G，
+> 只剩 276 MB。长期用 DKMS 就把根分区做到 ≥3 GB，或者装 `--variant base`（约 240 MB）
+> 之后再跑 `kernel/npu/install.sh`（见 [image/README.md](../image/README.md)）。
 
 ## 9.5 如果要重做一遍（换机 / 重刷的最小路径）
+
+现在最省事的路是 **`debian-usb` 维护 U 盘**：插上去选 `1` 重装 x86、选 `2` 重装 NPU
+（见 [21](21-reproduce.md)、[22](22-from-sfos.md)）。手工做的话按这个顺序：
 
 1. **备份**：eMMC 整盘 + `mtd0`(U-Boot) + `mtd1`(env)，SHA256 存档（[07](07-storage.md)）。
 2. **改 U-Boot env**：`bootcmd` → `bootcmd_deb`（`ext4load` Image + dtb + initrd → `booti`），
    注意 `bootcmd_deb10g` 先用 `mvswitch` 把 port 9 配成 10G（[03](03-boot-chain.md)）。
-3. **DTB**：`board/cn9130-sophos-xgs87w-sfp10g.dts`（本仓库，含 `ramoops`）。
-4. **模块**：`tools/build/build-npu-net.sh`、`tools/build/build-npu-vntb.sh`、`tools/build/build-x86-vntb.sh`。
+3. **DTB**：`board/cn9130-sophos-xgs87w-sfp10g.dts`（本仓库，含 `ramoops`），
+   `tools/build/build-dtb.sh` 生成 `out/cn9130-sophos-xgs87w-sfp10g.dtb`。
+4. **模块**：`kernel/npu/install.sh` / `kernel/x86/install.sh`（DKMS 包，内核升级自动重编）。
+   只有要改驱动源码时才用 `tools/build/*` —— 它负责先把 `ntb/*.patch`、`net/patches/*`
+   打到上游源码上再编。
 5. **网络**：`systemd/npu/` 装到 NPU、`systemd/x86/` 装到 x86（见 [systemd/README.md](../systemd/README.md)、[20](20-lan-over-vntb.md)）。
-6. **别做的事**：见 §9.4 的维护红线（内核包要 hold、`mtd0` 永不写、别手工 `rmmod ntb_hw_epf`）。
+6. **别做的事**：见 §9.4 的维护红线 —— `mtd0` 永不写、别手工 `rmmod ntb_hw_epf`、
+   `p1` 留给原厂回滚、`/persistent` 只读。内核包不用再 hold，DKMS 会跟着重编。
 
 > 完整的实测数据见 [12-measurements.md](12-measurements.md)；
 > 每篇文档开头都有状态标记（✅ 实测 / 📦 原厂档案 / 💡 设想 / ⚠️ 未验证）。

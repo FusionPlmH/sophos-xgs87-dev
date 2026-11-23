@@ -15,8 +15,6 @@ OUT=out/xgs87-x86.img
 SIZE=auto
 ESP_MIB=476
 
-REPO=$(cd "$(dirname "$0")/.." && pwd)
-
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--rootfs) ROOTFS=$2; shift 2 ;;
@@ -31,7 +29,6 @@ done
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 
 TMP=$(mktemp -d)
-QEMU_PID=
 
 cleanup() {
 	umount -R "$TMP/root" 2>/dev/null || true

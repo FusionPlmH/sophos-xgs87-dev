@@ -9,7 +9,7 @@ sudo dd if=debian-x86.img of=/dev/sdX bs=4M conv=fsync status=progress
 
 - 写到**整块盘**：`/dev/sdX` / `/dev/mmcblk0` / `/dev/nvme0n1` —— **不要**写到 `...p1` 这类分区
 - 布局：`p1` = ESP 476 MiB (FAT32)，`p2` = root (ext4)
-- 镜像按实际内容生成（约 700 MB 未压缩），**首次开机会自动把 p2 扩到盘尾**（`xgs87-growroot.service`）
+- 镜像按实际内容生成（约 1.8 GB：1.3 GB root + 476 MiB ESP），**首次开机会自动把 p2 扩到盘尾**（`xgs87-growroot.service`）
 - 登录：**`admin` / `P@ssw0rd`**（带 sudo）。**没有 root 账户**，`root` 已锁定、SSH 拒绝 root 登录
 - 串口：RJ45 或 micro-USB，115200 8N1
 - 没有内置网口，唯一 netdev 是 vNTB，要等 NPU 起来才有网络

@@ -6,13 +6,14 @@
 #   ./image/build.sh --arch arm64 --variant base  # skeleton only, no toolchain
 #
 # Needs root (mmdebstrap).  Cross-arch builds need qemu-user-static with binfmt
-# registered -- the GitHub workflow does that; locally the same package works on
-# any Debian/Ubuntu host.
+# registered on the host; the CI workflows avoid that by running each rootfs on
+# a native runner instead.
 #
 # variants
 #   full (default) : + dkms + build-essential + headers, the modules are built
 #                    and installed during the build, and a later kernel upgrade
-#                    rebuilds them automatically.  Costs ~500 MB.
+#                    rebuilds them automatically.  ~350 MB compressed, ~900 MB
+#                    unpacked.
 #   base           : minbase + the packages below, no compiler, no modules.
 #                    Use it when the root partition is small; then run
 #                    kernel/<side>/install.sh once on the device.
@@ -32,7 +33,7 @@ while [ $# -gt 0 ]; do
 	--suite)   SUITE=$2; shift 2 ;;
 	--mirror)  MIRROR=$2; shift 2 ;;
 	--out)     OUT=$2; shift 2 ;;
-	-h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+	-h|--help) sed -n '2,19p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
 done

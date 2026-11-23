@@ -3,11 +3,27 @@
 > 这里按**装到哪台机器上**分目录。装错机器的直接表现写在最后。
 
 ```
+systemd/common/ 两台都装（首启扩分区）
 systemd/npu/    装到 NPU（Debian 13 arm64，数据面）
 systemd/x86/    装到 x86（Debian 13 amd64，通用计算）
 ```
 
 脚本一律装到 `/usr/local/sbin/`，unit 装到 `/etc/systemd/system/`。
+`image/setup.sh` 构建镜像时已经把这些都装好并 `enable` 了；下面各节的手工步骤只给
+"不用镜像、自己装" 的场合。
+
+## 两台都装（`common/`）
+
+| unit | 脚本 | 干什么 |
+|---|---|---|
+| `xgs87-growroot.service` | `xgs87-growroot.sh` | 首次开机 `growpart` + `resize2fs` 把 root 分区扩到盘尾，成功后留 `/var/lib/xgs87/grown`。镜像按最小尺寸发布，填满盘就靠它 |
+
+```sh
+sudo install -m755 systemd/common/*.sh      /usr/local/sbin/
+sudo install -m644 systemd/common/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable xgs87-growroot
+```
 
 ## NPU 侧（`npu/`）
 

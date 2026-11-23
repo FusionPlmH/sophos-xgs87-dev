@@ -131,7 +131,7 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |
 | [image/](image/) | **最小化 Debian 构建**：`mmdebstrap` 脚本、软件包清单、x86 磁盘镜像、GitHub Actions |
 | [installer/](installer/) | 维护 U 盘：把 `debian-x86.img.zst` / `debian-npu.tar.zst` 写回机器的菜单脚本 |
-| [.github/workflows/](.github/workflows/) | CI：`arm64` / `amd64` 分开构建 rootfs |
+| [.github/workflows/](.github/workflows/) | CI：x86 / NPU / 维护 U 盘 三个 workflow，各自跑在原生 runner 上 |
 | [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
 | [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
 | [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-npu/`、`on-x86/`、`on-pc/` |
@@ -156,5 +156,5 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 ## 免责声明
 
 - 数据是实机采集，可能因批次/固件版本不同而变化；关键结论都标了"实测"。
-- 不含 Sophos 专有二进制；`reference/npu-mtd0-uboot.bin.gz` 是 GPLv2 的 U-Boot 镜像，可自由分发。
+- 不含 Sophos 专有二进制；`reference/mtd/npu-mtd0-uboot.bin.gz` 是 GPLv2 的 U-Boot 镜像，可自由分发。
 - 拆机/改固件有风险，自行承担。

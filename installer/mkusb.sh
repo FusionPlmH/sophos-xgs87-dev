@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
 	--out)   OUT=$2; shift 2 ;;
 	--extra) EXTRA_MB=$2; shift 2 ;;
 	--tty)   MENU_TTY=$2; shift 2 ;;
-	-h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+	-h|--help) sed -n '2,13p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
 done

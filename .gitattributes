@@ -3,3 +3,8 @@
 *.service text eol=lf
 *.c text eol=lf
 *.h text eol=lf
+# keep compressed artefacts byte-for-byte
+*.gz binary
+*.dtb binary
+*.img binary
+*.zst binary

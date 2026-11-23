@@ -16,11 +16,12 @@ image/overlay/      直接覆盖到 rootfs 根的文件（目前只有 NPU 的�
 ```sh
 sudo ./image/build.sh --arch arm64              # NPU，含工具链和 DKMS 模块
 sudo ./image/build.sh --arch amd64              # x86
-sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（~224 MB）
+sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（~240 MB）
 ```
 
 - `--variant full`（默认）：额外装 `dkms` + `build-essential` + `linux-headers-*`，
-  构建时就把 `kernel/<side>/` 的模块编好装上。**以后内核升级会自动重编**，代价约 500 MB。
+  构建时就把 `kernel/<side>/` 的模块编好装上。**以后内核升级会自动重编**，代价是
+  tar 从 ~240 MB 涨到 ~350 MB（解开 ~900 MB）。
 - `--variant base`：不装编译器、不带模块。根分区小的时候用，之后再跑一次
   `kernel/<side>/install.sh`（它会自己装工具链）。
 
@@ -59,11 +60,11 @@ NPU 没有 ESP，是 U-Boot 从 eMMC 的一个分区里 `ext4load` 内核和 DTB
 # 在正在跑的 NPU 上
 mkfs.ext4 -L xgsroot /dev/mmcblk0pX
 mount /dev/mmcblk0pX /mnt
-zstd -dc xgs87-npu-full.tar.zst | tar -xpf - -C /mnt
+zstd -dc debian-npu.tar.zst | tar -xpf - -C /mnt
 # fstab、/boot/Image、DTB 见 docs/07 与 docs/03
 ```
 
-⚠️ 根分区 1.5 GB 装不下 `full`（工具链约 500 MB）。要么用 `--variant base`，
+⚠️ 根分区 1.5 GB 装不下 `full`（解开约 900 MB）。要么用 `--variant base`（~240 MB），
 要么把根分区做到 ≥3 GB。
 
 ## 维护 U 盘（diagnostic USB）
@@ -88,8 +89,8 @@ sudo ./installer/mkusb.sh \
 
 | workflow | runner | 产物 |
 |---|---|---|
-| [image-x86.yml](../.github/workflows/image-x86.yml) | `ubuntu-24.04`（amd64） | `xgs87-x86-*.img.zst`（可启动镜像）+ `xgs87-x86-*.tar.zst` |
-| [image-npu.yml](../.github/workflows/image-npu.yml) | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `xgs87-npu-*.tar.zst` + `cn9130-*.dtb` |
+| [image-x86.yml](../.github/workflows/image-x86.yml) | `ubuntu-24.04`（amd64） | `debian-x86.img.zst`（可启动镜像）+ `xgs87-x86-*.tar.zst`（artifact） |
+| [image-npu.yml](../.github/workflows/image-npu.yml) | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
 | [image-usb.yml](../.github/workflows/image-usb.yml) | 两个原生 runner 各编一半 + amd64 拼盘 | `debian-usb.img.zst`（维护 U 盘） |
 
 push 到 `main`（且改到 `image/` `kernel/` `systemd/` `board/`）或者手动 `workflow_dispatch` 触发。

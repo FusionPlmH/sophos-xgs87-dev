@@ -153,7 +153,7 @@ ping 192.168.100.1 -> 0% loss, rtt 1.7-11 ms
 ```
 
 两侧都是 oneshot systemd 服务，重启自动恢复：
-`xgs-vntb.service`（NPU，见 [xgs-vntb.sh](xgs-vntb.sh)）、`xgs-ntb.service`（x86，见 [xgs-ntb-up.sh](xgs-ntb-up.sh)）。
+`xgs-vntb.service`（NPU，见 [xgs-vntb.sh](../systemd/npu/xgs-vntb.sh)）、`xgs-ntb.service`（x86，见 [xgs-ntb-up.sh](../systemd/x86/xgs-ntb-up.sh)）。
 
 ### 真正踩到的四个坑（按发现顺序）
 

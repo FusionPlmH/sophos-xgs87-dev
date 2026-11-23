@@ -119,7 +119,7 @@ reset_handler:
 `msecs_to_jiffies(1)` 在 HZ=250 的 Debian 内核上就是 **4 ms**，而 ping 的往返里至少要吃一次它
 —— 实测 RTT 4–7 ms 完全对得上。
 
-改成 hrtimer 并做**自适应退避**（`ntb/patch-hrtimer-poll.py`）：
+改成 hrtimer 并做**自适应退避**（补丁在 [ntb/0001-pci-epf-vntb.patch](../ntb/0001-pci-epf-vntb.patch)）：
 
 | 状态 | 周期 | 效果 |
 |---|---|---|
@@ -137,11 +137,10 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 }
 ```
 
-构建（NPU 的 rootfs 挂在 WSL 里编）：
+构建（PC/WSL 上，NPU 的 arm64 rootfs 挂在 `/srv/npu`，脚本会自己解补丁）：
 
 ```sh
-python3 ntb/patch-hrtimer-poll.py /srv/npu/build/ntb
-chroot /srv/npu make -C /usr/src/linux-headers-6.12.117+deb13-arm64 M=/build/ntb modules
+./tools/build/build-npu-vntb.sh
 ```
 
 ## 20.7 自愈

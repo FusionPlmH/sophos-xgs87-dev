@@ -12,8 +12,8 @@ cp cn9130-sophos-xgs87w-sfp10g.dtb /mnt/boot/
 ```
 
 - 写到 **root 分区**（原厂布局是 `p2`，1.5 GB；`p1`/`p3` 留着回滚原厂系统）
-- ⚠️ `full` 变体带 DKMS 工具链（约 500 MB），**1.5 GB 的 p2 装不下**：
-  用 `--variant base`（约 224 MB），或者把 root 分区做到 ≥3 GB
+- ⚠️ `full` 变体解开约 900 MB（tar 约 320 MB），**1.5 GB 的 p2 装不下**：
+  用 `--variant base`（约 240 MB），或者把 root 分区做到 ≥3 GB
 - 登录：**`admin` / `P@ssw0rd`**（带 sudo）。**没有 root 账户**，SSH 拒绝 root 登录
 - `/boot/Image`、`/boot/initrd.img` 由内核 postinst 钩子维护，升级内核不用改 U-Boot env
 - 首次开机会把 root 分区扩到盘尾

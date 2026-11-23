@@ -12,7 +12,7 @@
 | `p2` | 和 `debian-x86` 一样的 Debian root，只多了一个开机菜单（不写回内置盘，只用来跑菜单） |
 | `p3` | 标签 `XGS87` 的 ext4 payload：`debian-x86.img.zst`、`debian-npu.tar.zst`、DTB、`installer/payload/*.sh` |
 
-镜像按实际内容生成（约 900 MB 未压缩），写到 8 GB 以上的 U 盘即可。
+镜像约 1.0 GB（zst），解开约 2.6 GB，写到 8 GB 以上的 U 盘即可。
 
 ## 写进 U 盘
 
@@ -31,7 +31,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 
 **Windows**
 
-1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 900 MB）。
+1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 2.6 GB）。
 2. 用 Rufus 选择这个 `.img`，**分区类型选 GPT、写入方式选 DD 镜像**，开始写入。
    Win32DiskImager 也可以；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
 

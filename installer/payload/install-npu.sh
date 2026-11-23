@@ -19,7 +19,7 @@ SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 
 echo "== 先把 vNTB 链路拉起来（U 盘的 x86 系统里就有这些单元）"
 systemctl start xgs-ntb xgs-ntb-watch 2>/dev/null || true
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
 	ping -c1 -W1 "$NPU" >/dev/null 2>&1 && break
 	sleep 1
 done
