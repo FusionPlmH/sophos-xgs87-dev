@@ -1,7 +1,7 @@
 # image/ — 最小化 Debian 构建
 
 两台机器都用 **通用内核 + 发行版模块 + DKMS**，所以镜像里没有任何自编内核，
-系统更新不需要重新构建镜像。
+系统更新不需要重新构建镜像。唯一的例外是 `lean` 变体：模块编完就把工具链删掉。
 
 ```
 image/build.sh       mmdebstrap 构建 rootfs（本机或 GitHub Actions）
@@ -36,7 +36,7 @@ sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（tar ~240 MB
 > 为什么 `lean` 要在 chroot 里自己 `apt-get install` 工具链、而不是放进 `--include`：
 > mmdebstrap 把 `--include` 里的包全标成 manual，`apt-get autoremove` 永远不会删它们，
 > 于是 purge `build-essential` 之后 `gcc`/`cpp`/`make`/`libc6-dev` 全都留着（实测只小了
-> 60 MiB）。用装前/装后的 `dpkg-query` 快照做差值，才能把 12 个包干净删掉。
+> 60 MiB）。用装前/装后的 `dpkg-query` 快照做差值，才能把工具链连同 headers 一起删干净。
 
 ## x86：变成可启动镜像
 
@@ -49,6 +49,22 @@ sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.
 GPT + 476 MiB ESP(FAT32) + ext4 root，
 `grub-install --removable`（这块 BIOS 只认 `\EFI\BOOT\BOOTX64.EFI`），并把 GRUB
 超时压到 2 秒（否则 `recordfail` 会白等 30 秒）。
+
+## 压缩参数
+
+所有产物统一用 `zstd -T0 -19 --long=27`。1.25 GiB 的 x86 镜像压到 222 MiB（17.8%），
+比原来的 `-10` 小 11%，而且**裸 `zstd -d` 就能解**——128 MiB 窗口正好卡在 zstd 默认解码
+上限（`ZSTD_WINDOWLOG_LIMIT_DEFAULT = 27`），不需要额外参数。同一个镜像实测：
+
+| 方法 | 大小 | 压缩耗时 | 裸 `zstd -d` 能解 |
+|---|---|---|---|
+| `-10`（旧） | 249.6 MiB | 2 s | ✅ |
+| **`-19 --long=27`** | **222.6 MiB** | 33 s | ✅ |
+| `-22 --long=27` | 220.7 MiB | 234 s | ✅（多 7 倍时间换 0.9%） |
+| `-22 --long=31` | 195.7 MiB | 159 s | ❌ 必须 `zstd -d --long=31` |
+| `xz -9e` | 225.6 MiB | 110 s | — 解压 5 s，比 zstd 慢 5 倍 |
+
+xz 并没有比 zstd 强，所以格式没换。rootfs tar 同理：`-10` 48.3% → `-19 --long=27` 45.3%。
 
 ## 账号
 

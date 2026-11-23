@@ -77,7 +77,7 @@ SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先
 ```sh
 sudo ./image/build.sh --arch amd64 --variant lean --out out/xgs87-x86-lean.tar.zst
 sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-lean.tar.zst --out out/debian-x86.img
-zstd -T0 -10 --rm out/debian-x86.img
+zstd -T0 -19 --long=27 --rm out/debian-x86.img
 sudo ./installer/mkusb.sh \
     --x86 out/debian-x86.img.zst \
     --npu out/debian-npu.tar.zst \

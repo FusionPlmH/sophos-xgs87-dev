@@ -71,7 +71,7 @@ jobs:
             --rootfs "out/xgs87-x86-${{ inputs.variant }}.tar.zst" \
             --out out/debian-x86.img \
             --size "${{ inputs.size }}"
-          zstd -T0 -10 -f --rm out/debian-x86.img
+          zstd -T0 -19 --long=27 -f --rm out/debian-x86.img
 
       - name: Report
         run: |

@@ -85,7 +85,7 @@ mmdebstrap \
 	"$SUITE" "$TAR" "$MIRROR"
 
 echo "== compress"
-zstd -T0 -10 --rm -f "$TAR" -o "$OUT"
+zstd -T0 -19 --long=27 --rm -f "$TAR" -o "$OUT"
 ls -lh "$OUT"
 echo
 echo "x86: ./image/mkdisk.sh --rootfs $OUT --out out/xgs87-x86.img"
