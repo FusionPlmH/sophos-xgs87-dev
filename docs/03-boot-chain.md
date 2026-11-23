@@ -59,6 +59,8 @@ Autoboot in 3 seconds - press SPACE to stop...
 
 ## 3.2 内核命令行
 
+**原厂（p3，历史）**：
+
 ```
 console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rootwait ro
 pci=pcie_bus_safe root=/dev/mmcblk0p3 cpuidle.off=1
@@ -67,7 +69,22 @@ isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
 
 `isolcpus=1-3` / `nohz_full=1-3` —— 原厂把 3 个核隔离出来专给转发，只有 CPU0 跑控制面。
 
+**现在（Debian，实测 `/proc/cmdline`）**：
+
+```
+console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw
+booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}
+```
+
+- 去掉了 `isolcpus` / `nohz_full` / `rcu_nocbs`：我们不再把 CPU 绑给转发平面，
+  4 个核交给调度器（原本那是给原厂包转发线程的准备）。
+- 加了 **initrd**：Debian 的 `Image` 需要它来加载早期模块（`spi-orion`、`clkfix` 等）。
+- `rootwait rw`：等 eMMC 就绪再挂根。
+- `pci=pcie_bus_safe` 也去掉了（vNTB 自己做 BAR 对齐）。
+
 ## 3.3 U-Boot 完整环境变量
+
+### 原厂（备份，见 `reference/uboot-env.txt`）
 
 ```
 arch=arm
@@ -93,14 +110,31 @@ sw_init_p3=for i in '1 2 3 4 5 6 7 8' ; do mvswitch 2 phy_write $i 0 0 9140 ; do
 sw_init_2=run sw_init_p0; run sw_init_p1; run sw_init_p2; run sw_init_p3
 ```
 
+### 现在（Debian，实测 `fw_printenv`）
+
+```
+bootcmd=run bootcmd_deb10g
+bootcmd_deb10g=mvswitch 2 write 9 0 0xd; mvswitch 2 dev_write 9 4 f002 0x804d; mvswitch 2 dev_write 9 4 2000 0x9140; run bootcmd_deb
+bootcmd_deb=ext4load mmc 0:2 ${kernel_addr_r} /boot/Image; ext4load mmc 0:2 ${fdt_addr_r} /boot/cn9130-sophos-xgs87w-sfp10g.dtb; ext4load mmc 0:2 ${ramdisk_addr_r} /boot/initrd.img-6.12.117+deb13-arm64; setenv bootargs ${bootargs_deb}; booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}
+bootargs_deb=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw
+bootdelay=3
+partno=AMDA0200-0001
+```
+
+- 原厂的 `bootcmd_emmc1/2/3`、`sw_init_*`、`fdt_set_partno` **都还在**，只是不再被 `bootcmd` 引用。
+  回原厂：`setenv bootcmd 'run bootcmd_emmc3'; saveenv`。
+- `mvswitch … write 9 0 0xd` 是**在 U-Boot 里手工把 port9 的 CMODE 设成 10GBASE-R**
+  （DSA 起来后会重新配一遍，这一步只是让 SFP 在 boot 早期就能 link）。
+
 ### 怎么用这些槽位
 
-- `bootcmd_emmc1/2/3` 就是"从第 N 个分区启动"，装 OpenWrt 时最省事：
+- `bootcmd_emmc1/2/3` 就是"从第 N 个分区启动"，换系统时最省事（当初装 Debian 就是这么来的）：
   ```
   setenv bootcmd "$bootcmd_emmc1"
   saveenv
   ```
 - `fdt_set_partno` 会把 `$partno` 塞进 DT 的 `/usfp_rh/assembly_partno` —— 原厂用它区分机型。
+  mainline DTB 里没有这个节点，**现在不调它**（调了会 `fdt set` 报错）。
 - **`for i in '0 1 2 3 …'` 是坑**：U-Boot 的 hush 会把引号里的整串当一个词，
   循环体只会执行一次（参数爆炸）。要可靠就逐口写死：
 
@@ -109,7 +143,6 @@ sw_init_2=run sw_init_p0; run sw_init_p1; run sw_init_p2; run sw_init_p3
   mvswitch 2 write 1 4 0x7f
   …
   mvswitch 2 phy_write 1 0 0 0x9140
-  …
   ```
 
   （实测：port1/port4 的 reg4 都确实读回 0x7F，说明还有别的路径配过，但脚本本身不可靠。）

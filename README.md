@@ -1,7 +1,7 @@
 # Sophos XGS 87 — 硬件档案、架构设计与改造记录
 
 > 现场实测记录。所有数据来自一台 **Sophos XGS 87**（非无线版）实机，目前**两边都已换成 Debian 13**：
-> x86 跑通用计算，NPU 跑数据面。本仓库记录把它改造成可自由使用设备（OpenWrt / 自研固件 / 服务节点）的全过程。
+> x86 跑通用计算，NPU 跑数据面。本仓库记录把它改造成可自由使用设备（服务节点 / 路由器 / 自研固件）的全过程。
 >
 > 与 Sophos 官方无关。仓库内不含任何原厂二进制，只包含实测数据、设备树、补丁和脚本。
 
@@ -32,7 +32,8 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 | x86 借道拿家里内网地址 | ✅ | `192.168.0.50`，VLAN 31 透传 |
 | 一条链路跑管理段 + LAN | ✅ | VLAN 100 / VLAN 31（docs/20） |
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
-| NPU 掉链 lockup 取证 | ✅ | 已加 `ramoops`，证明复位发生在内核以下（docs/20 §20.8） |
+| NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/20 §20.8） |
+| NPU 内核 `CONFIG_PSTORE_CONSOLE` | ✅ | 已重编并上线（37.7 → 44.3 MB），console 后端 `[ramoops-1] enabled`，但受上一条限制用不上 |
 | 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 PERST# 复位，ramoops 零记录 ⇒ 硬件行为 |
 | LED / PCA9555 极性 | ⚠️ | 沿用原厂记录，未逐一验证（docs/06） |
 
@@ -79,7 +80,8 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 | NPU 控制台 | **x86 的 `/dev/ttyS2`，host 侧要设 57600**（这颗 16550 的分频基准是标称值的两倍，软件 57600 = 线上 115200）。账号 `root` / `openwrt123` |
 
 ⚠️ `/dev/ttyS2` **同一时刻只能有一个读者**，两个 `cat` 会把字节流切成乱码。
-现成工具：[tools/npu-console.sh](tools/npu-console.sh)、[tools/x86-console.py](tools/x86-console.py)。
+现成工具：NPU 控制台用 [tools/on-x86/npu-console.sh](tools/on-x86/npu-console.sh)（**在 x86 上跑**），
+x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.py)（**在 PC 上跑**）。
 
 ## 本机与参考机型的差异（很重要）
 
@@ -103,10 +105,10 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 | [docs/06-switch-and-ports.md](docs/06-switch-and-ports.md) | 88E6193X、端口映射、PHY/LED、SFP、MDIO、`mvswitch` 全部实测 |
 | [docs/07-storage.md](docs/07-storage.md) | eMMC 分区表、SPI NOR、镜像布局与备份策略 |
 | [docs/08-console-access.md](docs/08-console-access.md) | 进机方式与坑（含 57600 这件事的来龙去脉） |
-| [docs/09-adaptation-notes.md](docs/09-adaptation-notes.md) | 做 OpenWrt / 自研固件要改什么，已知缺口 |
+| [docs/09-remaining-work.md](docs/09-remaining-work.md) | **改造笔记：还剩什么没做、缺什么**（唯一的待办清单） |
 | [docs/10-ideas.md](docs/10-ideas.md) | **这台机器独特设计的最佳用法**（持续更新） |
 | [docs/12-measurements.md](docs/12-measurements.md) | 实测记录：LED、SFP 10G、原厂交换机初始化序列、PCIe、GPIO、备份 |
-| [docs/13-npu-os-plan.md](docs/13-npu-os-plan.md) | NPU 换系统方案：OpenWrt vs Debian、DTS 让 SFP 跑 10G、debootstrap |
+| [docs/13-npu-os-plan.md](docs/13-npu-os-plan.md) | 为什么选 Debian（不是 OpenWrt）、DTS 一行让 SFP 跑 10G、当时的安装步骤 |
 | [docs/14-npu-debian-hardware.md](docs/14-npu-debian-hardware.md) | Debian 下硬件补齐：SFP+ 10G、SPI NOR/MTD、`fw_printenv`、EIP197 |
 | [docs/15-performance.md](docs/15-performance.md) | 性能标定：CPU 1.6 GHz、转发、加密、可采纳项清单 |
 | [docs/16-eip197-activated.md](docs/16-eip197-activated.md) | **EIP197 激活成功**、正确性验证、CPU 成本实测、为何最终不启用 |
@@ -114,10 +116,10 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 | [docs/18-same-soc-platforms.md](docs/18-same-soc-platforms.md) | **同族平台调研**：上游 Sophos DTS、88E6193X 的 PTP/TCAM、mvpp2 旋钮、EP 的 `dbi2` 陷阱 |
 | [docs/19-module-vs-kernel-rebuild.md](docs/19-module-vs-kernel-rebuild.md) | 模块 vs 重编内核、换模块的失联风险、风扇归属 |
 | [docs/20-lan-over-vntb.md](docs/20-lan-over-vntb.md) | **一条 PCIe 链路跑两套网络**、NPU 串口的真相、hrtimer 把 RTT 从 4 ms 打到 0.6 ms、模块替换实录 |
-| [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本 |
+| [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本，按 **`npu/` / `x86/`** 分目录 |
 | [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
 | [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
-| [tools/](tools/) | 构建脚本（`build-npu-vntb.sh` / `build-x86-vntb.sh` / `build-npu-net.sh`）与控制台工具 |
+| [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-npu/`、`on-x86/`、`on-pc/` |
 | [modules/](modules/) | EIP197 / clkfix 等早期实验模块 |
 | [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
 

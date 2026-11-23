@@ -1,6 +1,7 @@
 # 20 — 一条 PCIe 链路同时跑两套网络
 
-> 🏷 **状态（2026-11-23 复核）**：✅ **全部实测**：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、ramoops 取证（证明没有 panic，锁死 vs PERST 仍待区分）。
+> 🏷 **状态（2026-11-23 复核）**：✅ **全部实测**：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、**netconsole 崩溃取证**。
+> ⚠️ `ramoops` 已证伪（每次复位都 DDR scrub），硬锁死 vs `PERST#` 仍待一次复现定案（§20.8）。
 
 > 目标：保留 x86 ↔ NPU 的 `192.168.100.0/24` 管理通道，同时让 x86 直接拿到家里路由器
 > `192.168.0.0/24` 的 DHCP 地址，不再需要单独给 x86 插网线。
@@ -55,9 +56,9 @@ VLAN 设备的 carrier 来自父设备，**父设备没有地址也必须 up**�
 
 | 文件 | 位置 |
 |---|---|
-| `systemd/xgs-mgmt-bridge.sh` | `ip link set "$NTB" up`（清地址之后） |
-| `systemd/xgs-lan-uplink.sh` | `ip link set "$NTB" up` |
-| `systemd/xgs-ntb-up.sh` | `ip addr flush dev eth0` 之后 `ip link set eth0 up` |
+| `systemd/npu/xgs-mgmt-bridge.sh` | `ip link set "$NTB" up`（清地址之后） |
+| `systemd/npu/xgs-lan-uplink.sh` | `ip link set "$NTB" up` |
+| `systemd/x86/xgs-ntb-up.sh` | `ip addr flush dev eth0` 之后 `ip link set eth0 up` |
 
 ## 20.4 NPU 的串口控制台（重要）
 
@@ -180,31 +181,59 @@ NPU 的 Linux 只要 **10.8 s**（kernel 3.8 + userspace 7.0），
 | 关掉 `panic_on_oops` / `hardlockup_panic` | 日志里连 panic 都没有，说明不是软件 panic |
 | 看门狗状态 | `/sys/class/watchdog/watchdog0/state=inactive`，不是它 |
 
-#### 用 ramoops 把这件事钉死
+#### 用 ramoops + console 后端取证：这条路走不通（已实测）
 
-给 NPU 的 DTB 加了 `ramoops`（DRAM 最后 1 MiB，`ramoops@7ff00000`，`/sys/fs/pstore` 可用；
-DTB 在 [board/](../board/)，旧版备份为 `/boot/*.dtb.pre-ramoops`），然后把
-`panic_on_oops` / `hardlockup_panic` 打开再复现：
+给 NPU 的 DTB 加了 `ramoops`（DRAM 最后 1 MiB，`ramoops@7ff00000`），
+并在 [board/](../board/) 的 DTS 里补了 `console-size = 0x80000` / `pmsg-size = 0x20000`，
+同时**重编了 NPU 内核**把 `CONFIG_PSTORE_CONSOLE` / `CONFIG_PSTORE_PMSG` 从 `n` 改成 `y`
+（`Image` 从 37.7 MB 变成 44.3 MB，`vermagic` 仍是 `6.12.117+deb13-arm64`，
+`Module.symvers` 与 Debian 头包**逐字节相同**，所以所有自编模块不用重编）。
+
+新内核上线后确认 console 后端真的挂上了：
 
 ```
-npu uptime: 53s          ← 又复位了
-pstore: 0 records        ← 但一个字都没留下
+[    6.524286] printk: legacy console [ramoops-1] enabled
+[    6.536984] pstore: Registered ramoops as persistent store backend
+[    6.543247] ramoops: using 0x100000@0x7ff00000, ecc: 0
 ```
 
-**没有任何 panic 记录**。这条能证明的是：掉链路径**没有触发内核 panic**（若有，pstore 必有
-`dmesg-ramoops-0`）。它**不能**区分下面两种情况 —— 两者都不会留下 panic 记录：
+然后照原样复现（从 x86 侧 `systemctl reboot`）：
+
+```
+npu uptime: 0 min        ← 又被牵连复位了
+pstore: 0 records         ← console 后端明明在跑，却一条都没留下
+```
+
+**为什么**：这颗 SoC **每次复位都会重跑 BootROM → `mv_ddr` 训练 + 全内存 scrub**
+（见 [03 §3.1](03-boot-chain.md) 的启动日志 `mv_ddr: scrubbing memory...`）。
+保留区在 Linux 还没起来之前就被清干净了，所以 **ramoops 在这块板子上永远读不到上一次的内容**，
+不管它是 panic、硬锁死还是 PERST# 复位。
+
+#### 改用 netconsole（现在用的方案）
+
+既然"事后读内存"不行，就改成"**事发前就把每一行 printk 送出去**"：
+
+| 端 | unit | 做法 |
+|---|---|---|
+| NPU | `xgs-netconsole.service` | `modprobe netconsole`，双目标：①`192.168.100.2`（x86，走管理 VLAN）②`192.168.0.52`（PC，走 `br-lan`/`p4`，物理口） |
+| x86 | `xgs-netconsole.service` | `nc -u -l -k 6666` → `/var/log/npu-netconsole.log` |
+| PC | [tools/on-pc/netconsole-listen.py](../tools/on-pc/netconsole-listen.py) | 收 UDP 6666 存文件 |
+
+- 打两个目标的原因：**走管理 VLAN 的那个能在 NPU 硬锁死时把日志送出来**（那一刻 PCIe 链路还活着）；
+  **走 `br-lan` 的那个能在 NPU 整个复位、PCIe 全掉之后继续工作**（只要交换机和线还在）。
+- 实测：`echo test > /dev/kmsg` 后 x86 立刻在 `/var/log/npu-netconsole.log` 里看到。
+- 加载时内核会把 **printk 环形缓冲区的历史整段重放**给新控制台（约 30 KB），属正常现象。
+
+#### A/B 判别（硬锁死 vs PERST#）仍然待定
 
 | 可能 | 特征 |
 |---|---|
 | A. 内核在 `ntb_transport` 掉链路径里**硬锁死**，随后 SoC 被复位 | 控制台最后两行是 `qp 0: Link Cleanup`，之后静默 |
 | B. PERST# **直接**复位 SoC，内核来不及做任何事 | 同样静默 |
 
-现有证据更偏向 A：`Link Cleanup` 是 **NPU 内核自己打印的**，说明链路断开后它还活了一下才死。
-但要真正分清，得让 lockup 检测器在复位前抓到栈 —— 这颗内核 `CONFIG_PSTORE_CONSOLE=n`，
-pstore 只能记 panic，记不了锁死；串口又只有一条、且那一刻主机正在重启，抓不到。
-
-**结论（诚实版）**：软件侧能试的都试过了（见上表），没有任何一项改变结果；复位的确切机制
-在 A/B 之间仍待定，而两者都需要 ramoops 的 console 后端或第二条串口才能继续区分。
+现有证据仍偏向 A：`Link Cleanup` 是 **NPU 内核自己打印的**。
+现在 netconsole 已经把"死前最后几行"永久留在 x86 / PC 的磁盘上，
+下一次复现就能直接看 `tail -50 /var/log/npu-netconsole.log` 定案。
 
 复位发生在**主机断链的那一瞬间**（不是 30 秒后），属于板级设计（这颗 EP 本来就不预期主机会
 单独重启）。要靠 ATF/板级配置解决，超出内核能改的范围 —— 这条路到此为止。
@@ -247,7 +276,7 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
      M=$SRC/drivers/net/dsa/mv88e6xxx modules
 ```
 
-一套下来 **十几秒**，比 qemu 快两个数量级。脚本见 [tools/build-npu-net.sh](../tools/build-npu-net.sh)。
+一套下来 **十几秒**，比 qemu 快两个数量级。脚本见 [tools/build/build-npu-net.sh](../tools/build/build-npu-net.sh)。
 
 ### 踩过的两个坑
 

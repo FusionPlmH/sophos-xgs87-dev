@@ -121,7 +121,7 @@ NPU 侧 `pcie@f2600000`（DesignWare + Marvell wrapper）工作在 **endpoint �
 
 ## 1.4 面板与指示灯
 
-| 面板 | 交换机口 | 类型 | 速率 LED（PCA9555 引脚） |
+| 面板 | 交换机口 | 类型 | 速率 LED（原厂 DTB 里的 `gpio` 号，未验证） |
 |---|---|---|---|
 | 1 / LAN | 1 | RJ45 内置 PHY | green `gpio:3:0` / amber `gpio:3:1` |
 | 2 / WAN | 2 | RJ45 | `gpio:3:2` / `gpio:3:3` |
@@ -131,14 +131,15 @@ NPU 侧 `pcie@f2600000`（DesignWare + Marvell wrapper）工作在 **endpoint �
 | CPU | 0 | 10G XFI 到 CN9130 | — |
 
 - RJ45 的 PHY LED 控制寄存器值：`0xe3`；SFP：`0xe1`（原厂设置）。
-- LED 扩展芯片 PCA9555 在 i2c-0 地址 0x20（Linux 里是 `gpiochip` 第 4 个，编号 3）。
-- 极性：原厂当低有效用（未逐一验证）。
+- 上表 `gpio:3:x` 是**原厂 DTB** 的写法（那时它还多一个 chip）；现机只有 3 个 `gpiochip`，
+  面板灯实测走的是 **PHY 自带的 LED 控制寄存器**，`PCA9555` 驱动面板灯已被证伪（见 [06](06-switch-and-ports.md)）。
+- LED 极性：原厂当低有效用，**未逐一验证**。
 
 ## 1.5 电源与复位
 
 | 项目 | 说明 |
 |---|---|
-| 输入 | 两路 DC（冗余），机箱背面 |
+| 输入 | **单路** DC（机箱背面），一条线同时喂 x86 和 NPU，断电两台一起下 |
 | 交换机复位 | CP GPIO2 pin 17（U-Boot 里 `gpio clear C17` / `set C17`） |
 | NPU 复位 | x86 断 PCIe 链路（PERST#）时 NPU 会**整机复位**，实测与软件无关（ramoops 里零记录），见 20 §20.8 |
 | 风扇 | **有**（整机一颗，随电源常转）—— 但**软件不可控**：x86 侧无 SuperIO 风扇控制器、ACPI 无风扇设备；NPU 侧原厂 DTB 里没有任何 `fan`/`pwm` 节点。要么定速，要么板载硬件温控 |

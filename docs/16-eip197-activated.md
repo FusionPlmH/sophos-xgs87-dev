@@ -56,7 +56,7 @@ crypto-safexcel f2800000.crypto: TRC init: 15360d,80a (48r,256h)
 
 ### 正确性验证
 
-用自写的 AF_ALG 工具（[tools/afalg_bench.c](../tools/afalg_bench.c)），同一个程序、
+用自写的 AF_ALG 工具（[tools/on-npu/afalg_bench.c](../tools/on-npu/afalg_bench.c)），同一个程序、
 同一 key/IV/明文，分别在硬件和软件后端跑：
 
 ```
@@ -122,7 +122,7 @@ EIP197 只有在**成批异步**投递时才有优势——原厂正是这么做
 
 前面的结论只看了吞吐。但真正的问题是"能不能降低 CPU 负载"，所以直接测**每 KB 的 CPU 秒**。
 
-方法：[`tools/afalg_bench.c`](../tools/afalg_bench.c) 单线程绑 CPU0，用 `/proc/stat` 前后差值算 CPU 秒；
+方法：[`tools/on-npu/afalg_bench.c`](../tools/on-npu/afalg_bench.c) 单线程绑 CPU0，用 `/proc/stat` 前后差值算 CPU 秒；
 软件 = ARMv8 CE，硬件 = EIP197（`modprobe crypto_safexcel` 后 `cbc(aes)` 自动选中 `safexcel-cbc-aes`）。
 
 | 块大小 | 后端 | 吞吐 | CPU 占用 | 每 KB 的 CPU 成本 |

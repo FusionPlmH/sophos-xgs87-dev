@@ -1,0 +1,18 @@
+[Unit]
+Description=Receive the NPU's kernel console (netconsole, UDP 6666)
+After=xgs-ntb.service
+Wants=xgs-ntb.service
+
+# The NPU pushes every printk here, so the last thing it printed before a
+# lockup or reset is already on this machine's disk.
+# Read it with:  tail -f /var/log/npu-netconsole.log
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nc -u -l -k 6666
+StandardOutput=append:/var/log/npu-netconsole.log
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

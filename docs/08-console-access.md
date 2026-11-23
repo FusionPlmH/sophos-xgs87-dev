@@ -54,7 +54,7 @@ printf 'openwrt123\r' > /dev/ttyS2
 setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 ```
 
-现成工具：[tools/npu-console.sh](../tools/npu-console.sh)（在 x86 上跑，`sudo npu-console login`
+现成工具：[tools/on-x86/npu-console.sh](../tools/on-x86/npu-console.sh)（在 x86 上跑，`sudo npu-console login`
 然后 `sudo npu-console '命令'`）。
 
 ## 8.5 自动化时的坑（全部踩过）

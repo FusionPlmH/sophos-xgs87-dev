@@ -1,6 +1,8 @@
-# 06 · 交换机与端口
+# 06 · 交换机与端口（**全部在 NPU 上**）
 
 > 🏷 **状态（2026-11-23 复核）**：✅ **大部分实测**（9 口 + SFP 10G + DSA 已在现机复核）；⚠️ **LED 极性未逐一验证** —— `gpio:3:x` 的编号沿用原厂记录。
+>
+> ⚠️ **本文所有命令都在 NPU 上执行**（`ssh root@192.168.0.66`）。x86 没有交换机、看不到 `p1…p8`。
 
 ## 6.1 芯片
 
@@ -71,7 +73,7 @@ mdio@12a200 {
 面板 LED 状态**没有任何变化**，只有插了网线的口（LAN1/LAN4）亮 —— 说明这些灯是
 **PHY 直接驱动**的，与 PCA9555 无关。详见 [12-measurements.md](12-measurements.md) §12.7。
 
-> 做 OpenWrt 时不要照抄参考项目的 `gpio-leds` 节点；用 PHY 的 LED 控制寄存器
+> 参考项目的 `gpio-leds` 节点在我们的机器上不成立（那套映射是另一个机型的）；用 PHY 的 LED 控制寄存器
 > （`MVL6193LEDcontrol=0xe3`）或者重新测绘。
 
 ### SFP（F1）
@@ -213,12 +215,12 @@ xgs-mdio -a 0 2 9.0        # → 0xf4d（LINK=1, 10 Gbps, CMODE=0xD）
 
 ## 6.5 Linux 侧怎么用这些口（三条路）
 
-### A. 内核 DSA（推荐，做 OpenWrt 时）
+### A. 内核 DSA（推荐，**现在用的就是这个**）
 
 - 需要 `CONFIG_NET_DSA` + `CONFIG_MV88E6XXX`，DT 改写成标准 DSA 结构（`ports { port@N { reg=…; phy-handle=…; } }`）。
-- 好处：每个口一个 `lan1..lan4` / `sfp`，走 `swconfig`/DSA 的 VLAN、bridge。
-- 需要确认 88E6193X 在 mainline `mv88e6xxx` 里的支持程度（6393X 系列有支持，
-  6193 是它的裁剪版，可能要用 6393X 的 ID 表）。
+- 本机已实测可用：9 个 netdev（`p1`–`p8` + `sfp`），`mv88e6xxx` 是自编模块（含两个 TCAM 修复），
+  见 [14](14-npu-debian-hardware.md) 与 [20 §20.9](20-lan-over-vntb.md)。
+- 好处：每个口一个 netdev，可以用 DSA 的 VLAN、bridge、`tc mirred` 镜像。
 
 ### B. U-Boot 配好 + Linux 只当"一个网口"
 

@@ -149,7 +149,7 @@ Debian 的 arm64 内核**没编** `CONFIG_ARM_ARMADA_8K_CPUFREQ` 和 `CONFIG_ARM
 | 优先级 | 动作 | 需要 |
 |---|---|---|
 | **P0** | 打 `e3624f5eeac4` + `242ebf4c5114`（TCAM 越权） | 重编内核或打补丁重建 mv88e6xxx.ko |
-| **P0** | 完成 NTB：x86 侧 `ntb_hw_epf` 等 4 个模块（Debian 没编，需 out-of-tree 构建 + U 盘拷入） | Debian amd64 headers |
+| **P0** | 完成 NTB：x86 侧 `ntb_hw_epf` 等 4 个模块（Debian 没编，需 out-of-tree 构建） | Debian amd64 headers |
 | **P1** | `MVPP2_AGGR_TXQ_SIZE 256 → 512` 实验 | 重编 mvpp2（内核内建，需重编内核） |
 | **P1** | `ethtool -G end0 rx 2048 tx 2048` + 复测吞吐 | 无 |
 | **P2** | 移植 BSP safexcel（`rings=` + 枚举）→ `mv_sam_uio` 8 ring | 大工程 |

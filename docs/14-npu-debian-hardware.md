@@ -327,6 +327,8 @@ SerDes（port 0 / 9 / 10）互不影响。本机 port 0（CPU 口）从开机起
 
 ### 修复：开机自动 up 全部端口
 
+最初是一条最小 unit：
+
 ```ini
 # /etc/systemd/system/xgs-ports-up.service
 [Service]
@@ -334,6 +336,10 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c 'for i in 1 2 3 4 5 6 7 8; do ip link set p$i up; done'
 ```
+
+后来扩成"等设备 + 每口 MAC + up"，正式版本是
+[systemd/npu/xgs-ports-up.service](../systemd/npu/xgs-ports-up.service) +
+[systemd/npu/xgs-ports-init.sh](../systemd/npu/xgs-ports-init.sh)（见 14.10）。
 
 之后插线即按最高速率协商（p1/p4 实测 1000/Full，SFP 同时 10000/Full）。
 

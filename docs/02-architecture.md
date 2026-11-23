@@ -34,7 +34,7 @@ x86 内核                                    NPU 内核
   外加一条管理链路 `mvmgmt0`。
 - NPU 侧对应模块：`mv_nwa_target`, `mv_pcinet_trgt`, `mv_armada_ep`,
   `mv_facility_trgt_dma`, `mv_dmax2_uio`, `musdk_cma`, `mvmdio_uio`（实测 `lsmod`）。
-- 这些**都是 Sophos 专有驱动**，只支持 4.14 内核，Debian/OpenWrt 用不了。
+- 这些**都是 Sophos 专有驱动**，只支持 4.14 内核，Debian 用不了。
 
 ## 2.3 通路二：NTB（开源方案，推荐）
 
@@ -95,7 +95,7 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 5760
           │    └─ Comphy: lane0/1 = PCIe(EP), lane4 = SFI0 10G
           ├─ U-Boot 2019.10（SPI NOR）
           │    └─ 读 env，autoboot 3 s
-          └─ bootcmd: ext4load mmc 0:3 /boot/Image + dtb → booti
+          └─ bootcmd: ext4load mmc 0:2 /boot/Image + dtb + initrd → booti
                └─ 原厂：Linux 4.14.207 → /etc/init.d/S91xgsstartup
                   现在：Debian 13 / 6.12.117 → systemd（xgs-ports-up → xgs-vntb → …）
 ```

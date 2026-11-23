@@ -54,7 +54,10 @@
 		ramoops@7ff00000 {
 			compatible = "ramoops";
 			reg = <0x0 0x7ff00000 0x0 0x100000>;
+			/* 128 KiB of panic records, 512 KiB console ring, 128 KiB pmsg */
 			record-size = <0x20000>;
+			console-size = <0x80000>;
+			pmsg-size = <0x20000>;
 			no-map;
 		};
 		};

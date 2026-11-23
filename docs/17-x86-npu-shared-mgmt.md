@@ -5,7 +5,9 @@
 目标：前面板 **p8** 同时作为 NPU（Debian）和 x86（Debian）的管理口——两台机器在同一个二层、
 各拿一个地址，机箱上只占一个口。
 
-本文是**方案与实测现状**，尚未实施（用户要求 plan-only）。
+> **本文是方案推演 + 实施结果**：17.1–17.5 是当时的计划（保留下来是因为里面有硬件事实），
+> 17.6 是实际跑通后的结论。现在的网络形态与安装步骤请直接看
+> [20](20-lan-over-vntb.md) 和 [systemd/README.md](../systemd/README.md)。
 
 ---
 
@@ -20,7 +22,7 @@
 | x86 硬件 | AMD Embedded R-Series **RX-216TD**，Debian **6.12.94+deb13-amd64**，自带 14.7 GB eMMC（UEFI 启动，AMI BIOS 1906） |
 | NPU 内核配置 | `CONFIG_PCI_ENDPOINT=y`，但 `PCI_ENDPOINT_CONFIGFS` / `CONFIG_NTB` / `PCI_EPF_NTB` 全是 **not set** |
 | 主线支持 | 有 `pcie-designware-ep.c` 框架和 `pci-layerscape-ep.c` 等胶水，**没有** `marvell,armada-pcie-ep`；通用 EP 可走 `pcie-designware-plat.c`（`snps,dw-pcie-ep`） |
-| 现有地址 | `192.168.1.1/24` 在 **p1**；p1/p4/sfp 有载波，p2/p3/p5–p8 都是 admin-up 但 NO-CARRIER |
+| 现用地址 | NPU `192.168.100.1/24`（`br-mgmt`）、x86 `192.168.100.2/24`；p1/p4/sfp 有载波，p2/p3/p5–p8 都是 admin-up 但 NO-CARRIER。**p1 上原来那个 `192.168.1.1/24` 已经清掉**（早期手测遗留） |
 
 结论：**数据通路必须自己建**。x86 没有独立网口，NTB 是唯一开源可行方式。
 
@@ -28,8 +30,12 @@
 
 ## 17.2 阶段 1：p8 先当 NPU 的管理口（不动内核，零风险）
 
-p8 已经在 `LOWERLAYERDOWN`（admin up、无载波），说明 `xgs-ports-up.service` 已经把它拉起来了，
-只差一个二层归属和 IP。
+p8 在 DSA 起来后是 `LOWERLAYERDOWN`（admin up、无载波），说明 `xgs-ports-up.service`
+已经把它拉起来了，只差一个二层归属和 IP。
+
+下面的 networkd 写法是当时的计划；**实际落地用的是脚本**
+（[systemd/npu/xgs-mgmt-bridge.sh](../systemd/npu/xgs-mgmt-bridge.sh)），
+因为它还要顺手处理 vNTB 的 VLAN 和 `br-mgmt` 的 MAC 继承：
 
 ```ini
 # /etc/systemd/network/10-br-mgmt.netdev
@@ -53,15 +59,16 @@ Bridge=br-mgmt
 注意事项：
 
 - **不要把 `end0` 放进桥**：`end0` 是 DSA 的 conduit，桥接它等于绕开硬件转发。
-- **不要一开始就把 p1 也放进 `br-mgmt`**：那会把 p1 和 p8 变成一台交换机。建议先只桥 p8，
-  p1 保持 `192.168.1.1/24` 不动；拿根网线插 p8、`ssh 192.168.100.1` 验证通过后，再决定是否把 p1 并进来。
-- `p8` 必须在 DSA 端口就绪后才存在，networkd 会自动重试；如果要严格顺序，加
-  `After=xgs-ports-up.service` + `Wants=xgs-ports-up.service`。
-- 没有 DHCP 服务器时用上面的静态地址；有上游 DHCP 就把 `Address=` 换成 `DHCP=yes`。
+- **不要一开始就把 p1 也放进 `br-mgmt`**：那会把 p1 和 p8 变成一台交换机。
+  拿根网线插 p8、`ssh 192.168.100.1` 验证通过后，再决定是否并更多口。
+- `p8` 必须在 DSA 端口就绪后才存在，networkd 会自动重试；用脚本时是显式等 60 s。
+- 没有 DHCP 服务器时用静态地址（现在就是）；有上游 DHCP 就把 `Address=` 换成 `DHCP=yes`。
+
+> 那块 `192.168.1.1/24` 曾经挂在 p1 上（早期手测），**已经清掉**。
 
 ---
 
-## 17.3 阶段 2：NTB 链路（需要重编两个内核）
+## 17.3 阶段 2：NTB 链路（当时以为要重编两个内核，实际只装模块）
 
 物理速率：Gen3 x2 ≈ 2.0 GB/s 理论；参考 xgs107 的实测 0.63 / 1.7 Gbps（受 `transport_mtu` 影响），
 做管理口绰绰有余。

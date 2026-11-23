@@ -1,0 +1,19 @@
+[Unit]
+Description=Send the kernel console to the x86 (mgmt VLAN) and the PC (house LAN)
+After=xgs-mgmt-bridge.service xgs-lan-uplink.service
+Wants=xgs-mgmt-bridge.service xgs-lan-uplink.service
+
+# Why netconsole and not pstore: every boot runs mv_ddr training + a full DRAM
+# scrub, so the ramoops region is wiped before we can read it.  netconsole
+# pushes every printk out over the wire immediately, so whatever the NPU
+# managed to print before dying is already on the other machine's disk.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Reload cleanly on restart (the module caches its config).
+ExecStartPre=-/sbin/modprobe -r netconsole
+ExecStart=/sbin/modprobe netconsole netconsole=6666@192.168.100.1/br-mgmt,6666@192.168.100.2/02:58:47:53:00:11\;6666@192.168.0.66/br-lan,6666@192.168.0.52/02:00:00:00:00:01
+
+[Install]
+WantedBy=multi-user.target
