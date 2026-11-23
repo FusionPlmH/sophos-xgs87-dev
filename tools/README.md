@@ -17,6 +17,7 @@ tools/on-pc/    在 Windows PC 上跑（串口工具）
 | `build-npu-net.sh` | PC / WSL | `mv88e6xxx.ko`（含两个 TCAM 修复）+ `mvpp2.ko`（`AGGR_TXQ_SIZE=512`）→ **NPU** |
 | `build-npu-vntb.sh` | PC / WSL（`chroot /srv/npu`，qemu user-mode） | 6 个 vNTB 模块 → **NPU** |
 | `build-x86-vntb.sh` | PC / WSL（amd64 原生） | `ntb*.ko` 四个 → **x86** |
+| `build-npu-kernel.sh` | PC / WSL（交叉编译） | **NPU 的 `Image`** —— 只有"必须编进 vmlinux"的选项才需要它（这次是为了 `CONFIG_PSTORE_CONSOLE`） |
 
 ```sh
 # NPU 的网络模块（交叉编译，走完整源码树，不用 qemu）
@@ -27,7 +28,21 @@ tools/on-pc/    在 Windows PC 上跑（串口工具）
 
 # x86 的 NTB 栈
 ./tools/build/build-x86-vntb.sh
+
+# NPU 的整颗内核（只有编进 vmlinux 的选项才需要；约 12 分钟）
+CONFIG_EXTRA="CONFIG_PSTORE_CONSOLE=y CONFIG_PSTORE_PMSG=y" ./tools/build/build-npu-kernel.sh
 ```
+
+### 重编内核后模块要不要跟着重编？
+
+看 `Module.symvers`：
+
+```sh
+md5sum $OBJ/Module.symvers $NPU_ROOT/usr/src/linux-headers-$KVER/Module.symvers
+```
+
+两边一致 ⇒ 导出符号的 CRC 没变 ⇒ **现有模块不用重编**（这次加 `CONFIG_PSTORE_*` 就是这种情况）。
+不一致 ⇒ 所有自编模块都得重来，否则 `insmod` 报 `disagrees about version of symbol`。
 
 三条铁律（踩过的坑都在 [docs/20](../docs/20-lan-over-vntb.md) §20.9）：
 
