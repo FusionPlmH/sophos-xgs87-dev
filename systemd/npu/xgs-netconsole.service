@@ -16,7 +16,7 @@ RemainAfterExit=yes
 # The house-LAN address/MAC are examples -- put your listener's real ones here.
 # Reload cleanly on restart (the module caches its config).
 ExecStartPre=-/sbin/modprobe -r netconsole
-ExecStart=/sbin/modprobe netconsole netconsole=6666@192.168.100.1/br-mgmt,6666@192.168.100.2/02:58:47:53:00:11\;6666@192.168.0.66/br-lan,6666@192.168.0.52/02:00:00:00:00:01
+ExecStart=/sbin/modprobe netconsole netconsole=6666@192.168.100.1/br-mgmt,6666@192.168.100.2/02:58:47:53:00:11;6666@192.168.0.66/br-lan,6666@192.168.0.52/02:00:00:00:00:01
 
 [Install]
 WantedBy=multi-user.target

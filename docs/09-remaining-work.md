@@ -77,6 +77,9 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
   `0xffffffff` 当偏移用 → 页错误 → panic；补丁 + watcher 的完整重置都补上了，实测 NPU 单独重启后
   90 秒链路自己回来、x86 不重启（[20 §20.10](20-lan-over-vntb.md)）。
 - 内置（`=y`）而不是模块化 `mv88e6xxx` / `mvpp2`：现在模块换起来方便，没必要。
+- 关机时对端已经下线：`xgs-ntb-stop` 里 `rmmod ntb_hw_epf` 会打 `Fail to disable link`，
+  紧接着 `iounmap: bad address`（2026-11-23 19:27 那次关机实测）。只发生在断电前的
+  最后一步，没造成数据损坏；要修得调 `kernel/x86/ntb_hw_epf.c` 的 remove 顺序。
 - 原厂 CPSS / `mvpp2x` 多口驱动：只支持 4.14，且我们已经有 DSA。
 - 自研交换机驱动：上游 `mv88e6xxx` 已经够用。
 - Wi-Fi：本机（XGS 87 非无线版）没有无线模块。
