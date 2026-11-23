@@ -152,11 +152,44 @@ chroot /srv/npu make -C /usr/src/linux-headers-6.12.117+deb13-arm64 M=/build/ntb
 30 s 后自己重启 → 启动时 `xgs-ntb-watch` 重新枚举 → 链路和 DHCP 全部自动恢复，
 **全程不需要人碰机器**（两次重启冒烟验证通过）。
 
-## 20.8 仍然开着的问题
+## 20.8 重启的真实代价（一次完整实测）
 
-1. **NPU 端点消失时 x86 会 oops**（`ntb_hw_epf` 仍在访问已经不存在的 BAR）。现在靠
-   `panic_on_oops` + `panic=30` 兜成"自愈重启"，但根因没修 —— 正解是给 `ntb_hw_epf`
-   加 link-down 处理，或让宿主端口支持热插拔（`pciehp`）走正常的设备移除路径。
-2. **两台机器会连锁重启**：x86 重启期间 NPU 侧 `ntb_netdev_close()` 会踩到已经掉线的 spad
-   （`vntb_epf_spad_read` oops），`panic_on_oops` 又把它重启一次。两边都自愈，但会多花一轮时间。
-3. `p8` 前线现在没人插，`br-mgmt` 靠 `eth0.100` 撑着；插上笔记本即可同时访问 `.1` / `.2`。
+x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal recovery），启动 38 → 26 秒：
+
+| 阶段 | 时间 | 说明 |
+|---|---|---|
+| firmware | 11.0 s | 主板 POST，改 BIOS 才能动 |
+| loader | **2 s** | 原来是 18.2 s —— `recordfail=1` 时 GRUB 等 30 s，已加 `GRUB_RECORDFAIL_TIMEOUT=2` |
+| kernel | 4.0 s | |
+| userspace | 5.6 s | 我们的单元合计不到 1 s |
+
+NPU 的 Linux 只要 **10.8 s**（kernel 3.8 + userspace 7.0），
+`xgs-ports-up` → `xgs-vntb` → `xgs-mgmt-bridge` → `xgs-lan-uplink` → `xgs-lan-dhcp` 串起来约 2.7 s。
+
+### NPU 仍会被牵连，但这是硬件的错
+
+实测结论：**x86 一抽掉 PCIe 链路，NPU 就复位**，与我们做了什么无关：
+
+| 试过的手段 | 结果 |
+|---|---|
+| 关机钩子先发 `COMMAND_LINK_DOWN` | x86 日志确认发出（`qp 0: Send Link Down`），NPU 仍复位 |
+| NPU 侧 spad 读写加 `linkup` 守卫 | 守卫生效（不再 oops），仍复位 |
+| 先把 EP 函数停掉（`start=0`）再重启主机 | EP 已停、主机安然无恙，NPU 仍复位 |
+| 关掉 `panic_on_oops` / `hardlockup_panic` | 日志里连 panic 都没有，说明不是软件 panic |
+| 看门狗状态 | `/sys/class/watchdog/watchdog0/state=inactive`，不是它 |
+
+复位发生在**主机断链的那一瞬间**（不是 30 秒后），且内核一行字都不打 ⇒ 是 SoC/ATF 对
+PERST# / 链路掉线的反应，属于板级设计（这颗 EP 本来就不预期主机会单独重启）。
+要靠 ATF/板级配置解决，超出内核能改的范围。
+
+**实际影响**：x86 重启 → NPU 跟着重启 → 40 秒后两者都自己回来，链路、VLAN、DHCP 全部自动重建。
+不需要人碰机器，但 NPU 的 uptime 会归零。
+
+## 20.9 还是开着的问题
+
+1. `ntb_transport` 的 link-cleanup 在掉链时会把 NPU 卡住（`qp 0: Link Cleanup` 打两条之后静默），
+   现在靠 NPU 自身复位兜底。要根治得先能在掉链瞬间抓到栈 —— 这颗芯片没有 pstore/ramoops，
+   netconsole 又挂在 `br-lan` 上，掉链时桥端口全 down 发不出包（挂 `p4` 也不行，DSA 端口不支持 netpoll）。
+   下一步可以做：给 DTB 加 `ramoops` 节点，让 panic/lockup 落盘。
+2. `p8` 前面板现在还空着，`br-mgmt` 靠 `eth0.100` 撑着；插笔记本即可同时访问 `.1` / `.2`。
+3. PC 的那块 USB 网卡（`Ethernet 2`）从 Windows 里消失了，所以 `192.168.1.1` 这条路暂时不通。

@@ -1,0 +1,15 @@
+[Unit]
+Description=Unload the NTB stack at shutdown so the NPU is not left hanging
+DefaultDependencies=no
+Before=shutdown.target reboot.target kexec.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/sbin/xgs-ntb-stop.sh
+TimeoutStopSec=25
+
+[Install]
+WantedBy=multi-user.target
