@@ -80,3 +80,13 @@ npu_ssh() {
 	{ printf '%s\n' "$NPU_PASS"; printf '%s\n' "$1"; } |
 		ssh $NPU_SSH_OPTS "admin@$NPU" "sudo -S -p '' bash -s"
 }
+# npu_ssh_stream：给"要把数据从 stdin 灌进去"的场景（例如 zstd -dc tar | 它）。
+# 普通 npu_ssh 把密码喂给 sudo -S，stdin 就被占了；这里改成在 NPU 上放一个
+# askpass 脚本、让 sudo -A 自己去问，stdin 空出来给数据。
+npu_ssh_stream() {
+	_cmd=$1
+	npu_ssh_setup
+	npu_ssh "printf '#!/bin/sh\nprintf \"%%s\\n\" %s\n' >/tmp/.xgs87-ap && chmod 700 /tmp/.xgs87-ap" >/dev/null || return 1
+	# shellcheck disable=SC2086
+	ssh $NPU_SSH_OPTS "admin@$NPU" "SUDO_ASKPASS=/tmp/.xgs87-ap sudo -A bash -c \"$_cmd\""
+}

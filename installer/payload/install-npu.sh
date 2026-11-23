@@ -85,6 +85,24 @@ serial_repair() {
 	return 0
 }
 
+# 没有 nbd-server 时的退路：ssh + tar 流式解包（NPU 只要 tar 和 zstd）
+stream_install() {
+	echo "== ssh 直接解包到 $PART（不需要 nbd）"
+	npu_ssh "umount /mnt 2>/dev/null || true
+		mkfs.ext4 -q -F -L xgsroot $PART
+		mkdir -p /mnt
+		mount $PART /mnt
+		echo mounted" || return 1
+	echo "   解包（190 MB 走 vNTB，1-2 分钟）"
+	zstd -dc "$TAR" | npu_ssh_stream 'tar -xpf - -C /mnt' || return 1
+	cat "$DTB" | npu_ssh_stream \
+		'mkdir -p /mnt/boot && tee /mnt/boot/cn9130-sophos-xgs87w-sfp10g.dtb >/dev/null' || return 1
+	npu_ssh "sync; umount /mnt; echo done" || return 1
+	echo "== 写完了，让它重启"
+	npu_ssh "pkill -f 'nbd-server' 2>/dev/null || true; (sleep 1; reboot) >/dev/null 2>&1 &" || true
+	return 0
+}
+
 cleanup_nbd() {
 	nbd-client -d "$NBD" 2>/dev/null || true
 }
@@ -172,11 +190,15 @@ echo "== 1/6 确认 NPU 上有 nbd-server"
 echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
 if ! timeout 60 npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then
 	echo "   没有，试着装一下"
-	timeout 180 npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' ||
-		{
-			echo "   装不上。请在 NPU 上手动 apt-get install -y nbd-server，或者把 p2 挂到别的机器装。"
-			exit 1
-		}
+	timeout 180 npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' || {
+		echo
+		echo "   没有 nbd-server，也装不上（NPU 没外网？）—— 改用 ssh 直接解包，"
+		echo "   这条路只要 NPU 上有 tar 和 zstd，不需要 nbd。"
+		stream_install && exit 0
+		echo "== ssh 直接解包也没成"
+		try_rescue
+		exit 1
+	}
 fi
 
 echo "== 2/6 让 NPU 导出 $PART"
