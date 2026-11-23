@@ -110,12 +110,14 @@ printf 'blacklist snd_hda_intel\n' > /etc/modprobe.d/xgs87-no-audio.conf
 systemctl enable systemd-timesyncd ssh
 
 # lean: the compiler only had to build the modules once.  Dropping it is where
-# the ~460 MB go; because nothing here can then rebuild them, the kernel is
+# the ~380 MiB go; because nothing here can then rebuild them, the kernel is
 # held -- /opt/xgs87/kernel/<side>/install.sh (or kernel/<side>/install.sh on a
 # clone) installs dkms + headers on the device and rebuilds when the user does
 # want to move to a newer kernel.
 if [ "$VARIANT" = lean ]; then
-	apt-get purge -y $TOOLCHAIN >/dev/null
+	if [ -n "$TOOLCHAIN" ]; then
+		apt-get purge -y $TOOLCHAIN >/dev/null
+	fi
 	apt-get autoremove -y >/dev/null
 	rm -rf /usr/src/xgs87-* /tmp/xgs87-pkgs.*
 	if command -v gcc >/dev/null 2>&1; then

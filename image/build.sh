@@ -16,7 +16,7 @@
 #                    rebuilds them automatically.  ~350 MB compressed, ~900 MB
 #                    unpacked.
 #   lean           : the same modules, built once with plain make, then the
-#                    compiler and headers are purged again.  ~460 MB smaller
+#                    compiler and headers are purged again.  ~380 MiB smaller
 #                    unpacked; the price is that the image cannot rebuild the
 #                    modules itself, so the kernel is held.
 #   base           : minbase + the packages below, no compiler, no modules.
