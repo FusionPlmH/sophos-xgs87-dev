@@ -92,6 +92,23 @@ cleanup_nbd() {
 echo "== 先把 vNTB 链路拉起来"
 systemctl start xgs-ntb xgs-ntb-watch 2>/dev/null || true
 
+# ---- 破坏性操作的确认：只问一次，三个层级（U-Boot / NBD / 急救）共用 ----
+printf '目标分区 [/dev/mmcblk0p2]: '
+read -r PART
+PART=${PART:-/dev/mmcblk0p2}
+case "$PART" in
+/dev/*) ;;
+*) echo "分区要写 /dev/... 的绝对路径"; exit 1 ;;
+esac
+echo "⚠️  接下来会把 $PART 整个重写（mmc write / mkfs / dd），NPU 上原有的东西会没。"
+printf '输入 YES 继续：'
+read -r ok
+[ "$ok" = YES ] || exit 1
+# 从这里开始不能被 Ctrl+C 打断：写到一半的 ext4 比没写更麻烦。
+trap '' INT QUIT
+echo "   已开始，Ctrl+C 不再中断（要重来就等它跑完）。"
+export PART
+
 # 默认先走 U-Boot（ext4 影像 → tftpboot → mmc write）：这条路不依赖 NPU 上的任何
 # 用户态程序，也不依赖它的 sshd。走不通（没有 tftpboot、没插网线、交换机没转发）
 # 才退到 NBD，那时脚本会先让 NPU 正常启动回去。
@@ -121,6 +138,8 @@ try_rescue() {
 	"$PAYLOAD/npu-rescue.sh"
 }
 
+# ---- 破坏性操作的确认见上面的 tty 那段（只问一次）----
+
 NPU=$(find_npu 30) || NPU=
 
 if [ -z "$NPU" ] && [ -e "$SERIAL" ]; then
@@ -147,24 +166,13 @@ EOM
 	exit 1
 fi
 
-echo "== NPU 在线（$NPU）"
-printf '目标分区 [/dev/mmcblk0p2]: '
-read -r PART
-PART=${PART:-/dev/mmcblk0p2}
-case "$PART" in
-/dev/*) ;;
-*) echo "分区要写 /dev/... 的绝对路径"; exit 1 ;;
-esac
-
-echo "⚠️  接下来会把 $PART 整个重写（mkfs.ext4 + 解包），NPU 上原有的东西会没。"
-printf '输入 YES 继续：'
-read -r ok
-[ "$ok" = YES ] || exit 1
+echo "== NPU 在线（$NPU），目标分区 $PART"
 
 echo "== 1/6 确认 NPU 上有 nbd-server"
-if ! npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then
-	echo "   没有，试着装一下（需要 NPU 能上外网）"
-	npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' ||
+echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
+if ! timeout 60 npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then
+	echo "   没有，试着装一下"
+	timeout 180 npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' ||
 		{
 			echo "   装不上。请在 NPU 上手动 apt-get install -y nbd-server，或者把 p2 挂到别的机器装。"
 			exit 1
