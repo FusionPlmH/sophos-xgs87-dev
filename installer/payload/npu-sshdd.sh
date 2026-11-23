@@ -14,7 +14,7 @@ set -u
 
 PAYLOAD=${PAYLOAD:-$(cd "$(dirname "$0")" && pwd)}
 NPU=${NPU:-192.168.100.1}
-IMG=${IMG:-/tmp/npu-p2.img}
+IMG=${IMG:-/var/tmp/npu-p2.img}
 TAR=${TAR:-$PAYLOAD/debian-npu.tar.zst}
 DTB=${DTB:-$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)}
 MNT=${MNT:-/mnt/npuroot}
@@ -68,7 +68,7 @@ echo "== 造镜像 $IMG"
 rm -f "$IMG"
 truncate -s "$bytes" "$IMG" 2>/dev/null || fallocate -l "$bytes" "$IMG" 2>/dev/null ||
 	dd if=/dev/zero of="$IMG" bs=1M count=$((bytes / 1048576)) 2>/dev/null || die "建不出镜像"
-mkfs.ext4 -q -F -L root "$IMG" || die "mkfs.ext4 失败"
+mkfs.ext4 -q -F -L root -O ^metadata_csum_seed,^orphan_file -I 256 "$IMG" || die "mkfs.ext4 失败"
 mkdir -p "$MNT"
 mount -o loop "$IMG" "$MNT" || die "挂不上 $IMG"
 zstd -dc "$TAR" | tar -x -C "$MNT" --numeric-owner || echo "   （解包时有报错，继续）"
