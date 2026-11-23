@@ -42,7 +42,7 @@ while :; do
 	1) "$PAYLOAD/install-x86.sh" ;;
 	2) "$PAYLOAD/install-npu.sh" ;;
 	3) "$PAYLOAD/status.sh"; printf '\n按回车返回菜单...'; read -r _ ;;
-	4) "$PAYLOAD/backup-x86.sh" ;;
+	4) "$PAYLOAD/backup-x86.sh"; printf '\n按回车返回菜单...'; read -r _ ;;
 	6) "$PAYLOAD/backup-npu.sh"; printf '\n按回车返回菜单...'; read -r _ ;;
 	5) /bin/sh ;;
 	9) poweroff ;;
