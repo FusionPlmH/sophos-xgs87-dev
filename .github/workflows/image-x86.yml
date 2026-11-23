@@ -5,21 +5,14 @@ name: image x86
 # image/release-x86.md so the install instructions live next to the code.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'image/**'
-      - 'kernel/**'
-      - 'systemd/**'
-      - 'board/**'
-      - '.github/workflows/image-x86.yml'
+  # 手动触发：Actions → image x86 → Run workflow，或 `gh workflow run image-x86.yml`
   workflow_dispatch:
     inputs:
       variant:
         description: 'full (with DKMS toolchain) or base'
         default: 'full'
       size:
-        description: 'disk image size (auto = rootfs + 12% + 256 MiB, grown on first boot)'
+        description: 'disk image size (auto = rootfs + 15% + 256 MiB + 476 MiB ESP, grown on first boot)'
         default: 'auto'
 
 permissions:

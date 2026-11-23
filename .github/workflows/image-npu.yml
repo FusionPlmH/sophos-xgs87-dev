@@ -5,14 +5,7 @@ name: image npu
 # its notes come from image/release-npu.md.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'image/**'
-      - 'kernel/**'
-      - 'systemd/**'
-      - 'board/**'
-      - '.github/workflows/image-npu.yml'
+  # 手动触发：Actions → image npu → Run workflow，或 `gh workflow run image-npu.yml`
   workflow_dispatch:
     inputs:
       variant:

@@ -6,15 +6,7 @@ name: image usb
 # Overwrites the fixed release `debian-usb`, notes from image/release-usb.md.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'image/**'
-      - 'installer/**'
-      - 'kernel/**'
-      - 'systemd/**'
-      - 'board/**'
-      - '.github/workflows/image-usb.yml'
+  # 手动触发：Actions → image usb → Run workflow，或 `gh workflow run image-usb.yml`
   workflow_dispatch:
 
 permissions:

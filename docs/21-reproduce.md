@@ -103,7 +103,7 @@ tar --zstd -xOf out/xgs87-x86-full.tar.zst ./etc/group   | grep '^sudo:'
 
 ## 21.7 CI 与 release
 
-两个 workflow 各自维护一个**固定 tag**（每次覆盖，说明见同目录的 `release-*.md`）：
+三个 workflow 各自维护一个**固定 tag**（每次覆盖，说明见同目录的 `release-*.md`）：
 
 | workflow | tag | 资产 |
 |---|---|---|

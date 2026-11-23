@@ -93,9 +93,10 @@ sudo ./installer/mkusb.sh \
 | [image-npu.yml](../.github/workflows/image-npu.yml) | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
 | [image-usb.yml](../.github/workflows/image-usb.yml) | 两个原生 runner 各编一半 + amd64 拼盘 | `debian-usb.img.zst`（维护 U 盘） |
 
-push 到 `main`（且改到 `image/` `kernel/` `systemd/` `board/`）或者手动 `workflow_dispatch` 触发。
+三个 workflow 都**只在手动触发**时运行（Actions → 选 workflow → Run workflow，或
+`gh workflow run image-x86.yml`），提交代码不会再自动烧 CI 时间。
 
-**产物自动发 Release**：两个 workflow 各写一个**固定 tag**，每次覆盖同一个 release
+**产物自动发 Release**：三个 workflow 各写一个**固定 tag**，每次覆盖同一个 release
 （不再有 `<日期>-<sha>` 的临时 tag）；说明文件就是同目录的 `release-*.md`，用
 `gh release --notes-file` 发出去。
 
