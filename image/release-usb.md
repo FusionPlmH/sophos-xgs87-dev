@@ -14,8 +14,12 @@
 | 分区 | 内容 |
 |---|---|
 | `p1` | ESP（476 MiB FAT32 + GRUB），能不能启动全靠它 |
-| `p2` | 和 `debian-x86` 一样的 Debian root，只多一个开机菜单（不写回内置盘） |
-| `p3` | 标签 `XGS87` 的 ext4 payload：`debian-x86.img.zst`、`debian-npu.tar.zst`、DTB、`installer/payload/*.sh`，外加 `--extra`（默认 1024 MiB）留给备份的空间 |
+| `p2` | 和 `debian-x86` 一样的 Debian root，多一个开机菜单和安装用的 payload（`/opt/xgs87/payload`） |
+| `p3` | **第一次开机才切**：U 盘上剩下的全部空间，做成 `exfat`（标签 `XGS87BAK`），挂到 `/media/xgs87-bak` 存备份 |
+
+镜像里只有 `p1` + `p2` 两个分区，安装用的 `debian-x86.img.zst` / `debian-npu.tar.zst` / DTB /
+脚本都在 root 的 `/opt/xgs87/payload` 里。所以**不用预估"给备份留多少"**：32 GB 的盘装完
+1.5 GB 的系统，剩下 30 GB 第一次开机自己变成备份区；换 128 GB 的盘也不用重建镜像。
 
 payload 是构建 workflow 当时选的那个变体（`full` / `lean` / `base`），所以 U 盘里装出来的
 系统和你构建时选的一致。
@@ -56,11 +60,30 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
 | `2` 重装 NPU | 通过 vNTB 把 `debian-npu.tar.zst` 解到 NPU 的 root 分区（默认 `/dev/mmcblk0p2`）| 目标分区被 `mkfs.ext4`；**动手前会先问要不要备份** |
 | `3` 查看状态 | 磁盘、vNTB 链路、NPU 是否可达、SSH 通不通 | 只读 |
-| `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 U 盘的 payload 分区 | 需要 U 盘剩余空间 ≥ 内置盘 |
-| `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 U 盘 | 需要 U 盘剩余空间 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck || `5` shell | 直接进 root shell（U 盘系统） | — |
+| `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 内置盘 |
+| `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |
+| `5` shell | 直接进 root shell（U 盘系统） | — |
 | `9` / `0` | 关机 / 重启 | — |
 
 `2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
+
+## 备份区（`/media/xgs87-bak`）
+
+第一次从 U 盘开机时，`xgs87-usbstore.service` 会：
+
+1. 把 GPT 备份头搬到盘尾（`sgdisk -e`）——`dd` 到更大的盘之后它还在镜像原来的末尾；
+2. 用 `sfdisk` 在剩下的空间上切一个 `p3`（能切多少切多少，盘尾留 1 MiB 给 GPT）；
+3. `mkfs.exfat -n XGS87BAK` 并挂到 `/media/xgs87-bak`。
+
+选 `exfat` 是为了插到 Windows / macOS 上也能直接读备份文件；单文件没有 4 GiB 上限，
+`backup-x86.sh` 流出的是 `dd | gzip` 的 `.img.gz`，解压后是完整盘。手动跑一次：
+
+```sh
+sudo /usr/local/sbin/xgs87-usbstore.sh
+```
+
+U 盘和镜像一样大（没有剩余空间）时它只会打一行提示，菜单照常可用，只是备份选项会告诉你
+没地方写。
 
 重装完 x86 后首次开机会自动把 root 分区扩到盘尾（`xgs87-growroot.service`）。
 登录 **`admin` / `P@ssw0rd`**（`sudo` 要密码），`root` 已锁定、SSH 拒绝 root。
@@ -81,8 +104,7 @@ sudo ./installer/mkusb.sh \
     --x86 out/debian-x86.img.zst \
     --npu out/debian-npu.tar.zst \
     --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
-    --out out/debian-usb.img \
-    --extra 2048          # payload 分区留给备份的余量（MiB），默认 1024
+    --out out/debian-usb.img
 ```
 
 CI 的 `.github/workflows/image.yml`（`target=usb`）跑的就是这串：amd64 runner 出 x86 整盘镜像、

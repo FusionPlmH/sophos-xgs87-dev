@@ -46,12 +46,12 @@ install -d /etc/xgs87
 	install -m644 "$REPO"/image/overlay/npu/etc/xgs87/net.conf /etc/xgs87/net.conf
 systemctl daemon-reload
 systemctl enable xgs-ports-up xgs-vntb xgs-net-up \
-	xgs-dhcp xgs-netconsole >/dev/null
+	xgs-dhcp xgs-nat xgs-netconsole >/dev/null
 
 cat <<EOM
 
 Done.  Next:
-  systemctl start xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-netconsole
+  systemctl start xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-nat xgs-netconsole
   ip -br link            # p1..p8 + sfp must exist
 
 Boot files (/boot/Image, /boot/initrd.img, the DTB) are handled by

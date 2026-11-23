@@ -56,6 +56,27 @@ LAN_PORTS="p1"   LAN_MODE="static"  LAN_VID="200"   # LAN_ADDR="10.234.56.1/24"
 x86 那一端（`systemd/x86/`）跟着这两条 VLAN 走：`100-wan.network` 在 `eth0.100` 上 DHCP，
 `200-lan.network` 在 `eth0.200` 上给静态 `10.234.56.2/24`。
 
+## 20.2.1 LAN 出去要靠 NAT（`xgs-nat.service`）
+
+LAN 段是独立的 `10.234.56.0/24`，上游只认识 `br-wan` 那个 DHCP 地址，所以 LAN 下面的设备
+想上网必须做转发 + 源地址伪装：
+
+```
+net.ipv4.ip_forward = 1                       # /etc/sysctl.d/60-xgs87-nat.conf
+nft add table inet xgs87                      # xgs-nat.sh 建，重复执行就是重建
+  chain forward   : br-lan → br-wan accept；br-wan → br-lan 只放 established/related；其余 drop
+  chain postrouting: oifname br-wan, ip saddr 10.234.56.0/24 masquerade
+```
+
+- 规则全在自己的 `inet xgs87` 表里：`systemctl disable --now xgs-nat && nft delete table inet xgs87`
+  就完全回退，不留后遗症。
+- 子网的 `10.234.56.0/24` 从 `net.conf` 的 `LAN_ADDR` 推出来，改地址不用改规则。
+- **没开 IPv6 转发**：上游目前只发 IPv4 租约，开了也只是徒增暴露面。
+- 也没装 DNS 服务：LAN 上的客户端 DNS 要么指上游，要么指公共解析器。
+
+> ⚠️ 这条 NAT 只是"让 LAN 能出去"，没做任何限速/访问控制；要当正式路由用还缺 DHCP 服务
+> 和防火墙策略（见 §20.12）。
+
 > ⚠️ 下游设备要自己配 `10.234.56.x/24`，网关 `10.234.56.1`：这里的 LAN 没有 DHCP 服务，
 > 插上去不会自动拿到地址。
 

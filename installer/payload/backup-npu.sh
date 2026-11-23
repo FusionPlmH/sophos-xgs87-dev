@@ -1,5 +1,5 @@
 #!/bin/sh
-# 把 NPU 的一个分区整块备份到 U 盘的 payload 分区。
+# 把 NPU 的一个分区整块备份到 U 盘的 exfat 备份分区。
 #
 #   ./backup-npu.sh [/dev/mmcblk0p2]
 #
@@ -10,11 +10,19 @@ set -eu
 
 PAYLOAD=${PAYLOAD:-$(cd "$(dirname "$0")" && pwd)}
 . "$PAYLOAD/lib.sh"
+SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
+
+STORE=$(ensure_store) || {
+	echo "U 盘上没有可用的备份分区（/media/xgs87-bak 没挂上）。" >&2
+	echo "它由 xgs87-usbstore.service 在首次开机时切出来；" >&2
+	echo "手动跑一次： sudo /usr/local/sbin/xgs87-usbstore.sh" >&2
+	exit 1
+}
+
 NPU=$(find_npu 10) || {
 	echo "NPU 不可达（试过：$NPU_CANDIDATES）。vNTB 链路起来了吗？" >&2
 	exit 1
 }
-SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 
 PART=${1:-}
 [ -n "$PART" ] || {
@@ -27,17 +35,17 @@ case "$PART" in
 *) echo "分区要写 /dev/... 的绝对路径" >&2; exit 1 ;;
 esac
 
-DEST=$PAYLOAD/npu-$(basename "$PART")-$(date +%Y%m%d-%H%M).img.gz
+DEST=$STORE/npu-$(basename "$PART")-$(date +%Y%m%d-%H%M).img.gz
 
 SZ=$($SSH "admin@$NPU" "sudo blockdev --getsize64 $PART") || {
 	echo "读不到 $PART 的大小（NPU 上的 ssh/sudo 有问题？）" >&2
 	exit 1
 }
-AVAIL=$(df --output=avail -B1 "$PAYLOAD" | tail -1)
-echo "分区 $PART = $((SZ / 1024 / 1024)) MiB，U 盘剩余 $((AVAIL / 1024 / 1024)) MiB"
+AVAIL=$(df --output=avail -B1 "$STORE" | tail -1)
+echo "分区 $PART = $((SZ / 1024 / 1024)) MiB，备份分区剩余 $((AVAIL / 1024 / 1024)) MiB"
 [ "$AVAIL" -gt "$SZ" ] || {
 	echo "空间不够：至少要 $((SZ / 1024 / 1024)) MiB 空闲，现在只有 $((AVAIL / 1024 / 1024)) MiB。" >&2
-	echo "重做 U 盘时把这个分区做大，例如 ./installer/mkusb.sh ... --extra 2048" >&2
+	echo "换一条更大的 U 盘（剩余空间 = U 盘容量 - 镜像大小）。" >&2
 	exit 1
 }
 

@@ -32,3 +32,17 @@ lan_addr() {
 		awk '$1 != "lo" && $3 ~ /^[0-9]/ { print $3 }' | cut -d/ -f1 | head -1)
 	echo "$_a"
 }
+
+# ensure_store -> 打印可用的备份目录；备份分区没准备好就返回 1
+#
+# 备份分区是第一次开机由 xgs87-usbstore.sh 在 U 盘尾部切出来的 exfat。这里再调
+# 一次是幂等的：已经挂好了它直接退出；没挂好就现切。绝不能因为目录"看起来存在"
+# 就往 root 分区里写 —— 那条路会先把 U 盘系统自身撑爆。
+ensure_store() {
+	_dir=${STORE:-/media/xgs87-bak}
+	if [ -x /usr/local/sbin/xgs87-usbstore.sh ]; then
+		/usr/local/sbin/xgs87-usbstore.sh >/dev/null 2>&1 || true
+	fi
+	findmnt -n -o TARGET "$_dir" >/dev/null 2>&1 || return 1
+	echo "$_dir"
+}

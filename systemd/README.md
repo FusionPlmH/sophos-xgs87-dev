@@ -46,6 +46,7 @@ sudo systemctl enable xgs87-growroot
 | `xgs-vntb.service` | `xgs-vntb.sh` | configfs 建 `pci_epf_vntb`（VID `1957:0809`）、`start` EPC、再装 `ntb_transport` + `ntb_netdev` |
 | `xgs-net-up.service` | `xgs-net-up.sh` | 按 **`/etc/xgs87/net.conf`** 把面板口分成两个桥：`br-wan`（`p2` = 面板 `2/WAN`）+ `eth0.100`，`br-lan`（`p1` = 面板 `1/LAN`）+ `eth0.200`。两个桥各用一条 VLAN（100/200），谁都不用默认 VLAN 1 |
 | `xgs-dhcp.service` | `xgs-dhcp.sh` | 在 `net.conf` 里选 `dhcp` 的桥上跑**一个** `dhcpcd`。默认只有 `br-wan` 是 `dhcp`；`br-lan` 默认 `static`（`10.234.56.1/24`，**不跑 DHCP 服务**）。也可以 `none` |
+| `xgs-nat.service` | `xgs-nat.sh` | LAN → WAN 的转发 + `masquerade`（`inet xgs87` 表，子网从 `LAN_ADDR` 推）。`net.ipv4.ip_forward=1` 由 `/etc/sysctl.d/60-xgs87-nat.conf` 一起保证 |
 | `xgs-netconsole.service` | —（`modprobe netconsole`） | 把内核 console 推给 x86 和操作者的 PC，两个目标都走 `br-lan`。**这是崩溃取证的主要手段**，见 [docs/20](../docs/20-lan-over-vntb.md) §20.8 |
 
 启动顺序由 `After=`/`Wants=` 串好，一次性 `enable --now` 全部即可：
@@ -54,7 +55,7 @@ sudo systemctl enable xgs87-growroot
 sudo install -m755 systemd/npu/*.sh      /usr/local/sbin/
 sudo install -m644 systemd/npu/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-netconsole
+sudo systemctl enable --now xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-nat xgs-netconsole
 ```
 
 ### `/etc/xgs87/net.conf`

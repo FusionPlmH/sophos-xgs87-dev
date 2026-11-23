@@ -14,3 +14,5 @@ pciutils,usbutils,dmidecode
 iperf3,tcpdump
 # the maintenance USB built by installer/mkusb.sh runs on this side
 whiptail,python3-minimal
+# the USB stick's backup partition is exfat, and it gets cut on first boot
+exfatprogs,gdisk

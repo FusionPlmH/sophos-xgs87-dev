@@ -1,0 +1,13 @@
+[Unit]
+Description=XGS 87: forward + NAT between br-lan and br-wan
+Documentation=file:/etc/xgs87/net.conf
+After=xgs-net-up.service xgs-dhcp.service
+Wants=xgs-net-up.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/xgs-nat.sh
+
+[Install]
+WantedBy=multi-user.target

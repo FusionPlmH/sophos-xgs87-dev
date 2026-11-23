@@ -6,6 +6,7 @@
 set -eu
 
 PAYLOAD=${PAYLOAD:-$(cd "$(dirname "$0")" && pwd)}
+. "$PAYLOAD/lib.sh"
 IMG=$(ls "$PAYLOAD"/debian-x86.img.zst 2>/dev/null | head -1)
 [ -n "$IMG" ] || { echo "找不到 $PAYLOAD/debian-x86.img.zst"; exit 1; }
 
@@ -36,7 +37,7 @@ printf '要先把 %s 备份到 U 盘吗？[y/N] ' "$TARGET"
 read -r bk
 case "${bk:-n}" in
 y | Y)
-	if ! "$HERE/backup-x86.sh" "$TARGET"; then
+	if ! "$PAYLOAD/backup-x86.sh" "$TARGET"; then
 		printf '\n备份没成功。仍然整盘覆盖 %s（原有系统会没）？输入 YES：' "$TARGET"
 		read -r go2
 		[ "$go2" = YES ] || { echo "取消"; exit 1; }

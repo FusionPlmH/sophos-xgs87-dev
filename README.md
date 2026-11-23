@@ -31,6 +31,8 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | x86 借道拿地址 | ✅ | `eth0.100` 走 WAN（DHCP）、`eth0.200` 走 LAN（静态 `10.234.56.2/24`） |
 | 一条链路跑 WAN + LAN | ✅ | VLAN 100（WAN）/ VLAN 200（LAN），两段在交换芯片上真隔离（docs/20 §20.1） |
 | 面板口分 WAN / LAN 且可配 | ✅ | `/etc/xgs87/net.conf`：`2/WAN` = `p2` → `br-wan`（VLAN 100，DHCP），`1/LAN` = `p1` → `br-lan`（VLAN 200，静态 `10.234.56.1/24`，不发 DHCP）（docs/20 §20.2） |
+| LAN 能真的上网（转发 + NAT） | ✅ | `xgs-nat.service`：`ip_forward=1` + `inet xgs87` 表里 `br-lan → br-wan` masquerade（docs/20 §20.2.1） |
+| 维护 U 盘不用预留 payload 分区 | ✅ | 安装包放 root 的 `/opt/xgs87/payload`；U 盘剩余空间第一次开机自动切成 exfat（`XGS87BAK`，挂 `/media/xgs87-bak`）放备份 |
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
 | NPU 单独重启 → x86 自动恢复 | ✅ | `xgs-ntb-watch` 做完整重置（rmmod → remove/rescan → 重建），实测 90 s 自己回来、x86 不重启（docs/20 §20.10） |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
