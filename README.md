@@ -83,6 +83,10 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 | x86 控制台 | COM5（RJ45）或 micro-USB，**115200** |
 | NPU 控制台 | **x86 的 `/dev/ttyS2`，host 侧要设 57600**（这颗 16550 的分频基准是标称值的两倍，软件 57600 = 线上 115200）。账号 `root` / `openwrt123` |
 
+> 上表是**现网这台**（手工装的旧系统）。[image/](image/) 构建出来的系统不一样：只有 `admin`
+> （`P@ssw0rd`，`sudo` 需要密码），`root` 已 `passwd -l` 锁定、sshd 里 `PermitRootLogin no`，
+> 所以新镜像上 `ssh root@…` 是进不去的。
+
 ⚠️ `/dev/ttyS2` **同一时刻只能有一个读者**，两个 `cat` 会把字节流切成乱码。
 现成工具：NPU 控制台用 [tools/on-x86/npu-console.sh](tools/on-x86/npu-console.sh)（**在 x86 上跑**），
 x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.py)（**在 PC 上跑**）。
@@ -120,10 +124,12 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [docs/18-same-soc-platforms.md](docs/18-same-soc-platforms.md) | **同族平台调研**：上游 Sophos DTS、88E6193X 的 PTP/TCAM、mvpp2 旋钮、EP 的 `dbi2` 陷阱 |
 | [docs/19-module-vs-kernel-rebuild.md](docs/19-module-vs-kernel-rebuild.md) | 模块 vs 重编内核、换模块的失联风险、风扇归属 |
 | [docs/20-lan-over-vntb.md](docs/20-lan-over-vntb.md) | **一条 PCIe 链路跑两套网络**、NPU 串口的真相、hrtimer 把 RTT 从 4 ms 打到 0.6 ms、模块替换实录 |
+| [docs/21-reproduce.md](docs/21-reproduce.md) | **换一台机器怎么把两套系统重新做出来**：构建步骤、占位符约定、发布前检查 |
 | [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本，按 **`npu/` / `x86/`** 分目录 |
 | [kernel/npu/](kernel/npu/) | NPU 侧 out-of-tree 模块（DKMS 包：vNTB、`spi-orion`、`clkfix`） |
 | [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |
 | [image/](image/) | **最小化 Debian 构建**：`mmdebstrap` 脚本、软件包清单、x86 磁盘镜像、GitHub Actions |
+| [installer/](installer/) | 维护 U 盘：把 `debian-x86.img.zst` / `debian-npu.tar.zst` 写回机器的菜单脚本 |
 | [.github/workflows/](.github/workflows/) | CI：`arm64` / `amd64` 分开构建 rootfs |
 | [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
 | [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
@@ -141,7 +147,7 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | 交换机 | Marvell 88E6193X，MDIO addr 2，product 193，11 口 |
 | x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian 13.6 / 6.12.94 |
 | x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |
-| NPU console | x86 `/dev/ttyS2`，host 侧 **57600**；`root` / `openwrt123` |
+| NPU console | x86 `/dev/ttyS2`，host 侧 **57600**；现网 `root` / `openwrt123`，`image/` 产出的是 `admin` / `P@ssw0rd` |
 | x86 console | RJ45 / micro-USB 二选一，同一个 ttyS0，**115200** |
 | 存储 | NPU：4 MB SPI NOR（U-Boot+env）+ 7.28 GiB eMMC；x86：16 GB eMMC |
 | MAC | 面板口由 U-Boot env 里 1 个基址衍生 9 个连续地址（docs/06） |

@@ -22,8 +22,11 @@
 |---|---|---|
 | x86（网络） | `ssh root@192.168.0.50` | 公钥（`id_xgs_ed25519`） |
 | NPU（网络） | `ssh root@192.168.0.66` | 公钥 |
-| x86 控制台 | `COM5` 115200 | `admin` / `P@ssw0rd`，`sudo` 免密 |
-| NPU 控制台 | **x86 的 `/dev/ttyS2`**，host 侧设 **57600** | `root` / `openwrt123` |
+| x86 控制台 | `COM5` 115200 | `admin` / `P@ssw0rd`（`image/` 产出的系统；现网旧系统用的是本地账号） |
+| NPU 控制台 | **x86 的 `/dev/ttyS2`**，host 侧设 **57600** | 现网 `root` / `openwrt123`；`image/` 产出的是 `admin` / `P@ssw0rd` |
+
+> `image/` 里 `root` 是 `passwd -l` 锁死的，sshd 也 `PermitRootLogin no`，登录一律走 `admin` + `sudo`
+> （`sudo` 要密码）。见 [image/release-x86.md](../image/release-x86.md)。
 
 ## 8.3 NPU 控制台的波特率是个坑：host 侧要设 57600
 

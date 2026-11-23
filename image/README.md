@@ -29,11 +29,26 @@ sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（~224 MB）
 ## x86：变成可启动镜像
 
 ```sh
-sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/xgs87-x86.img --size 8G
+sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.img
 ```
 
-GPT + 476 MiB ESP(FAT32) + ext4 root，`grub-install --removable`（这块 BIOS 只认
-`\EFI\BOOT\BOOTX64.EFI`），并把 GRUB 超时压到 2 秒（否则 `recordfail` 会白等 30 秒）。
+`--size` 默认 `auto`（rootfs + 12% + 256 MiB），首次开机由 `xgs87-growroot.service`
+把 `p2` 扩到盘尾，所以不用再写死 4G/8G。GPT + 476 MiB ESP(FAT32) + ext4 root，
+`grub-install --removable`（这块 BIOS 只认 `\EFI\BOOT\BOOTX64.EFI`），并把 GRUB
+超时压到 2 秒（否则 `recordfail` 会白等 30 秒）。
+
+## 账号
+
+镜像里只有 `admin`（`P@ssw0rd`，在 `sudo` 组里，`sudo` 要密码）。`root` 保留 uid 0
+但被 `passwd -l` 锁死，sshd 里 `PermitRootLogin no`：
+
+```sh
+useradd --create-home --shell /bin/bash --groups sudo admin
+echo "admin:P@ssw0rd" | chpasswd
+passwd -l root
+```
+
+想换口令就改 `image/setup.sh` 这一段，或者装完机后 `passwd`。
 
 ## NPU：怎么装
 
@@ -61,16 +76,15 @@ zstd -dc xgs87-npu-full.tar.zst | tar -xpf - -C /mnt
 
 push 到 `main`（且改到 `image/` `kernel/` `systemd/` `board/`）或者手动 `workflow_dispatch` 触发。
 
-**产物自动发 Release**：两个 workflow 都写到同一个 tag `images-<UTC 日期>-<短 sha>`，
-谁先跑完谁先建 release，后跑完的用 `gh release upload --clobber` 补上自己的文件
-（创建和上传都有 5 次重试，避免并发撞车）。
+**产物自动发 Release**：两个 workflow 各写一个**固定 tag**，每次覆盖同一个 release
+（不再有 `<日期>-<sha>` 的临时 tag）；说明文件就是同目录的 `release-*.md`，用
+`gh release --notes-file` 发出去。
 
-```
-images-20261123-aa03d9e
-├── xgs87-x86-full.img.zst
-├── xgs87-x86-full.tar.zst
-├── xgs87-npu-full.tar.zst
-└── cn9130-sophos-xgs87w-sfp10g-aa03d9e.dtb
-```
+| workflow | tag | 资产 |
+|---|---|---|
+| `image-x86.yml` | `debian-x86` | `debian-x86.img.zst` |
+| `image-npu.yml` | `debian-npu` | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
+
+x86 的 `out/xgs87-x86-*.tar.zst` 只进 CI artifact（7 天），不发 release。
 
 ⚠️ arm64 runner 在**私有**仓库要付费计划；本仓库是公开的，`ubuntu-24.04-arm` 免费。

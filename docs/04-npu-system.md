@@ -190,7 +190,7 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 | 改动 | 目的 |
 |---|---|
 | `mount -o remount,rw /` | 写 sshd 配置/authorized_keys（重启后自动回 ro） |
-| `passwd root` 设为 `openwrt123` | 方便 SSH（原厂空密码不能远程登录）。**这个名字是 OpenWrt 时代留下的，密码一直没改**，现在 NPU 跑 Debian 也用它 |
+| `passwd root` 设为 `openwrt123` | 方便 SSH（原厂空密码不能远程登录）。**这个名字是 OpenWrt 时代留下的，密码一直没改**。`image/` 产出的 Debian 镜像反过来：root 锁定、只留 admin + sudo |
 | `/root/.ssh/authorized_keys` 追加公钥 | 免密登录 |
 | `/etc/ssh/sshd_config` 追加 `PermitRootLogin yes` | 允许 root 登录 |
 | `ifconfig eth0 192.168.1.1/24 up` | 验证数据面（未持久化） |

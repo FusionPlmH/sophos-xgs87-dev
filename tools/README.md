@@ -86,13 +86,16 @@ WAIT=8 sudo ./npu-console.sh 'dmesg | tail'
 | 文件 | 说明 |
 |---|---|
 | `x86-console.py` | 走前面板 micro-USB / RJ45 串口（COM5 或 COM6，115200）跟 **x86** 控制台交互，UTF-8 安全 |
-| `serial-capture.py` | 把 COM 口原始字节流录进日志文件（硬编了 COM5 与输出路径，改完再用） |
+| `serial-capture.py` | 把 COM 口原始字节流录进日志文件（`--port`，默认 `logs/x86-console.log`，`--out` 可改） |
 | `grub-unstick.py` | x86 卡在 GRUB 命令行时，发 ESC / Ctrl-C / `normal` 把它推回正常启动 |
-| `netconsole-listen.py` | 收 UDP 6666 的 `netconsole` 日志（硬编了输出路径） |
-| `redact.py` | 发布前把序列号、真实 MAC、UUID 抹掉 |
+| `netconsole-listen.py` | 收 UDP 6666 的 `netconsole` 日志（`--bind` / `--out`，默认 `logs/npu-netcon.log`） |
+| `redact.py` | 发布前把序列号、真实 MAC、EUI-64 链路本地地址、UUID 抹掉 |
 
-> `on-pc/` 里几个脚本的输出路径是写死的（`logs\...`），
-> 换机器要改。
+> 这些脚本不再写死本机路径：日志默认落在当前目录的 `logs/` 下。
+> 真机专属的值（序列号、用户名……）不要写进仓库，`redact.py --list <文件>` 从仓库外读。
+
+发布前跑一遍 [tools/check-hygiene.sh](check-hygiene.sh)：它只认“设计里就该出现的”MAC
+和示例网段，发现别的就报错——防止真实 MAC / 内网地址 / Windows 用户路径又混进来。
 
 ## 不在这个目录里的构建配方
 

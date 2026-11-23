@@ -222,7 +222,7 @@ pstore: 0 records         ← console 后端明明在跑，却一条都没留下
 
 | 端 | unit | 做法 |
 |---|---|---|
-| NPU | `xgs-netconsole.service` | `modprobe netconsole`，双目标：①`192.168.100.2`（x86，走管理 VLAN）②`192.168.0.52`（PC，走 `br-lan`/`p4`，物理口） |
+| NPU | `xgs-netconsole.service` | `modprobe netconsole`，双目标：①`192.168.100.2`（x86，走管理 VLAN）②`192.168.0.52`（PC，走 `br-lan`/`p4`，物理口）——这两项是示例地址/MAC，按你自己的监听机改 |
 | x86 | `xgs-netconsole.service` | `nc -u -l -k 6666` → `/var/log/npu-netconsole.log` |
 | PC | [tools/on-pc/netconsole-listen.py](../tools/on-pc/netconsole-listen.py) | 收 UDP 6666 存文件 |
 
