@@ -77,9 +77,17 @@ WAIT=8 sudo ./npu-console.sh 'dmesg | tail'
 | `grub-unstick.py` | x86 卡在 GRUB 命令行时，发 ESC / Ctrl-C / `normal` 把它推回正常启动 |
 | `netconsole-listen.py` | 收 UDP 6666 的 `netconsole` 日志（`--bind` / `--out`，默认 `logs/npu-netcon.log`） |
 | `redact.py` | 发布前把序列号、真实 MAC、EUI-64 链路本地地址、UUID 抹掉 |
+| `module-whitelist.sh` | 从真机 `lsmod` 求依赖闭包，算出"这台机器真正用到的内核模块"和它们的体积（裁 `/lib/modules` 前的第一步）。`SSH_KEY=~/.ssh/id_xgs_ed25519 sh module-whitelist.sh root@host` |
 
 > 这些脚本不再写死本机路径：日志默认落在当前目录的 `logs/` 下。
 > 真机专属的值（序列号、用户名……）不要写进仓库，`redact.py --list <文件>` 从仓库外读。
+
+### 为什么需要 `module-whitelist.sh`
+
+`/lib/modules` 是瘦身之后最大的一块：NPU 上 **75 MiB / 4359 个 .ko**，而实测这台机器
+实际加载的模块求完依赖闭包只有 **110 个、2 MiB**。真按白名单裁，NPU 的 rootfs 能再小
+约 70 MiB（409 → ~340 MiB）。没直接做进构建，是因为少数路径（USB 启动、少见文件系统）
+的模块不在 `lsmod` 里，得先在真机 + 维护 U 盘上各验一遍。
 
 发布前跑一遍 [tools/check-hygiene.sh](check-hygiene.sh)：它只认“设计里就该出现的”MAC
 和示例网段，发现别的就报错——防止真实 MAC / 内网地址 / Windows 用户路径又混进来。
