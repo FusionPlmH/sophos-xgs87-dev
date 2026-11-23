@@ -71,7 +71,9 @@ jobs:
             --rootfs "out/xgs87-x86-${{ inputs.variant }}.tar.zst" \
             --out out/debian-x86.img \
             --size "${{ inputs.size }}"
-          zstd -T0 -10 -f --rm out/debian-x86.img
+          # mkdisk.sh created out/ as root (there is no out/ in a fresh clone),
+          # so the compression has to stay root as well.
+          sudo zstd -T0 -10 -f --rm out/debian-x86.img
 
       - name: Report
         run: |
@@ -115,7 +117,11 @@ jobs:
             --out out/debian-npu.tar.zst
 
       - name: Build the board DTB
-        run: bash ./tools/build/build-dtb.sh
+        run: |
+          # The rootfs build ran as root and created out/; build-dtb.sh clones
+          # the kernel tree in there as the runner user.
+          sudo chown -R "$(id -u):$(id -g)" out
+          bash ./tools/build/build-dtb.sh
 
       - name: Report
         run: |
