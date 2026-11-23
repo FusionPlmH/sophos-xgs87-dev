@@ -188,6 +188,23 @@ fi
 
 echo "== NPU 在线（$NPU），目标分区 $PART"
 
+# 顺序按"前提最容易满足"排：ssh + tar 只要 NPU 上有 tar/zstd（哪个镜像都有），
+# NBD 还得多一个 nbd-server。所以先试 ssh，成不了再谈 nbd。
+echo "== 1/6 看 NPU 上能不能直接解包（tar + zstd）"
+if timeout 60 npu_ssh 'command -v tar && command -v zstd' >/dev/null 2>&1; then
+	echo "   能 —— 直接用 ssh 解包，不需要 nbd-server"
+	if stream_install; then
+		echo
+		echo "NPU 写完了（ssh+tar 路径），它正在重启。"
+		printf '按回车返回菜单...'
+		read -r _
+		exit 0
+	fi
+	echo "== ssh+tar 没成，退到 NBD"
+else
+	echo "   NPU 上没有 tar/zstd（它不是我们的镜像？）—— 退到 NBD"
+fi
+
 echo "== 1/6 确认 NPU 上有 nbd-server"
 echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
 if ! timeout 60 npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then

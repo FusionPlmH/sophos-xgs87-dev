@@ -22,7 +22,26 @@ INTERACTIVE=${INTERACTIVE:-1}
 [ -e "$TTY" ] || { echo "找不到 $TTY" >&2; exit 1; }
 
 echo
-echo "== 让 NPU 重启并停在 U-Boot（$TTY @ $BAUD，敲 ${SPAM_SECS}s 空格）"
+echo "== 让 NPU 重启并停在 U-Boot（$TTY @ $BAUD）"
+
+# 关键：先把 x86 这边的 NTB 那套停掉。xgs-ntb-watch 每 15 秒会 rmmod + rescan
+# PCIe，那一 rescan 就给 NPU 一个 PERST# —— 正好把刚停住的 U-Boot 打飞。
+# 这也是"停到 => 不可靠"的主要原因。
+STOPPED=
+if systemctl is-active --quiet xgs-ntb-watch.service 2>/dev/null; then
+	systemctl stop xgs-ntb-watch.service 2>/dev/null && STOPPED="$STOPPED xgs-ntb-watch"
+fi
+if systemctl is-active --quiet xgs-ntb.service 2>/dev/null; then
+	systemctl stop xgs-ntb.service 2>/dev/null && STOPPED="$STOPPED xgs-ntb"
+fi
+[ -n "$STOPPED" ] && echo "   已暂停:$STOPPED（免得它们去碰 PCIe）"
+
+restore_ntb() {
+	[ -n "$STOPPED" ] || return 0
+	# shellcheck disable=SC2086
+	systemctl start $STOPPED 2>/dev/null || true
+}
+
 stty -F "$TTY" "$BAUD" raw -echo -crtscts 2>/dev/null || true
 
 # 它现在可能停在 shell 上，也可能已经停在 "=> "。前者要 sudo 密码（从 tty 读）。
@@ -38,6 +57,34 @@ while [ "$i" -lt "$n" ]; do
 	sleep 0.15 2>/dev/null || sleep 1
 done
 printf '\r' >"$TTY"
+
+# 确认真的停在 => 上；没有就再来一轮（systemd 关机慢的时候第一轮会敲早了）
+try=0
+while [ "$try" -lt 2 ]; do
+	try=$((try + 1))
+	BUF=
+	end=$(( $(date +%s) + 3 ))
+	while [ "$(date +%s)" -lt "$end" ]; do
+		BUF="$BUF$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')"
+	done
+	case "$BUF" in
+	*'=> '*) break ;;
+	esac
+	[ "$try" -lt 2 ] || break
+	echo "   还没看到 => （关机慢？），再来一轮"
+	printf 'sudo -S systemctl reboot\r' >"$TTY"
+	sleep 1
+	printf '%s\r' "$NPU_PASS" >"$TTY"
+	i=0
+	n=$(( SPAM_SECS * 7 ))
+	while [ "$i" -lt "$n" ]; do
+		printf ' ' >"$TTY"
+		i=$((i + 1))
+		sleep 0.15 2>/dev/null || sleep 1
+	done
+	printf '\r' >"$TTY"
+done
+restore_ntb
 echo "== 空格敲完，串口交给你（看到 '=> ' 就是停住了；U-Boot 里 Ctrl-C 之类不走本地信号）"
 
 [ "$INTERACTIVE" = 1 ] || exit 0
