@@ -1,0 +1,7 @@
+# The x86 end of the house-LAN VLAN: the NPU bridges this to p4, so the lease
+# comes straight from the house router.
+[Match]
+Name=eth0.31
+
+[Network]
+DHCP=ipv4

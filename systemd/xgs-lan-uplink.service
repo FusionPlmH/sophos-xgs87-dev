@@ -1,0 +1,12 @@
+[Unit]
+Description=XGS 87: bridge p4 to the x86 over vNTB VLAN 31 (house LAN)
+After=xgs-vntb.service xgs-mgmt-bridge.service
+Wants=xgs-vntb.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/xgs-lan-uplink.sh
+
+[Install]
+WantedBy=multi-user.target
