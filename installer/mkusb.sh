@@ -16,12 +16,17 @@
 # 挂到 /media/xgs87-bak，用来放原厂/整盘备份。
 #
 # 这台机器没有显示接口，菜单跑在 /dev/ttyS0（RJ45 / micro-USB 那个 115200 控制台）。
+#
+# --rescue 可选：tools/build/build-rescue.sh 产出的小急救包（Image.gz +
+# initramfs.gz，约 15 MB）。NPU 起不来、也没有 USB 网卡做物理旁路时，菜单 2 的
+# 最后一级会把这段走串口推进 U-Boot，起来后由 x86 喂整盘影像。
 set -eu
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 X86=
 NPU=
 DTB=
+RESCUE=
 OUT=$REPO/out/debian-usb.img
 MENU_TTY=/dev/ttyS0
 PAYLOAD_DIR=/opt/xgs87/payload
@@ -31,6 +36,7 @@ while [ $# -gt 0 ]; do
 	--x86)   X86=$2; shift 2 ;;
 	--npu)   NPU=$2; shift 2 ;;
 	--dtb)   DTB=$2; shift 2 ;;
+	--rescue) RESCUE=$2; shift 2 ;;
 	--out)   OUT=$2; shift 2 ;;
 	--tty)   MENU_TTY=$2; shift 2 ;;
 	-h|--help) sed -n '2,19p' "$0"; exit 0 ;;
@@ -106,6 +112,9 @@ mkdir -p "$WORK/root$PAYLOAD_DIR"
 cp "$X86" "$WORK/root$PAYLOAD_DIR/debian-x86.img.zst"
 cp "$NPU" "$WORK/root$PAYLOAD_DIR/debian-npu.tar.zst"
 [ -n "$DTB" ] && cp "$DTB" "$WORK/root$PAYLOAD_DIR/"
+if [ -n "$RESCUE" ] && [ -f "$RESCUE" ]; then
+	cp "$RESCUE" "$WORK/root$PAYLOAD_DIR/xgs87-rescue.tar.zst"
+fi
 cp -a "$REPO"/installer/payload/. "$WORK/root$PAYLOAD_DIR/"
 chown -R 0:0 "$WORK/root$PAYLOAD_DIR"
 chmod 755 "$WORK/root$PAYLOAD_DIR"/*.sh

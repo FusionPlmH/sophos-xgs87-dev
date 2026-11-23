@@ -92,6 +92,29 @@ U-Boot 还能做 NBD 做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; save
 
 `2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
 
+## 急救包（NPU 起不来、也没有 USB 网卡时）
+
+`/opt/xgs87/payload/xgs87-rescue.tar.zst`，由 `tools/build/build-rescue.sh` 从 `debian-npu.tar.zst`
+里就地组装（不需要交叉编译）：
+
+| 内容 | 大小 | 为什么需要 |
+|---|---|---|
+| `Image.gz` | **13.7 MB** | NPU 的内核（37.7 MB 的 Image 压过），U-Boot 用 `unzip` 解开 |
+| `initramfs.gz` | **1.86 MB** | 静态 busybox（`wget`/`dd`/`ip`/`modprobe`）+ 11 个模块（EP、ntb、mmc、vlan）+ `/init` |
+| `cn9130-…dtb` | 61 KB | 板级设备树 |
+| 合计 | **≈15 MB** | 串口推得动 |
+
+`/init` 只做三件事：拉起 vNTB 端点 → 给裸 `eth0` 配 `10.234.56.1/24` → 从 x86
+`wget` 整盘影像并 `dd` 到 `p2`，然后 `reboot -f`。
+
+**为什么不用 NBD/TFTP 做 initramfs**：那要把 `nbd-server`（glibc + 依赖，约 4 MB）或
+TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 —— 1.86 MB vs 6 MB，
+而且 HTTP 比 TFTP 好传大文件（能续、能看到进度）。
+
+串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。
+把 `baudrate` 调高只要在 U-Boot 里 `setenv baudrate 460800; saveenv`（这颗 16550 的分频是
+标称值的两倍，所以软件 460800 = 线上 921600）。
+
 ## 备份区（`/media/xgs87-bak`）
 
 第一次从 U 盘开机时，`xgs87-usbstore.service` 会：

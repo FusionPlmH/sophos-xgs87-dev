@@ -154,7 +154,17 @@ jobs:
       - name: Install the tooling mkusb.sh needs
         run: |
           sudo apt-get update
-          sudo apt-get install -y zstd dosfstools fdisk mtools e2fsprogs
+          sudo apt-get install -y zstd dosfstools fdisk mtools e2fsprogs \
+            binutils cpio kmod curl gzip
+
+      - name: Build the NPU rescue bundle
+        # 15 MB 的 Image.gz + initramfs.gz：NPU 起不来又没有 USB 网卡时的最后一级，
+        # 走串口推进 U-Boot，起来把 vNTB 拉通再让 x86 喂整盘。
+        run: |
+          sudo bash ./tools/build/build-rescue.sh \
+            --npu out/debian-npu.tar.zst \
+            --out out/xgs87-rescue.tar.zst
+          ls -lh out/xgs87-rescue.tar.zst
 
       - name: Assemble the USB image
         run: |
@@ -163,6 +173,7 @@ jobs:
             --x86 out/debian-x86.img.zst \
             --npu out/debian-npu.tar.zst \
             --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
+            --rescue out/xgs87-rescue.tar.zst \
             --out out/debian-usb.img
           # mkusb.sh compresses to out/debian-usb.img.zst and removes the raw
           # image itself.

@@ -113,6 +113,20 @@ if [ "${NO_UBOOT:-0}" != 1 ] && [ -x "$PAYLOAD/npu-uboot-install.sh" ]; then
 	echo "== U-Boot 那条路没走通，改用 NBD"
 fi
 
+# 最后一招：串口推 15 MB 急救包进去，让它把 vNTB 拉起来再写整盘。
+try_rescue() {
+	[ -f "$PAYLOAD/xgs87-rescue.tar.zst" ] || { echo "   （没有急救包，跳过）"; return 1; }
+	[ -x "$PAYLOAD/npu-rescue.sh" ] || return 1
+	echo "== 试最后一招：急救 initramfs（串口推 Image.gz + initramfs.gz，约 15 MB）"
+	echo "   115200 大约 24 分钟；BAUD=460800 sh 这个脚本就只要 6 分钟"
+	printf '现在试吗？[Y/n] '
+	read -r r
+	case "${r:-y}" in
+	n | N) return 1 ;;
+	esac
+	"$PAYLOAD/npu-rescue.sh"
+}
+
 NPU=$(find_npu 30) || NPU=
 
 if [ -z "$NPU" ] && [ -e "$SERIAL" ]; then
@@ -132,11 +146,10 @@ if [ -z "$NPU" ]; then
        sudo tee /etc/nbd-server/xgs87.conf
      sudo nbd-server -C /etc/nbd-server/xgs87.conf
    然后回来重新选本项。
-
-   然后重新选本项。
 EOM
 	printf '按回车返回菜单...'
 	read -r _
+	try_rescue
 	exit 1
 fi
 
@@ -233,3 +246,4 @@ echo
 echo "NPU 写完了，正在重启。等它起来后菜单选 3 看状态。"
 printf '按回车返回菜单...'
 read -r _
+exit 0

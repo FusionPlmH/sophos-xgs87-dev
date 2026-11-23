@@ -1,0 +1,80 @@
+#!/bin/sh
+# NPU 急救 initramfs 的 /init。
+#
+# 目标：只靠"U-Boot + 串口推十几 MB"，把 NPU 变成一个可以从 x86 拉整份 rootfs
+# 的靶子。所以这里只做三件事：
+#   1. 把 vNTB 端点拉起来（PCIe 一通，x86 那边就又能说话了）
+#   2. 给裸 eth0 配 10.234.56.1/24（急救会话用不打扰任何 VLAN 配置）
+#   3. 从 x86 把 p2 的整盘影像 wget 下来 dd 进去，然后重启
+#
+# 不用 NBD、不用 ssh、不用 zstd —— busybox 的 wget/dd 就够了，initramfs 也就
+# 能压到十几 MB。所有地址/路径都可以用内核 cmdline 覆盖（rescue.url= 等）。
+set -u
+
+/bin/busybox --install -s /bin 2>/dev/null
+export PATH=/bin:/sbin
+
+echo "rescue: booting $(uname -r)"
+
+mount -t proc     none /proc  2>/dev/null
+mount -t sysfs    none /sys   2>/dev/null
+mount -t devtmpfs none /dev   2>/dev/null
+mkdir -p /sys/kernel/config /run
+mount -t configfs none /sys/kernel/config 2>/dev/null
+
+# 内核 cmdline 覆盖：rescue.url=… rescue.part=… rescue.ip=…（U-Boot 里 setenv bootargs）
+URL=$(sed -n 's/.*rescue\.url=\([^ ]*\).*/\1/p' /proc/cmdline)
+PART=$(sed -n 's/.*rescue\.part=\([^ ]*\).*/\1/p' /proc/cmdline)
+IP=$(sed -n 's/.*rescue\.ip=\([^ ]*\).*/\1/p' /proc/cmdline)
+URL=${URL:-http://10.234.56.2:8080/p2.img}
+PART=${PART:-/dev/mmcblk0p2}
+IP=${IP:-10.234.56.1/24}
+
+# ---- 1. vNTB 端点（和 /usr/local/sbin/xgs-vntb.sh 同样的顺序）----
+modprobe configfs 2>/dev/null
+for m in pci_ep_cfs pcie_dw_plat ntb_core pci_epf_vntb; do
+	modprobe "$m" 2>/dev/null || echo "rescue: modprobe $m 失败"
+done
+
+EPC=f2600000.pcie
+i=0
+while [ ! -d "/sys/class/pci_epc/$EPC" ] && [ "$i" -lt 30 ]; do
+	i=$((i + 1)); sleep 1
+done
+if [ -d "/sys/class/pci_epc/$EPC" ]; then
+	C=/sys/kernel/config/pci_ep
+	mkdir -p "$C/functions/vntb.0" 2>/dev/null
+	echo 0x1957 >"$C/functions/vntb.0/vendorid" 2>/dev/null
+	echo 0x0809 >"$C/functions/vntb.0/deviceid" 2>/dev/null
+	echo 1 >"$C/functions/vntb.0/msi_interrupts" 2>/dev/null
+	ln -sf "$C/functions/vntb.0" "$C/controllers/$EPC/vntb.0" 2>/dev/null
+	echo 1 >"$C/controllers/$EPC/start" 2>/dev/null
+fi
+for m in ntb_hw_epf ntb_transport ntb_netdev; do
+	modprobe "$m" 2>/dev/null || echo "rescue: modprobe $m 失败"
+done
+
+# ---- 2. 网络：裸 eth0（急救不碰 VLAN）----
+i=0
+while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 30 ]; do
+	i=$((i + 1)); sleep 1
+done
+if [ -e /sys/class/net/eth0 ]; then
+	ip link set eth0 up
+	ip addr add "$IP" dev eth0 2>/dev/null
+	echo "rescue: eth0 = $IP"
+else
+	echo "rescue: 没有 eth0（vNTB 没起来）—— 先别写盘"
+fi
+
+# ---- 3. 拉影像 + 写盘 ----
+[ -b "$PART" ] || { echo "rescue: $PART 不存在"; exec sh; }
+echo "rescue: $URL -> $PART"
+if wget -q -O - "$URL" | dd of="$PART" bs=1M 2>/dev/null; then
+	sync
+	echo "rescue: 写完了，重启"
+	sleep 2
+	reboot -f
+fi
+echo "rescue: 下载/写入失败，给你一个 shell（ip / wget / dd 都在）"
+exec sh
