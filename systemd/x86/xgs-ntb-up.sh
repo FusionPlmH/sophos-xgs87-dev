@@ -13,6 +13,7 @@ set -u
 
 MGMT_VID=${MGMT_VID:-100}
 LAN_VID=${LAN_VID:-31}
+WAN_VID=${WAN_VID:-32}
 MGMT_ADDR=${MGMT_ADDR:-192.168.100.2/24}
 
 modprobe ntb_hw_epf 2>/dev/null
@@ -47,7 +48,7 @@ ip link set eth0 mtu 2022 2>/dev/null || true
 ip addr flush dev eth0 2>/dev/null
 ip link set eth0 up
 
-for vid in "$MGMT_VID" "$LAN_VID"; do
+for vid in "$MGMT_VID" "$LAN_VID" "$WAN_VID"; do
 	vl=eth0.$vid
 	ip link show "$vl" >/dev/null 2>&1 || \
 		ip link add link eth0 name "$vl" type vlan id "$vid" || exit 1
@@ -60,7 +61,7 @@ done
 ip link set "eth0.$MGMT_VID" address 02:58:47:53:00:11 2>/dev/null || true
 ip link set "eth0.$LAN_VID" address 02:58:47:53:00:31 2>/dev/null || true
 
-for vid in "$MGMT_VID" "$LAN_VID"; do
+for vid in "$MGMT_VID" "$LAN_VID" "$WAN_VID"; do
 	ip link set "eth0.$vid" up
 done
 

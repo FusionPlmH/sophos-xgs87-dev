@@ -1,0 +1,13 @@
+[Unit]
+Description=XGS 87: DHCP client on the bridges that ask for one
+After=xgs-net-up.service
+Wants=xgs-net-up.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/xgs-dhcp.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

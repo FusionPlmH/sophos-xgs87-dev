@@ -1,7 +1,7 @@
 [Unit]
 Description=Send the kernel console to the x86 (mgmt VLAN) and the PC (house LAN)
-After=xgs-mgmt-bridge.service xgs-lan-uplink.service
-Wants=xgs-mgmt-bridge.service xgs-lan-uplink.service
+After=xgs-mgmt-bridge.service xgs-net-up.service
+Wants=xgs-mgmt-bridge.service xgs-net-up.service
 
 # Why netconsole and not pstore: every boot runs mv_ddr training + a full DRAM
 # scrub, so the ramoops region is wiped before we can read it.  netconsole

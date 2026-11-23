@@ -152,13 +152,14 @@ mkdir -p "$WORK/root/etc/systemd/system/local-fs.target.wants"
 ln -sf /etc/systemd/system/run-media-xgs87.mount \
 	"$WORK/root/etc/systemd/system/local-fs.target.wants/run-media-xgs87.mount"
 
-# 串口和 tty1 交给菜单，别再起 getty；U 盘系统也不扩分区、不跑链路单元。
+# 串口和 tty1 交给菜单，别再起 getty；U 盘系统也不扩分区。
 ln -sf /dev/null "$WORK/root/etc/systemd/system/serial-getty@ttyS0.service"
 ln -sf /dev/null "$WORK/root/etc/systemd/system/getty@tty1.service"
 rm -f "$WORK/root/etc/systemd/system/multi-user.target.wants/xgs87-growroot.service"
-for u in xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole xgs-npu-console; do
-	rm -f "$WORK/root/etc/systemd/system/multi-user.target.wants/$u.service"
-done
+
+# 但 vNTB 那套要留着：U 盘系统自己也要能上网 —— xgs-ntb 把 eth0 和两条 VLAN
+# 建起来，systemd-networkd 在 eth0.31 上跑 DHCP，于是从面板口就能 ssh 进 U 盘系统
+# （或者让它替 NPU 干活）。原来的做法是把这些单元全关掉，结果只能靠串口。
 
 # 串口上的内核 printk 会和 whiptail 抢同一行，U 盘启动时安静点。
 if [ -f "$WORK/root/boot/grub/grub.cfg" ]; then

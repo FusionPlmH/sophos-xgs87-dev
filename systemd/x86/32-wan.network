@@ -1,0 +1,11 @@
+# The x86 end of the WAN VLAN (面板 2/WAN → br-wan → eth0.32).
+#
+# No address by default: the WAN segment belongs to the NPU side, and a
+# second DHCP client here would just take a lease the box does not use.
+# Flip DHCP to yes (or drop this file and use DHCP=ipv4) if you want the x86
+# to see the WAN side -- e.g. when it should route/NAT between the two.
+[Match]
+Name=eth0.32
+
+[Network]
+DHCP=no

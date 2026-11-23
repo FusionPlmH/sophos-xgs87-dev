@@ -2,7 +2,7 @@
 # NPU side (CN9130, arm64).
 #
 # REQUIRED by our units and scripts:
-#   dhcpcd-base      -> /usr/sbin/dhcpcd for xgs-lan-dhcp.service
+#   dhcpcd-base      -> /usr/sbin/dhcpcd for xgs-dhcp.service
 #   libubootenv-tool -> fw_printenv; xgs-ports-init.sh reads ethaddr from the
 #                       U-Boot environment to derive per-port MACs.  Without
 #                       it every port keeps the same MAC and nothing warns.

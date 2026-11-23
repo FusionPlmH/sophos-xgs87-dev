@@ -43,8 +43,8 @@ EOF
 	# executable); just make sure the directories exist.
 	chmod 755 /etc/kernel/postinst.d/zz-xgs87-image \
 		  /etc/initramfs/post-update.d/zz-xgs87-initrd
-	systemctl enable xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-lan-uplink \
-		xgs-lan-dhcp xgs-netconsole
+	systemctl enable xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-net-up \
+		xgs-dhcp xgs-netconsole
 else
 	systemctl enable systemd-networkd xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole
 fi
@@ -171,5 +171,9 @@ fi
 # image/overlay comes from a Windows checkout, so everything in it arrives
 # mode 0777 -- systemd warns about world-writable drop-ins and keeps going.
 chmod 644 /etc/systemd/system/ssh.service.d/*.conf
+# net.conf is *sourced* by xgs-net-up.sh as root, so it must not be writable by
+# anyone else.
+find /etc/xgs87 -type d -exec chmod 755 {} + 2>/dev/null || true
+find /etc/xgs87 -type f -exec chmod 644 {} + 2>/dev/null || true
 
 echo "== setup.sh done"

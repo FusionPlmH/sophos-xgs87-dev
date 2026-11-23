@@ -32,7 +32,7 @@ echo "   installed for $(dkms status "$PKG" | sed 's/.*: //' | tr '\n' ' ')"
 echo "== systemd units"
 install -m755 "$REPO"/systemd/x86/*.sh /usr/local/sbin/
 install -m644 "$REPO"/systemd/x86/*.service /etc/systemd/system/
-install -m644 "$REPO"/systemd/x86/31-house-lan.network /etc/systemd/network/ 2>/dev/null || true
+install -m644 "$REPO"/systemd/x86/*.network /etc/systemd/network/ 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole >/dev/null
 systemctl enable systemd-networkd >/dev/null 2>&1 || true

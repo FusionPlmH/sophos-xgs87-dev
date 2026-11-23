@@ -1,10 +1,11 @@
-# 20 — 一条 PCIe 链路同时跑两套网络
+# 20 — 一条 PCIe 链路同时跑三套网络
 
 > 🏷 **状态（2026-11-23 复核）**：✅ **全部实测**：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、**netconsole 崩溃取证**。
 > ⚠️ `ramoops` 已证伪（每次复位都 DDR scrub），硬锁死 vs `PERST#` 仍待一次复现定案（§20.8）。
 
 > 目标：保留 x86 ↔ NPU 的 `192.168.100.0/24` 管理通道，同时让 x86 直接拿到家里路由器
-> `192.168.0.0/24` 的 DHCP 地址，不再需要单独给 x86 插网线。
+> `192.168.0.0/24` 的 DHCP 地址，不再需要单独给 x86 插网线；再把面板 `2/WAN` 单独划成
+> `br-wan`，让机器有一个真正的上游口（默认也是 DHCP）。
 
 ## 20.1 为什么必须用 VLAN
 
@@ -17,19 +18,21 @@ x86 和 NPU 之间**只有** PCIe vNTB 这一个 netdev（`eth0` / `pci-vntb 000
                                │    │
   eth0  ═══════════════════════╪════╪══════════════════════════ eth0   (无地址)
                                │    │
-  eth0.31  ─ DHCP ◄────────────┘    └─ br-lan ─ eth0.31 + p4 ──► 家里路由器
+  eth0.31  ─ DHCP ◄────────────┼────┼─ br-lan ─ eth0.31 + p1 p3 p4 ──► 家里路由器
+  eth0.32  ─ (无地址) ─────────┘    └─ br-wan ─ eth0.32 + p2      ──► 上游 / WAN
                                    br-mgmt ─ eth0.100 + p8  ◄── 前面板 p8（access 口）
 ```
 
 | 段 | VLAN | NPU 侧 | x86 侧 | 谁能访问 |
 |---|---|---|---|---|
 | 管理 | 100 | `br-mgmt` = `p8` + `eth0.100`，`192.168.100.1/24` | `eth0.100` = `192.168.100.2/24` | 前面板 p8 插笔记本，`.1`/`.2` 都在 |
-| 家里 LAN | 31 | `br-lan` = `p4` + `eth0.31`，**无地址**，纯 L2 透传 | `eth0.31`，systemd-networkd DHCP | 家里任意设备 → x86 的真实 LAN 地址 |
+| 家里 LAN | 31 | `br-lan` = `p1 p3 p4` + `eth0.31`，默认 DHCP | `eth0.31`，systemd-networkd DHCP | 家里任意设备 → x86 的真实 LAN 地址 |
+| WAN | 32 | `br-wan` = `p2` + `eth0.32`，默认 DHCP | `eth0.32`，**不配地址**（`32-wan.network`） | 上游插 `2/WAN` 时 NPU 自己拿到公网/上游租约 |
 
 p8 依然是 **access 口**：直接插网线只看得到未打标签的 `192.168.100.0/24`，管理帧不会溢到面板上。
 
-交换机上两段用**不同的硬件 VLAN**：`br-mgmt` 留在默认 VLAN 1，`br-lan` 显式用 VLAN 31
-（`vlan_filtering 1` + `vlan_default_pvid 0`，桥自己的端口也要 `self` 加进去）。不这么做
+交换机上三段用**不同的硬件 VLAN**：`br-mgmt` 留在默认 VLAN 1，`br-lan` / `br-wan` 显式用
+VLAN 31 / 32（`vlan_filtering 1` + `vlan_default_pvid 0`，桥自己的端口也要 `self` 加进去）。不这么做
 mv88e6xxx 会报 `p4: hw VLAN 1 already used by port 8 in br-mgmt`，两个段在交换芯片里
 其实是同一个广播域 —— 面板上的管理口和家里 LAN 会互通。
 
@@ -40,12 +43,32 @@ x86:  eth0.100  192.168.100.2/24      ping 192.168.100.1  0% loss
       eth0.31   192.168.0.63/24      default via 192.168.0.1 （家里路由器发的租约）
 ```
 
-## 20.2 哪个口是家里 LAN
+## 20.2 哪个口是家里 LAN / 哪个是 WAN
 
-`p4` 和 `sfp` **都**插在同一个家里 LAN 上（两边发 DHCP 都能拿到 `192.168.0.x`）。
-本方案选了 `p4`（1G）；`sfp`（10G）留着不动。
+面板丝印和 DSA 端口号的对应：`1/LAN` = `p1`，**`2/WAN` = `p2`**，3 = `p3`，4 = `p4`，SFP = `sfp`。
+
+原来只有 `p4` 一条通道（`p4` 和 `sfp` **都**插在同一个家里 LAN 上，两边发 DHCP 都能拿到
+`192.168.0.x`）。现在按面板丝印把口分成两组，由 `/etc/xgs87/net.conf` 决定：
+
+| 桥 | 默认端口 | VLAN | 默认模式 |
+|---|---|---|---|
+| `br-wan` | `p2`（面板 `2/WAN`） | 32 | `dhcp` |
+| `br-lan` | `p1` `p3` `p4` | 31 | `dhcp` |
+| `br-mgmt` | `p8` | 1（untagged access） | 固定 `192.168.100.1/24` |
+
+```sh
+# /etc/xgs87/net.conf  —— 取默认值就不用动这个文件
+WAN_PORTS="p2"          WAN_MODE="dhcp"     # static 时配 WAN_ADDR="203.0.113.2/24"
+LAN_PORTS="p1 p3 p4"    LAN_MODE="dhcp"     # static 时配 LAN_ADDR="192.168.0.66/24"
+LAN_VID="31"  WAN_VID="32"                  # 两条 vNTB VLAN，x86 上也有对应设备
+```
+
+改完 `sudo systemctl restart xgs-net-up xgs-dhcp` 就生效，不用重启。
 
 > ⚠️ 不要把 `p4` 和 `sfp` 同时并进 `br-lan` —— 那是同一个 L2 域，会成环。
+
+> ⚠️ 同一个桥里的端口共用一个广播域：`p1`/`p3`/`p4` 现在都在 `br-lan`，插在同一台交换机上
+> 一样会成环。
 
 ## 20.3 踩到的坑：父设备必须 up
 
@@ -62,7 +85,7 @@ VLAN 设备的 carrier 来自父设备，**父设备没有地址也必须 up**�
 | 文件 | 位置 |
 |---|---|
 | `systemd/npu/xgs-mgmt-bridge.sh` | `ip link set "$NTB" up`（清地址之后） |
-| `systemd/npu/xgs-lan-uplink.sh` | `ip link set "$NTB" up` |
+| `systemd/npu/xgs-net-up.sh` | `ip link set "$NTB" up` |
 | `systemd/x86/xgs-ntb-up.sh` | `ip addr flush dev eth0` 之后 `ip link set eth0 up` |
 
 ## 20.4 NPU 的串口控制台（重要）
@@ -178,7 +201,7 @@ x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal re
 | userspace | 5.6 s | 我们的单元合计不到 1 s |
 
 NPU 的 Linux 只要 **10.8 s**（kernel 3.8 + userspace 7.0），
-`xgs-ports-up` → `xgs-vntb` → `xgs-mgmt-bridge` → `xgs-lan-uplink` → `xgs-lan-dhcp` 串起来约 2.7 s。
+`xgs-ports-up` → `xgs-vntb` → `xgs-mgmt-bridge` → `xgs-net-up` → `xgs-dhcp` 串起来约 2.7 s。
 
 ### NPU 仍会被牵连，但这是硬件的错
 
@@ -366,6 +389,7 @@ xgs-ntb-up.sh                                      （握手、重建 VLAN、补
 |---|---|---|
 | x86 | `192.168.0.50`（DHCP，MAC `02:58:47:53:00:31`） | 家里内网，可直连 SSH |
 | NPU | `192.168.0.66`（DHCP on `br-lan`） | 家里内网，可直连 SSH |
+| NPU | `br-wan` 上的 DHCP 租约 | 面板 `2/WAN` 插上游才拿到；`eth0.32` 在 x86 上一律不配地址，免得两边抢租约 |
 | x86 ↔ NPU 管理 | `192.168.100.2` ↔ `.1` | VLAN 100 走 vNTB，RTT **0.46 ms** |
 | 前面板 p8 | `br-mgmt` access 口 | 插笔记本同时访问 `.1` / `.2` |
 

@@ -1,12 +1,13 @@
 [Unit]
-Description=XGS 87: bridge p4 to the x86 over vNTB VLAN 31 (house LAN)
+Description=XGS 87: build br-wan / br-lan from /etc/xgs87/net.conf
+Documentation=file:/etc/xgs87/net.conf
 After=xgs-vntb.service xgs-mgmt-bridge.service
 Wants=xgs-vntb.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/xgs-lan-uplink.sh
+ExecStart=/usr/local/sbin/xgs-net-up.sh
 
 [Install]
 WantedBy=multi-user.target

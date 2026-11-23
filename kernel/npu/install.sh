@@ -40,14 +40,18 @@ EOF
 echo "== systemd units"
 install -m755 "$REPO"/systemd/npu/*.sh /usr/local/sbin/
 install -m644 "$REPO"/systemd/npu/*.service /etc/systemd/system/
+# Do not clobber a WAN/LAN layout the operator already tuned.
+install -d /etc/xgs87
+[ -e /etc/xgs87/net.conf ] ||
+	install -m644 "$REPO"/image/overlay/npu/etc/xgs87/net.conf /etc/xgs87/net.conf
 systemctl daemon-reload
-systemctl enable xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-lan-uplink \
-	xgs-lan-dhcp xgs-netconsole >/dev/null
+systemctl enable xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-net-up \
+	xgs-dhcp xgs-netconsole >/dev/null
 
 cat <<EOM
 
 Done.  Next:
-  systemctl start xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-lan-uplink xgs-lan-dhcp xgs-netconsole
+  systemctl start xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-net-up xgs-dhcp xgs-netconsole
   ip -br link            # p1..p8 + sfp must exist
 
 Boot files (/boot/Image, /boot/initrd.img, the DTB) are handled by

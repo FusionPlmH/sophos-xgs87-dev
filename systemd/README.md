@@ -45,8 +45,8 @@ sudo systemctl enable xgs87-growroot
 | `xgs-ports-up.service` | `xgs-ports-init.sh` | 等 DSA 把 `p1–p8`/`sfp` 建出来 → 按 U-Boot env 的 `ethaddr` 推 9 个 MAC → 全部 `up` 让 PHY 协商 |
 | `xgs-vntb.service` | `xgs-vntb.sh` | configfs 建 `pci_epf_vntb`（VID `1957:0809`）、`start` EPC、再装 `ntb_transport` + `ntb_netdev` |
 | `xgs-mgmt-bridge.service` | `xgs-mgmt-bridge.sh` | `br-mgmt` = `p8` + `eth0.100`，`192.168.100.1/24`；`p8` 是 untagged access 口 |
-| `xgs-lan-uplink.service` | `xgs-lan-uplink.sh` | `br-lan` = `p4` + `eth0.31`，**纯 L2 透传**（不配地址、不跑 STP）；桥里用 **VLAN 31** 过滤，和 `br-mgmt` 的 VLAN 1 分开，避免管理段溢到面板口 |
-| `xgs-lan-dhcp.service` | —（直接 `dhcpcd`） | NPU 自己在 `br-lan` 上拿一个家里内网的地址 |
+| `xgs-net-up.service` | `xgs-net-up.sh` | 按 **`/etc/xgs87/net.conf`** 把面板口分成两个桥：`br-wan`（默认 `p2` = 面板 `2/WAN`）+ `eth0.32`，`br-lan`（默认 `p1 p3 p4`）+ `eth0.31`。两个桥各用一条 VLAN（31/32）避开交换芯片的 VLAN 1（已被 `br-mgmt` 占） |
+| `xgs-dhcp.service` | `xgs-dhcp.sh` | 在 `net.conf` 里选 `dhcp` 的桥上跑**一个** `dhcpcd`（`-w br-lan br-wan`）。WAN/LAN 默认都是 `dhcp`；也可以 `static`（配 `WAN_ADDR`/`LAN_ADDR`）或 `none` |
 | `xgs-netconsole.service` | —（`modprobe netconsole`） | 把内核 console 推给 x86（管理 VLAN）和 PC（`br-lan`）。**这是崩溃取证的主要手段**，见 [docs/20](../docs/20-lan-over-vntb.md) §20.8 |
 
 启动顺序由 `After=`/`Wants=` 串好，一次性 `enable --now` 全部即可：
@@ -55,8 +55,26 @@ sudo systemctl enable xgs87-growroot
 sudo install -m755 systemd/npu/*.sh      /usr/local/sbin/
 sudo install -m644 systemd/npu/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-lan-uplink xgs-lan-dhcp xgs-netconsole
+sudo systemctl enable --now xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-net-up xgs-dhcp xgs-netconsole
 ```
+
+### `/etc/xgs87/net.conf`
+
+WAN / LAN 怎么分全在这个文件里（镜像里由 `image/overlay/npu` 带进去，`kernel/npu/install.sh`
+只在文件不存在时放一份，不会覆盖你调好的）。`xgs-net-up.sh` 用 `.` 读它，所以是 **shell 语法**：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `WAN_PORTS` | `p2` | 面板 `2/WAN`。留空等于不要 WAN 桥 |
+| `WAN_MODE` | `dhcp` | `dhcp` / `static`（配 `WAN_ADDR`，可多个，空格分隔） / `none` |
+| `LAN_PORTS` | `p1 p3 p4` | 面板 `1/LAN`、`3`、`4` |
+| `LAN_MODE` | `dhcp` | 同上，`static` 配 `LAN_ADDR` |
+| `LAN_VID` / `WAN_VID` | `31` / `32` | 两条 vNTB VLAN，x86 侧 `xgs-ntb-up.sh` 建同名设备 |
+
+两个桥都用 `vlan_filtering` 且各占一个 VID：交换芯片的 VLAN 1 已经被 `br-mgmt`（`p8`）占着，
+再来一个桥用 VLAN 1 会直接报 `hw VLAN 1 already used by port 8 in br-mgmt`。
+
+改完重启两个单元即可：`sudo systemctl restart xgs-net-up xgs-dhcp`。
 
 前置条件（都在仓库别处）：
 
@@ -70,17 +88,18 @@ sudo systemctl enable --now xgs-ports-up xgs-vntb xgs-mgmt-bridge xgs-lan-uplink
 
 | unit | 脚本 | 干什么 |
 |---|---|---|
-| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`，等 `03:00.0` 枚举出来（必要时 remove/rescan），建 `eth0.100`/`eth0.31` 并**把 MAC 钉死** |
+| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`，等 `03:00.0` 枚举出来（必要时 remove/rescan），建 `eth0.100`/`eth0.31`/`eth0.32` 并**把 MAC 钉死** |
 | `xgs-ntb-watch.service` | `xgs-ntb-watch.sh` | 每 15 s 查 `carrier` + `ping 192.168.100.1`，连续 1 min 不正常就重跑 `xgs-ntb-up.sh` |
 | `xgs-ntb-stop.service` | `xgs-ntb-stop.sh` | 关机前把 `ntb_hw_epf` 卸掉 → 它往端点控制区写 `COMMAND_LINK_DOWN`，NPU 才不会拿着悬空指针 |
 | `xgs-npu-console.service` | —（`cat /dev/ttyS2`） | **可选**：把 NPU 控制台连续录到 `/var/log/npu-console.log`。它会**独占** ttyS2，交互式调试前要先停 |
 | `31-house-lan.network` | — | 装到 `/etc/systemd/network/`，给 `eth0.31` 跑 DHCP（家里内网地址） |
+| `32-wan.network` | — | `eth0.32`（WAN VLAN）。**默认 `DHCP=no`**：WAN 段归 NPU 管，x86 再要一个租约没意义；要让 x86 做 WAN/LAN 之间的路由/NAT 再改成 `DHCP=ipv4` |
 | `xgs-netconsole.service` | —（`nc -u -l -k 6666`） | 收 NPU 推来的内核 console，落到 `/var/log/npu-netconsole.log` |
 
 ```sh
 sudo install -m755 systemd/x86/*.sh      /usr/local/sbin/
 sudo install -m644 systemd/x86/*.service /etc/systemd/system/
-sudo install -m644 systemd/x86/31-house-lan.network /etc/systemd/network/
+sudo install -m644 systemd/x86/*.network /etc/systemd/network/
 sudo systemctl daemon-reload
 sudo systemctl enable --now xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole systemd-networkd
 ```

@@ -79,7 +79,7 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 
 | 位置 | 单元 |
 |---|---|
-| NPU | `xgs-ports-up` → `xgs-vntb` → `xgs-mgmt-bridge` → `xgs-lan-uplink` → `xgs-lan-dhcp` |
+| NPU | `xgs-ports-up` → `xgs-vntb` → `xgs-mgmt-bridge` → `xgs-net-up` → `xgs-dhcp` |
 | x86 | `xgs-ntb` → `xgs-ntb-watch`，地址由 `systemd-networkd` 的 `31-house-lan.network` 取得 |
 
 ## 8.7 备份与救砖
