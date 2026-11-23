@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs inside the chroot at the end of image/build.sh.
 #
-#   setup.sh <x86|npu> <full|base>
+#   setup.sh <x86|npu> <full|lean|base>
 set -eu
 
 SIDE=$1
@@ -10,8 +10,8 @@ VARIANT=$2
 echo "== setup.sh: side=$SIDE variant=$VARIANT"
 
 case "$SIDE" in
-npu) HOSTNAME=xgs87-npu ;;
-x86) HOSTNAME=debian ;;
+npu) HOSTNAME=xgs87-npu; ARCH=arm64 ;;
+x86) HOSTNAME=debian; ARCH=amd64 ;;
 esac
 echo "$HOSTNAME" > /etc/hostname
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME" > /etc/hosts
@@ -47,15 +47,28 @@ else
 fi
 
 # --- out-of-tree modules ----------------------------------------------------
-if [ "$VARIANT" = full ]; then
+# full keeps dkms, so a later kernel upgrade rebuilds the modules by itself.
+# lean builds them once with plain make and purges the toolchain again.
+TOOLCHAIN=
+if [ "$VARIANT" = lean ]; then
+	# Installed here rather than through build.sh's --include: mmdebstrap marks
+	# everything in that list manual, and manual packages are never
+	# autoremoved -- so the only reliable purge list is the dpkg delta.
+	dpkg-query -W -f='${binary:Package}\n' | sort > /tmp/xgs87-pkgs.before
+	apt-get install -y --no-install-recommends build-essential "linux-headers-$ARCH" >/dev/null
+	dpkg-query -W -f='${binary:Package}\n' | sort > /tmp/xgs87-pkgs.after
+	TOOLCHAIN=$(comm -13 /tmp/xgs87-pkgs.before /tmp/xgs87-pkgs.after | tr '\n' ' ')
+fi
+
+if [ "$VARIANT" = full ] || [ "$VARIANT" = lean ]; then
 	PKG=xgs87-$SIDE
 	VER=$(sed -n 's/^PACKAGE_VERSION="\(.*\)"/\1/p' /opt/xgs87/kernel/"$SIDE"/dkms.conf)
 	# Inside the chroot uname -r is the *host* kernel, so ask the tree which
 	# kernel is actually installed here.
 	KVER=$(ls /lib/modules | sort -V | tail -1)
 	if [ ! -d "/lib/modules/$KVER/build" ]; then
-		echo "== no headers for $KVER, skipping the DKMS build" >&2
-	else
+		echo "== no headers for $KVER, skipping the module build" >&2
+	elif [ "$VARIANT" = full ]; then
 		mkdir -p /usr/src/$PKG-$VER
 		cp /opt/xgs87/kernel/"$SIDE"/*.c /opt/xgs87/kernel/"$SIDE"/Makefile \
 		   /opt/xgs87/kernel/"$SIDE"/dkms.conf /usr/src/$PKG-$VER/ 2>/dev/null || true
@@ -64,6 +77,17 @@ if [ "$VARIANT" = full ]; then
 		dkms build "$PKG/$VER" -k "$KVER"
 		dkms install "$PKG/$VER" -k "$KVER" --force
 		echo "== dkms: $(dkms status "$PKG")"
+	else
+		SRC=/usr/src/$PKG-$VER
+		mkdir -p "$SRC"
+		cp /opt/xgs87/kernel/"$SIDE"/*.c /opt/xgs87/kernel/"$SIDE"/Makefile "$SRC"/
+		cp /opt/xgs87/kernel/"$SIDE"/*.h "$SRC"/ 2>/dev/null || true
+		make -C "$SRC" KDIR=/lib/modules/"$KVER"/build -j"$(nproc)"
+		# Not `make -C $SRC modules_install`: our Makefile has no such target,
+		# the kernel tree's does the install.
+		make -C /lib/modules/"$KVER"/build M="$SRC" modules_install
+		depmod -a "$KVER"
+		echo "== module: $(modinfo -k "$KVER" -F filename ntb_core)"
 	fi
 fi
 
@@ -84,9 +108,34 @@ EOF
 # only produces probe errors.  Nothing on this appliance uses audio.
 printf 'blacklist snd_hda_intel\n' > /etc/modprobe.d/xgs87-no-audio.conf
 systemctl enable systemd-timesyncd ssh
+
+# lean: the compiler only had to build the modules once.  Dropping it is where
+# the ~460 MB go; because nothing here can then rebuild them, the kernel is
+# held -- /opt/xgs87/kernel/<side>/install.sh (or kernel/<side>/install.sh on a
+# clone) installs dkms + headers on the device and rebuilds when the user does
+# want to move to a newer kernel.
+if [ "$VARIANT" = lean ]; then
+	apt-get purge -y $TOOLCHAIN >/dev/null
+	apt-get autoremove -y >/dev/null
+	rm -rf /usr/src/xgs87-* /tmp/xgs87-pkgs.*
+	if command -v gcc >/dev/null 2>&1; then
+		echo "== lean: warning, compiler left behind:" >&2
+		dpkg -l 'gcc*' 'cpp*' 'make' 'libc6-dev' 2>/dev/null | awk '/^ii /{print "   " $2}' >&2
+	fi
+	# `dpkg-query -W 'linux-image-*'` also drags in the virtual
+	# linux-image-generic and the -unsigned variants, which apt-mark cannot
+	# hold; ask dpkg -l for the packages that are really installed.
+	HELD=$(dpkg -l 'linux-image-*' 2>/dev/null | awk '/^ii /{print $2}')
+	if [ -n "$HELD" ]; then
+		apt-mark hold $HELD >/dev/null
+	fi
+	echo "== lean: held $(apt-mark showhold | tr '\n' ' ')"
+fi
+
 : > /etc/machine-id
 rm -f /etc/ssh/ssh_host_*
 apt-get clean
-rm -rf /var/lib/apt/lists/*
+rm -rf /var/lib/apt/lists/* /var/cache/apt
+find /var/log -type f -exec truncate -s0 {} +
 
 echo "== setup.sh done"

@@ -1,18 +1,24 @@
 # debian-usb — XGS 87 的维护 / 诊断 U 盘
 
-`debian-usb.img.zst` 是一条**自带两套系统安装包的可启动 U 盘**。插到机器上从 U 盘启动，
-串口控制台上出一个菜单：格式化并重装 x86、把新 rootfs 推给 NPU、备份 x86 内置盘、看状态。
-它是这台双架构机器的"急救盘"，平时升级、刷坏、换系统都用它。
+固定 release：每次跑 `image` workflow 的 usb 目标都会**覆盖**这里的资产和本文。
+
+| 资产 | 是什么 | 实测 |
+|---|---|---|
+| `debian-usb.img.zst` | **整盘镜像**：可启动 U 盘，自带 x86 + NPU 两套安装包和串口菜单 | 解开 ~2.5 GB |
+
+插上从 U 盘启动，x86 串口上出菜单：格式化重装 x86、把新 rootfs 推给 NPU、备份内置盘、看状态。
+这台双架构机器的急救盘——升级、刷坏、换系统都靠它。
 
 ## 里面是什么
 
 | 分区 | 内容 |
 |---|---|
-| `p1` | ESP（476 MiB FAT32 + GRUB），U 盘能不能启动全靠它 |
-| `p2` | 和 `debian-x86` 一样的 Debian root，只多了一个开机菜单（不写回内置盘，只用来跑菜单） |
+| `p1` | ESP（476 MiB FAT32 + GRUB），能不能启动全靠它 |
+| `p2` | 和 `debian-x86` 一样的 Debian root，只多一个开机菜单（不写回内置盘） |
 | `p3` | 标签 `XGS87` 的 ext4 payload：`debian-x86.img.zst`、`debian-npu.tar.zst`、DTB、`installer/payload/*.sh` |
 
-镜像约 1.0 GB（zst），解开约 2.5 GB，写到 8 GB 以上的 U 盘即可。
+payload 是构建 workflow 当时选的那个变体（`full` / `lean` / `base`），所以 U 盘里装出来的
+系统和你构建时选的一致。
 
 ## 写进 U 盘
 
@@ -32,16 +38,16 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 **Windows**
 
 1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 2.5 GB）。
-2. 用 Rufus 选择这个 `.img`，**分区类型选 GPT、写入方式选 DD 镜像**，开始写入。
-   Win32DiskImager 也可以；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
+2. Rufus 选这个 `.img`，**分区类型 GPT、写入方式 DD 镜像**，开始写。
+   Win32DiskImager 也行；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
 
 ## 启动
 
 1. U 盘插到前面板 USB（那颗是 x86 的 USB，不是 NPU 的）。
-2. 开机进 BIOS 启动菜单（AMI，一般按 **F11**；进 BIOS 是 **Del**），选 U 盘。
-   如果 U 盘没出现在列表里：BIOS → Boot → 关掉 CSM/安全启动再试。
-3. x86 控制台（RJ45 或 micro-USB，**115200 8N1**）上会出现菜单。
-   串口没输出时，进 BIOS → Advanced → Console Redirection 打开。
+2. 开机进启动菜单（AMI，一般 **F11**；进 BIOS 是 **Del**），选 U 盘。
+   列表里没有 U 盘：BIOS → Boot → 关掉 CSM / 安全启动再试。
+3. x86 控制台（RJ45 或 micro-USB，**115200 8N1**）上出现菜单。
+   串口没输出：BIOS → Advanced → Console Redirection 打开。
 
 ## 菜单
 
@@ -54,29 +60,30 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | `5` shell | 直接进 root shell（U 盘系统） | — |
 | `9` / `0` | 关机 / 重启 | — |
 
-选项 2 在 NPU 起不来时会退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台
+选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台
 （x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装。
 
-重装完 x86 后，首次开机会自动把 root 分区扩到盘尾（`xgs87-growroot.service`）。
-登录：**`admin` / `P@ssw0rd`**（`sudo` 要密码），`root` 已锁定、SSH 拒绝 root。
+重装完 x86 后首次开机会自动把 root 分区扩到盘尾（`xgs87-growroot.service`）。
+登录 **`admin` / `P@ssw0rd`**（`sudo` 要密码），`root` 已锁定、SSH 拒绝 root。
 
 ## 从原厂 SFOS 第一次装 Debian
 
-SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先备份（SPI 的 `mtd0`/`mtd1`
-和 eMMC），再从 U 盘启动重装。SFOS 高级 shell、备份和串口波特率的细节见
+SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先备份（SPI 的 `mtd0`/`mtd1` 和 eMMC），
+再从 U 盘启动重装。SFOS 高级 shell、备份、串口波特率的细节见
 [docs/22-from-sfos.md](../docs/22-from-sfos.md)。
 
 ## 自己构建
 
 ```sh
-sudo ./image/build.sh --arch amd64 --variant full --out out/xgs87-x86-full.tar.zst
-sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.img
+sudo ./image/build.sh --arch amd64 --variant lean --out out/xgs87-x86-lean.tar.zst
+sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-lean.tar.zst --out out/debian-x86.img
+zstd -T0 -10 --rm out/debian-x86.img
 sudo ./installer/mkusb.sh \
     --x86 out/debian-x86.img.zst \
-    --npu debian-npu.tar.zst \
+    --npu out/debian-npu.tar.zst \
     --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
     --out out/debian-usb.img
 ```
 
-CI 的 `.github/workflows/image-usb.yml` 跑的就是这串：两个原生 runner 各编一半，
-第三个 job 拼盘，产物覆盖发布到这个 `debian-usb` release。
+CI 的 `.github/workflows/image.yml`（`target=usb`）跑的就是这串：amd64 runner 出 x86 整盘镜像、
+arm64 runner 出 NPU rootfs + DTB，第三个 job 拼盘，产物覆盖发布到 `debian-usb`。

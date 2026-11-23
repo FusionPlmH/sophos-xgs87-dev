@@ -104,9 +104,11 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | 格式化 `/persistent`（p4） | 丢机型和 MAC 基址 | 只读使用 |
 | 往 `p1` 上放系统 | 那是原厂冷备槽，留着回滚 | 空着 |
 
-> ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（解开约 900 MB）。现在实测 1.4G/1.5G，
-> 只剩 276 MB。长期用 DKMS 就把根分区做到 ≥3 GB，或者装 `--variant base`（约 240 MB）
-> 之后再跑 `kernel/npu/install.sh`（见 [image/README.md](../image/README.md)）。
+> ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（root 解开约 900 MB）。现在实测 1.4G/1.5G，
+> 只剩 276 MB。三条路：装 `--variant lean`（解开 525 MiB，**推荐**，工具链编完就删掉）、
+> 把根分区做到 ≥3 GB、或者 `--variant base` + 之后自己跑 `kernel/npu/install.sh`
+> （见 [image/README.md](../image/README.md)）。`lean` 的内核被 `apt-mark hold`，
+> 要升级内核时先 `apt-mark unhold linux-image-arm64` 再跑 `/opt/xgs87/kernel/npu/install.sh`。
 
 ## 9.5 如果要重做一遍（换机 / 重刷的最小路径）
 

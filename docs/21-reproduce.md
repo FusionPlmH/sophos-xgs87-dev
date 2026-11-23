@@ -25,6 +25,8 @@ sudo ./image/build.sh --arch arm64 --variant full   # NPU（在 arm64 上跑）
 
 - `full` 会额外装 `dkms` + `build-essential` + `linux-headers-*`，并在 `setup.sh` 里
   把 `kernel/<side>/` 的模块编好、`dkms install` 进去（以后内核升级自动重编）。
+- `lean` 用普通 `make` 编一次模块，然后把工具链按 dpkg 快照差值 purge 掉：root 解开
+  525 MiB（`full` 是 ~900 MiB），代价是内核被 `apt-mark hold`。
 - `base` 不装工具链也不带模块；装到机器上后再跑一次 `kernel/<side>/install.sh`。
 - 产物：`out/xgs87-<side>-<variant>.tar.zst`。
 
@@ -103,13 +105,19 @@ tar --zstd -xOf out/xgs87-x86-full.tar.zst ./etc/group   | grep '^sudo:'
 
 ## 21.7 CI 与 release
 
-三个 workflow 各自维护一个**固定 tag**（每次覆盖，说明见同目录的 `release-*.md`）：
+只有一个 workflow（`.github/workflows/image.yml`），手动触发，用 `target` 选要出哪个产物；
+每个目标维护一个**固定 tag**（每次覆盖，说明见 `image/release-*.md`）：
 
-| workflow | tag | 资产 |
+```sh
+gh workflow run image.yml                                  # all + full
+gh workflow run image.yml -f target=usb -f variant=lean     # 只出 U 盘
+```
+
+| `target` | tag | 资产 |
 |---|---|---|
-| `image-x86.yml` | `debian-x86` | `debian-x86.img.zst` |
-| `image-npu.yml` | `debian-npu` | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
-| `image-usb.yml` | `debian-usb` | `debian-usb.img.zst`（维护 U 盘，见 [release-usb.md](../image/release-usb.md)） |
+| `x86` | `debian-x86` | `debian-x86.img.zst` |
+| `npu` | `debian-npu` | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
+| `usb` | `debian-usb` | `debian-usb.img.zst`（维护 U 盘，见 [release-usb.md](../image/release-usb.md)） |
 
 x86 的 rootfs tar 只作为 CI artifact 保留（7 天），不发 release——它和镜像里的内容一样，
 自己 build 也能得到。

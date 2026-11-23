@@ -1,0 +1,231 @@
+name: image
+
+# One workflow for the three deliverables:
+#
+#   x86 : bootable GPT image (rootfs + GRUB EFI), built on a native amd64 runner
+#   npu : rootfs tarball + board DTB, built on a native arm64 runner
+#   usb : maintenance USB = x86 image + npu rootfs + menu on the serial console
+#
+# No qemu and no cross-compilation anywhere: each rootfs is built on its own
+# architecture, and the USB is assembled on amd64 from the two artifacts.
+#
+# Manual only -- nothing runs on push.  Actions -> image -> Run workflow, or
+#   gh workflow run image.yml -f target=usb -f variant=lean
+#
+# Each target overwrites its own fixed release (debian-x86 / debian-npu /
+# debian-usb), with the notes from image/release-<target>.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'what to build'
+        type: choice
+        options: [all, x86, npu, usb]
+        default: all
+      variant:
+        description: 'full (DKMS toolchain in the image), lean (modules built, no compiler) or base'
+        default: full
+      size:
+        description: 'x86 disk image size; auto = rootfs + 5% + 256 MiB + 476 MiB ESP'
+        default: auto
+
+permissions:
+  contents: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- amd64 ---
+  x86:
+    if: contains(fromJSON('["all","x86","usb"]'), inputs.target)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd dosfstools fdisk mtools
+
+      - name: Debian archive keys
+        # Ubuntu's debian-archive-keyring predates trixie, so mmdebstrap cannot
+        # verify the trixie Release file and stops with NO_PUBKEY.
+        run: |
+          cd /tmp
+          curl -fsS http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/ \
+            | grep -o 'debian-archive-keyring_[0-9.]*_all\.deb' | sort -uV | tail -1 > kr.name
+          curl -fsSLO "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$(cat kr.name)"
+          sudo dpkg -i "$(cat kr.name)"
+
+      - name: Build rootfs
+        run: |
+          sudo bash ./image/build.sh --arch amd64 --variant "${{ inputs.variant }}" \
+            --out "out/xgs87-x86-${{ inputs.variant }}.tar.zst"
+
+      - name: Build bootable image
+        run: |
+          sudo bash ./image/mkdisk.sh \
+            --rootfs "out/xgs87-x86-${{ inputs.variant }}.tar.zst" \
+            --out out/debian-x86.img \
+            --size "${{ inputs.size }}"
+          zstd -T0 -10 -f --rm out/debian-x86.img
+
+      - name: Report
+        run: |
+          ls -lh out/
+          df -h / | tail -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-x86
+          path: |
+            out/debian-x86.img.zst
+            out/xgs87-x86-*.tar.zst
+          retention-days: 7
+
+  # ---------------------------------------------------------------- arm64 ---
+  npu:
+    if: contains(fromJSON('["all","npu","usb"]'), inputs.target)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm we are actually on aarch64
+        run: uname -m && test "$(uname -m)" = aarch64
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd device-tree-compiler
+
+      - name: Debian archive keys
+        run: |
+          cd /tmp
+          curl -fsS http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/ \
+            | grep -o 'debian-archive-keyring_[0-9.]*_all\.deb' | sort -uV | tail -1 > kr.name
+          curl -fsSLO "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$(cat kr.name)"
+          sudo dpkg -i "$(cat kr.name)"
+
+      - name: Build rootfs
+        run: |
+          sudo bash ./image/build.sh --arch arm64 --variant "${{ inputs.variant }}" \
+            --out out/debian-npu.tar.zst
+
+      - name: Build the board DTB
+        run: bash ./tools/build/build-dtb.sh
+
+      - name: Report
+        run: |
+          ls -lh out/
+          tar --use-compress-program=unzstd -tf out/debian-npu.tar.zst \
+            | grep -E '^\./(boot|usr/local/sbin|etc/systemd/system)/' | head -12
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-npu
+          path: |
+            out/debian-npu.tar.zst
+            out/cn9130-sophos-xgs87w-sfp10g.dtb
+          retention-days: 7
+
+  # ------------------------------------------------------ the USB assembly ---
+  usb:
+    needs: [x86, npu]
+    if: contains(fromJSON('["all","usb"]'), inputs.target)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: xgs87-*
+          merge-multiple: true
+
+      - name: Install the tooling mkusb.sh needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd dosfstools fdisk mtools e2fsprogs
+
+      - name: Assemble the USB image
+        run: |
+          ls -lh out/
+          sudo bash ./installer/mkusb.sh \
+            --x86 out/debian-x86.img.zst \
+            --npu out/debian-npu.tar.zst \
+            --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
+            --out out/debian-usb.img
+          zstd -T0 -10 -f --rm out/debian-usb.img
+
+      - name: Report
+        run: |
+          ls -lh out/
+          df -h / | tail -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-usb
+          path: out/debian-usb.img.zst
+          retention-days: 7
+
+  # ------------------------------------------------------------- releases ---
+  # `always()` because the other jobs are skipped whenever a single target was
+  # asked for; the publish step then handles just that target's tag.
+  release:
+    needs: [x86, npu, usb]
+    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: xgs87-*
+          merge-multiple: true
+
+      - name: Publish
+        run: |
+          set -e
+          ls -lh out/
+
+          # publish <tag> <notes-file> <assets...>
+          publish() {
+            tag=$1; notes=$2; shift 2
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release edit "$tag" --title "$tag" --notes-file "$notes"
+            else
+              gh release create "$tag" --title "$tag" --notes-file "$notes"
+            fi
+            for f in "$@"; do
+              tries=0
+              until gh release upload "$tag" "$f" --clobber; do
+                tries=$((tries + 1))
+                if [ "$tries" -ge 5 ]; then
+                  echo "upload of $f failed $tries times" >&2
+                  return 1
+                fi
+                sleep 5
+              done
+            done
+            gh release view "$tag" --json assets --jq '.assets[].name'
+          }
+
+          case "${{ inputs.target }}" in
+          all)
+            publish debian-x86 image/release-x86.md out/debian-x86.img.zst
+            publish debian-npu image/release-npu.md \
+              out/debian-npu.tar.zst out/cn9130-sophos-xgs87w-sfp10g.dtb
+            publish debian-usb image/release-usb.md out/debian-usb.img.zst
+            ;;
+          x86) publish debian-x86 image/release-x86.md out/debian-x86.img.zst ;;
+          npu) publish debian-npu image/release-npu.md \
+                 out/debian-npu.tar.zst out/cn9130-sophos-xgs87w-sfp10g.dtb ;;
+          usb) publish debian-usb image/release-usb.md out/debian-usb.img.zst ;;
+          esac

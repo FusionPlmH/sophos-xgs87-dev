@@ -5,7 +5,7 @@
 
 ```
 image/build.sh       mmdebstrap 构建 rootfs（本机或 GitHub Actions）
-image/setup.sh       在 chroot 里跑：装 unit、装 DKMS 模块、enable 服务
+image/setup.sh       在 chroot 里跑：装 unit、编 out-of-tree 模块、enable 服务
 image/mkdisk.sh      把 x86 的 rootfs 变成可启动 GPT 镜像（ESP + GRUB EFI）
 image/packages-*.list 软件包清单（common / x86 / npu）
 image/overlay/      直接覆盖到 rootfs 根的文件（目前只有 NPU 的两个 boot 钩子）
@@ -16,16 +16,27 @@ image/overlay/      直接覆盖到 rootfs 根的文件（目前只有 NPU 的�
 ```sh
 sudo ./image/build.sh --arch arm64              # NPU，含工具链和 DKMS 模块
 sudo ./image/build.sh --arch amd64              # x86
-sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（~240 MB）
+sudo ./image/build.sh --arch amd64 --variant lean   # 编完模块就删工具链（小 ~380 MiB）
+sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（tar ~240 MB）
 ```
 
 - `--variant full`（默认）：额外装 `dkms` + `build-essential` + `linux-headers-*`，
   构建时就把 `kernel/<side>/` 的模块编好装上。**以后内核升级会自动重编**，代价是
-  tar 从 ~240 MB 涨到 ~350 MB（解开 ~900 MB）。
+  root 解开 ~900 MiB、tar ~350 MB。
+- `--variant lean`：用普通 `make` 编一次模块（装进 `/lib/modules/<kver>/updates/`），
+  然后把工具链按 **dpkg 快照差值**精确 purge 掉。**root 解开 525 MiB、tar 238 MB**
+  （x86 实测，比 full 少约 380 MiB）。代价是镜像自己没法再编模块，所以内核被
+  `apt-mark hold`；要升级内核就先 `apt-mark unhold linux-image-amd64`（NPU 是
+  `linux-image-arm64`），再跑镜像里的 `/opt/xgs87/kernel/<side>/install.sh`。
 - `--variant base`：不装编译器、不带模块。根分区小的时候用，之后再跑一次
   `kernel/<side>/install.sh`（它会自己装工具链）。
 
 产物是 `out/xgs87-<side>-<variant>.tar.zst`。
+
+> 为什么 `lean` 要在 chroot 里自己 `apt-get install` 工具链、而不是放进 `--include`：
+> mmdebstrap 把 `--include` 里的包全标成 manual，`apt-get autoremove` 永远不会删它们，
+> 于是 purge `build-essential` 之后 `gcc`/`cpp`/`make`/`libc6-dev` 全都留着（实测只小了
+> 60 MiB）。用装前/装后的 `dpkg-query` 快照做差值，才能把 12 个包干净删掉。
 
 ## x86：变成可启动镜像
 
@@ -64,8 +75,9 @@ zstd -dc debian-npu.tar.zst | tar -xpf - -C /mnt
 # fstab、/boot/Image、DTB 见 docs/07 与 docs/03
 ```
 
-⚠️ 根分区 1.5 GB 装不下 `full`（解开约 900 MB）。要么用 `--variant base`（~240 MB），
-要么把根分区做到 ≥3 GB。
+⚠️ 根分区 1.5 GB 装不下 `full`（root 解开 ~900 MB）。用 `--variant lean`（解开 525 MiB，
+工具链编完就删，占用约一半），或者把根分区做到 ≥3 GB。`base` 也行，但要自己再跑一次
+`kernel/npu/install.sh`。
 
 ## 维护 U 盘（diagnostic USB）
 
@@ -85,27 +97,49 @@ sudo ./installer/mkusb.sh \
 
 ## GitHub Actions
 
-三个**独立**的 workflow，各自跑在原生架构的 runner 上（不做交叉编译、不用 qemu）：
+只有一个 workflow：[image.yml](../.github/workflows/image.yml)。每个目标都跑在原生架构的
+runner 上（不做交叉编译、不用 qemu），USB 由前两者的产物在 amd64 上拼盘。
 
-| workflow | runner | 产物 |
-|---|---|---|
-| [image-x86.yml](../.github/workflows/image-x86.yml) | `ubuntu-24.04`（amd64） | `debian-x86.img.zst`（可启动镜像）+ `xgs87-x86-*.tar.zst`（artifact） |
-| [image-npu.yml](../.github/workflows/image-npu.yml) | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
-| [image-usb.yml](../.github/workflows/image-usb.yml) | 两个原生 runner 各编一半 + amd64 拼盘 | `debian-usb.img.zst`（维护 U 盘） |
+| 目标（`target`） | runner | 产物 | release tag |
+|---|---|---|---|
+| `x86` | `ubuntu-24.04`（amd64） | `debian-x86.img.zst` + `xgs87-x86-*.tar.zst`（artifact） | `debian-x86` |
+| `npu` | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` | `debian-npu` |
+| `usb` | 上面两个 → amd64 拼盘 | `debian-usb.img.zst` | `debian-usb` |
+| `all`（默认） | 三个都跑 | 全部 | 三个都更新 |
 
-三个 workflow 都**只在手动触发**时运行（Actions → 选 workflow → Run workflow，或
-`gh workflow run image-x86.yml`），提交代码不会再自动烧 CI 时间。
+**只在手动触发时运行**，提交代码不会烧 CI 时间：
 
-**产物自动发 Release**：三个 workflow 各写一个**固定 tag**，每次覆盖同一个 release
-（不再有 `<日期>-<sha>` 的临时 tag）；说明文件就是同目录的 `release-*.md`，用
-`gh release --notes-file` 发出去。
+```sh
+gh workflow run image.yml                                # all + full
+gh workflow run image.yml -f target=usb -f variant=lean   # 只出 U 盘，用 lean 变体
+```
 
-| workflow | tag | 资产 |
-|---|---|---|
-| `image-x86.yml` | `debian-x86` | `debian-x86.img.zst` |
-| `image-npu.yml` | `debian-npu` | `debian-npu.tar.zst` + `cn9130-sophos-xgs87w-sfp10g.dtb` |
-| `image-usb.yml` | `debian-usb` | `debian-usb.img.zst` |
+可选的输入：`target`（all/x86/npu/usb）、`variant`（full/lean/base）、`size`
+（x86 整盘镜像容量，默认 `auto`）。
+
+**产物自动发 Release**：每个目标写一个**固定 tag**，每次覆盖同一个 release（没有
+`<日期>-<sha>` 的临时 tag）。说明文件就是同目录的 `release-*.md`，用
+`gh release create/edit --notes-file` 发出去，所以 release 页面和代码里的说明永远一致。
 
 x86 的 `out/xgs87-x86-*.tar.zst` 只进 CI artifact（7 天），不发 release。
 
 ⚠️ arm64 runner 在**私有**仓库要付费计划；本仓库是公开的，`ubuntu-24.04-arm` 免费。
+
+## 与 sophgo-sg200x-debian 的对照
+
+构建思路参考过 [FusionPlmH/sophgo-sg200x-debian](https://github.com/FusionPlmH/sophgo-sg200x-debian)
+（同作者的 SG200x 板子镜像）。相同的部分：`mmdebstrap` 一条命令出 rootfs、显式包清单、
+overlay + chroot 定制、清 apt lists/cache、删 machine-id 和 SSH host key、镜像尺寸贴合内容
+（他们 `size = 105%`，我们 `5% + 256 MiB + ESP`）、首次启动扩分区。不同的部分和取舍：
+
+| 他们 | 我们 | 原因 |
+|---|---|---|
+| 内核/U-Boot/OpenSBI/FSBL 全从源码编成 `.deb` | 用发行版内核；只把 out-of-tree 模块编出来 | 我们的硬件在 mainline 6.12 里已经有了，不必背 vendor 5.10 |
+| `genimage` 声明式分区表 | `mkdisk.sh` 里 `sfdisk` + `losetup` | 少一个构建依赖；GPT/ESP 只有一种布局，不值得再引一层声明 |
+| Makefile + `-stamp` 增量目标 | 三个一次性 shell 脚本 | CI 是手动全量构建，增量收益只在本地调试 |
+| 固定 builder 容器（ghcr） | 直接用 runner 自带工具 | 工具只有 mmdebstrap/zstd/dosfstools/grub，漂移很小 |
+| `systemd-journald` 整个掩掉省空间 | 保留 journal | 这台机器就是拿来现场排障的，log 不能丢 |
+| 禁 IPv6、压 `kernel.printk` | 不动 | vNTB / netconsole 用到 IPv6 链路本地地址，串口要看得见日志 |
+| 首次启动建 swap、首次联网对时 | 只有 growroot | 两台机器都没有 swap，NPU 的 RAM 还够；对时用 `systemd-timesyncd` |
+
+唯一真正借鉴过来的是"先把内核模块编成产物，再把编译器扔掉"——就是上面的 `lean` 变体。

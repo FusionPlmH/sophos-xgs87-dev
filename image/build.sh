@@ -1,9 +1,10 @@
 #!/bin/bash
 # Build a Debian root filesystem for the XGS 87.
 #
-#   ./image/build.sh --arch arm64                 # NPU, everything included
-#   ./image/build.sh --arch amd64                 # x86, everything included
-#   ./image/build.sh --arch arm64 --variant base  # skeleton only, no toolchain
+#   ./image/build.sh --arch arm64                 # NPU, DKMS modules + toolchain
+#   ./image/build.sh --arch amd64                 # x86, same
+#   ./image/build.sh --arch amd64 --variant lean  # modules built, no compiler
+#   ./image/build.sh --arch arm64 --variant base  # skeleton only, no modules
 #
 # Needs root (mmdebstrap).  Cross-arch builds need qemu-user-static with binfmt
 # registered on the host; the CI workflows avoid that by running each rootfs on
@@ -14,6 +15,10 @@
 #                    and installed during the build, and a later kernel upgrade
 #                    rebuilds them automatically.  ~350 MB compressed, ~900 MB
 #                    unpacked.
+#   lean           : the same modules, built once with plain make, then the
+#                    compiler and headers are purged again.  ~460 MB smaller
+#                    unpacked; the price is that the image cannot rebuild the
+#                    modules itself, so the kernel is held.
 #   base           : minbase + the packages below, no compiler, no modules.
 #                    Use it when the root partition is small; then run
 #                    kernel/<side>/install.sh once on the device.
@@ -33,7 +38,7 @@ while [ $# -gt 0 ]; do
 	--suite)   SUITE=$2; shift 2 ;;
 	--mirror)  MIRROR=$2; shift 2 ;;
 	--out)     OUT=$2; shift 2 ;;
-	-h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+	-h|--help) sed -n '2,24p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
 done
@@ -44,8 +49,8 @@ arm64) SIDE=npu ;;
 *) echo "--arch must be amd64 or arm64" >&2; exit 1 ;;
 esac
 case "$VARIANT" in
-full|base) ;;
-*) echo "--variant must be full or base" >&2; exit 1 ;;
+full|lean|base) ;;
+*) echo "--variant must be full, lean or base" >&2; exit 1 ;;
 esac
 
 OUT=${OUT:-$REPO/out/xgs87-$SIDE-$VARIANT.tar.zst}
@@ -57,6 +62,8 @@ PKGS=$({ cat "$REPO/image/packages-common.list"; echo; cat "$REPO/image/packages
 if [ "$VARIANT" = full ]; then
 	PKGS="$PKGS,dkms,build-essential,linux-headers-$ARCH"
 fi
+# lean installs the compiler inside the chroot (image/setup.sh) so it can purge
+# exactly the packages it added; only full keeps the toolchain in the image.
 
 echo "== $ARCH / $VARIANT -> $OUT"
 TAR=${OUT%.zst}

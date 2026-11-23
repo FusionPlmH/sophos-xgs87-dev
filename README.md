@@ -34,7 +34,7 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
 | NPU 单独重启 → x86 自动恢复 | ✅ | `xgs-ntb-watch` 做完整重置（rmmod → remove/rescan → 重建），实测 90 s 自己回来、x86 不重启（docs/20 §20.10） |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
-| **内核/系统可以随便升级** | ✅ | 两台都用**发行版内核 + DKMS**：x86 实测 6.12.94 → **6.12.118** 自动重编，NPU 用发行版内核（`kernel/npu`），自编内核已退役 |
+| **内核/系统可以随便升级** | ✅ | 两台都用**发行版内核 + DKMS**：x86 实测 6.12.94 → **6.12.118** 自动重编，NPU 用发行版内核（`kernel/npu`），自编内核已退役。想做小镜像可以用 `--variant lean`（工具链编完就删，内核需 hold） |
 | SFP 自适应模块 | ✅ | 端口只声明 `1000base-x` 基线 + `sfp` phandle，phylink 按插入的模块切换（实测 10G 模块被自动提到 `10gbase-r`） |
 | NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/20 §20.8） |
 | NPU 内核 `CONFIG_PSTORE_CONSOLE` | ✅ | 已重编并上线（37.7 → 44.3 MB），console 后端 `[ramoops-1] enabled`，但受上一条限制用不上 |
@@ -131,7 +131,7 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |
 | [image/](image/) | **最小化 Debian 构建**：`mmdebstrap` 脚本、软件包清单、x86 磁盘镜像、GitHub Actions |
 | [installer/](installer/) | 维护 U 盘：把 `debian-x86.img.zst` / `debian-npu.tar.zst` 写回机器的菜单脚本 |
-| [.github/workflows/](.github/workflows/) | CI：x86 / NPU / 维护 U 盘 三个 workflow，各自跑在原生 runner 上 |
+| [.github/workflows/](.github/workflows/) | CI：一个 `image.yml`，手动触发，`target=x86/npu/usb/all` 选产物，各自跑在原生 runner 上 |
 | [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
 | [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
 | [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-npu/`、`on-x86/`、`on-pc/` |
