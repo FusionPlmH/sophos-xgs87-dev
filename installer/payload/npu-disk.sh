@@ -10,7 +10,9 @@
 # （nbd-client）。走 vNTB 大约 1 Gbit/s，比 dd | ssh 稳，而且可以 fsck。
 #
 # 需要：NPU 上装了 nbd-server，x86 上装了 nbd-client、内核有 nbd 模块。
-set -eu
+set -u
+# shellcheck disable=SC2154
+trap 'rc=$?; [ "$rc" = 0 ] || echo "$0: 退出码 $rc" >&2' EXIT
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 PAYLOAD=${PAYLOAD:-$HERE}

@@ -13,7 +13,9 @@
 #
 # ⚠️ 写的是块设备：NPU 如果正跑着这个分区，边写边用会把文件系统写坏。真机上
 # 就是"装系统"这个语义，装完要重启。
-set -eu
+set -u
+# shellcheck disable=SC2154
+trap 'rc=$?; [ "$rc" = 0 ] || echo "$0: 退出码 $rc" >&2' EXIT
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 PAYLOAD=${PAYLOAD:-$HERE}
