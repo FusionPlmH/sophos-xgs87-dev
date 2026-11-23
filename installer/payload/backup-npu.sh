@@ -32,7 +32,8 @@ SZ=$($SSH "admin@$NPU" "sudo blockdev --getsize64 $PART") || {
 AVAIL=$(df --output=avail -B1 "$PAYLOAD" | tail -1)
 echo "分区 $PART = $((SZ / 1024 / 1024)) MiB，U 盘剩余 $((AVAIL / 1024 / 1024)) MiB"
 [ "$AVAIL" -gt "$SZ" ] || {
-	echo "空间不够：至少要 $((SZ / 1024 / 1024)) MiB 空闲" >&2
+	echo "空间不够：至少要 $((SZ / 1024 / 1024)) MiB 空闲，现在只有 $((AVAIL / 1024 / 1024)) MiB。" >&2
+	echo "重做 U 盘时把这个分区做大，例如 ./installer/mkusb.sh ... --extra 2048" >&2
 	exit 1
 }
 

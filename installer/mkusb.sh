@@ -18,7 +18,7 @@ X86=
 NPU=
 DTB=
 OUT=$REPO/out/debian-usb.img
-EXTRA_MB=512
+EXTRA_MB=1024
 MENU_TTY=/dev/ttyS0
 
 while [ $# -gt 0 ]; do

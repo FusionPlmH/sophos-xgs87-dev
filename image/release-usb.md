@@ -15,7 +15,7 @@
 |---|---|
 | `p1` | ESP（476 MiB FAT32 + GRUB），能不能启动全靠它 |
 | `p2` | 和 `debian-x86` 一样的 Debian root，只多一个开机菜单（不写回内置盘） |
-| `p3` | 标签 `XGS87` 的 ext4 payload：`debian-x86.img.zst`、`debian-npu.tar.zst`、DTB、`installer/payload/*.sh` |
+| `p3` | 标签 `XGS87` 的 ext4 payload：`debian-x86.img.zst`、`debian-npu.tar.zst`、DTB、`installer/payload/*.sh`，外加 `--extra`（默认 1024 MiB）留给备份的空间 |
 
 payload 是构建 workflow 当时选的那个变体（`full` / `lean` / `base`），所以 U 盘里装出来的
 系统和你构建时选的一致。
@@ -57,8 +57,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | `2` 重装 NPU | 通过 vNTB 把 `debian-npu.tar.zst` 解到 NPU 的 root 分区（默认 `/dev/mmcblk0p2`）| 目标分区被 `mkfs.ext4`；**动手前会先问要不要备份** |
 | `3` 查看状态 | 磁盘、vNTB 链路、NPU 是否可达、SSH 通不通 | 只读 |
 | `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 U 盘的 payload 分区 | 需要 U 盘剩余空间 ≥ 内置盘 |
-| `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 U 盘 | 需要 U 盘剩余空间 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |
-| `5` shell | 直接进 root shell（U 盘系统） | — |
+| `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 U 盘 | 需要 U 盘剩余空间 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck || `5` shell | 直接进 root shell（U 盘系统） | — |
 | `9` / `0` | 关机 / 重启 | — |
 
 `2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
@@ -82,7 +81,8 @@ sudo ./installer/mkusb.sh \
     --x86 out/debian-x86.img.zst \
     --npu out/debian-npu.tar.zst \
     --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
-    --out out/debian-usb.img
+    --out out/debian-usb.img \
+    --extra 2048          # payload 分区留给备份的余量（MiB），默认 1024
 ```
 
 CI 的 `.github/workflows/image.yml`（`target=usb`）跑的就是这串：amd64 runner 出 x86 整盘镜像、
