@@ -69,11 +69,9 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 
 ### 低优先级 / 也许永远不做
 
-- **x86 装 `systemd-timesyncd`**：实测 x86 时钟比墙钟慢 1 小时且 `NTP service: n/a`，
-  排障时两边日志时间对不上（NPU 有 timesyncd，是对的）。5 分钟的事。
-- **NPU 单独重启后，x86 侧自愈脚本拉不回来**：`xgs-ntb-watch` 会每 ~68 s 重跑
-  `xgs-ntb-up.sh`（remove+rescan），但实测 4 次都没成功，最后靠重启 x86 才恢复。
-  需要查清是"主机侧重枚举不重握手"还是"NPU 侧 EPF 没重新发 LINK_UP"。
+- **NPU 单独重启后，x86 侧自愈**：✅ **已修**（2026-11-23）。根因是 `ntb_epf_spad_write()` 把端点读回的
+  `0xffffffff` 当偏移用 → 页错误 → panic；补丁 + watcher 的完整重置都补上了，实测 NPU 单独重启后
+  90 秒链路自己回来、x86 不重启（[20 §20.10](20-lan-over-vntb.md)）。
 - 内置（`=y`）而不是模块化 `mv88e6xxx` / `mvpp2`：现在模块换起来方便，没必要。
 - 原厂 CPSS / `mvpp2x` 多口驱动：只支持 4.14，且我们已经有 DSA。
 - 自研交换机驱动：上游 `mv88e6xxx` 已经够用。

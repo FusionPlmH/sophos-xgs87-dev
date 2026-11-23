@@ -13,7 +13,7 @@ set -eu
 SRC=${SRC:-/srv/lsrc-deb/usr/src/linux-source-6.12}
 B=${B:-/srv/npu/build/ntb}
 KDIR=${KDIR:-/usr/src/linux-headers-6.12.117+deb13-arm64}
-REPO=$(cd "$(dirname "$0")/.." && pwd)
+REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 rm -rf "$B"
 mkdir -p "$B/src"

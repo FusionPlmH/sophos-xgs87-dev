@@ -9,8 +9,14 @@
 #     has dropped the link, so nothing ever notices and the link stays dead
 #     until someone pokes it.
 #
-# So both the carrier and actual reachability are watched, and either one
-# failing for a minute triggers the up script.
+# So both the carrier and actual reachability are watched.
+#
+# Recovery has to be a *full* reset, not just a re-enumeration: when the NPU
+# reboots it reprograms its own BAR size registers and its inbound iATU, so
+# every read of the old BAR address returns 0xffffffff ("endpoint
+# unreachable").  Pulling the PCI device out from under the still-loaded
+# transport is what turns that into a hang, so the order below matters:
+# netdev -> transport -> hw driver -> remove/rescan -> rebuild.
 set -u
 
 NTB_DEV=/sys/bus/ntb/devices/0000:03:00.0
@@ -18,8 +24,30 @@ PCI_DEV=/sys/bus/pci/devices/0000:03:00.0
 PEER=192.168.100.1
 INTERVAL=15
 LIMIT=4			# ~60 s of trouble before acting
+COOLDOWN=30		# s to let the other side settle after a reset
 
 miss=0
+
+recover() {
+	logger -t xgs-ntb-watch "link unhealthy, full reset"
+
+	ip link set eth0.31 down 2>/dev/null
+	ip link set eth0.100 down 2>/dev/null
+	ip link set eth0 down 2>/dev/null
+
+	for m in ntb_netdev ntb_transport ntb_hw_epf; do
+		timeout 5 rmmod "$m" 2>/dev/null
+	done
+
+	# Re-read the endpoint: the NPU's BAR registers were reset with it.
+	[ -e "$PCI_DEV" ] && echo 1 > "$PCI_DEV/remove" 2>/dev/null
+	sleep 1
+	echo 1 > /sys/bus/pci/rescan
+
+	/usr/local/sbin/xgs-ntb-up.sh >> /var/log/xgs-ntb-watch.log 2>&1
+
+	sleep "$COOLDOWN"
+}
 
 while :; do
 	healthy=1
@@ -49,10 +77,9 @@ while :; do
 			ip addr add 192.168.100.2/24 dev eth0.100 2>/dev/null
 	else
 		miss=$((miss + 1))
-		if [ "$miss" -ge "$LIMIT" ] && [ -e "$PCI_DEV" ]; then
+		if [ "$miss" -ge "$LIMIT" ]; then
 			miss=0
-			logger -t xgs-ntb-watch "link unhealthy, re-enumerating"
-			/usr/local/sbin/xgs-ntb-up.sh >> /var/log/xgs-ntb-watch.log 2>&1
+			recover
 		fi
 	fi
 

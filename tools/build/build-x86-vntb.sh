@@ -11,7 +11,7 @@ set -eu
 SRC=${SRC:-/srv/lsrc-694}
 B=${B:-/srv/x86build}
 KD=${KD:-/usr/src/linux-headers-6.12.94+deb13-amd64}
-REPO=$(cd "$(dirname "$0")/.." && pwd)
+REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 rm -rf "$B"
 mkdir -p "$B/src/drivers/ntb/hw/epf"

@@ -1,6 +1,37 @@
---- a/drivers/ntb/hw/epf/ntb_hw_epf.c
-+++ b/drivers/ntb/hw/epf/ntb_hw_epf.c
-@@ -338,17 +338,17 @@
+--- a/drivers/ntb/hw/epf/ntb_hw_epf.c	2026-11-23 18:55:00.090367975 +0800
++++ b/drivers/ntb/hw/epf/ntb_hw_epf.c	2026-11-23 18:55:00.119967495 +0800
+@@ -37,6 +37,8 @@
+ #define NTB_EPF_UPPER_SIZE	0x1C
+ #define NTB_EPF_MW_COUNT	0x20
+ #define NTB_EPF_MW1_OFFSET	0x24
++/* the config BAR the endpoint exposes is exactly 1 MiB */
++#define NTB_EPF_CTRL_SIZE	0x100000
+ #define NTB_EPF_SPAD_OFFSET	0x28
+ #define NTB_EPF_SPAD_COUNT	0x2C
+ #define NTB_EPF_DB_ENTRY_SIZE	0x30
+@@ -214,6 +216,10 @@
+ 	}
+ 
+ 	offset = readl(ndev->ctrl_reg + NTB_EPF_SPAD_OFFSET);
++	if (offset == ~0U || offset > NTB_EPF_CTRL_SIZE - 4) {
++		dev_warn_ratelimited(dev, "endpoint unreachable, dropping spad read\n");
++		return 0;
++	}
+ 	offset += (idx << 2);
+ 
+ 	return readl(ndev->ctrl_reg + offset);
+@@ -232,6 +238,10 @@
+ 	}
+ 
+ 	offset = readl(ndev->ctrl_reg + NTB_EPF_SPAD_OFFSET);
++	if (offset == ~0U || offset > NTB_EPF_CTRL_SIZE - 4) {
++		dev_warn_ratelimited(dev, "endpoint unreachable, dropping spad write\n");
++		return -EIO;
++	}
+ 	offset += (idx << 2);
+ 	writel(val, ndev->ctrl_reg + offset);
+ 
+@@ -338,17 +348,17 @@
  	int ret;
  	int i;
  
@@ -27,7 +58,7 @@
  
  	for (i = 0; i < irq; i++) {
  		ret = request_irq(pci_irq_vector(pdev, i), ntb_epf_vec_isr,
-@@ -485,10 +485,23 @@
+@@ -485,10 +495,23 @@
  		return -EINVAL;
  	}
  

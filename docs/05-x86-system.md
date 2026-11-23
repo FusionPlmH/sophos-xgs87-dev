@@ -113,7 +113,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 | `dmidecode` 内存厂商 `<BAD INDEX>` | AMI BIOS 的 SMBIOS 字符串表问题，无影响 |
 | 无 `thermal_zone` | ACPI 未导出，用 `hwmon` 即可 |
 | 内置网卡缺失 | 正常，本机设计如此 |
-| **系统时间不准且没有 NTP** | 实测 `timedatectl`：`System clock synchronized: no`、`NTP service: n/a`，比 NPU/墙钟慢 1 小时。两边日志对时间会对不上，值得装 `systemd-timesyncd`（[09](09-remaining-work.md)） |
+| ~~系统时间不准且没有 NTP~~ | ✅ **已修（2026-11-23）**：装了 `systemd-timesyncd`，`timedatectl` 显示 `synchronized: yes`。之前比墙钟慢 1 小时，是 BIOS RTC 本来就不准 + 没有 NTP |
 
 ## 5.5 如果要重装/换系统
 

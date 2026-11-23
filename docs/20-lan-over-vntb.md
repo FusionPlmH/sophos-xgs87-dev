@@ -148,12 +148,19 @@ chroot /srv/npu make -C /usr/src/linux-headers-6.12.117+deb13-arm64 M=/build/ntb
 
 | 机制 | 位置 | 作用 |
 |---|---|---|
-| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier`；掉线超过 60 s 就重新 `remove`+`rescan` 枚举端点、重建 VLAN、补地址。**NPU 重启后 x86 会自动重新接上** |
+| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `192.168.100.1`；任一异常持续约 60 s 就做**完整重置**（见 §20.10），然后重建 VLAN 和地址 |
 | `/etc/sysctl.d/90-xgs-panic.conf` | 两边 | `kernel.panic=30`、`panic_on_oops=1`、`hardlockup_panic=1` |
 
-实测一次完整的 NPU 重启：x86 端 `ntb_hw_epf` 在端点消失时 oops → `panic_on_oops` 触发 panic →
-30 s 后自己重启 → 启动时 `xgs-ntb-watch` 重新枚举 → 链路和 DHCP 全部自动恢复，
-**全程不需要人碰机器**（两次重启冒烟验证通过）。
+实测（2026-11-23）：**只重启 NPU，x86 不重启**，约 90 秒后链路自己回来：
+
+```
+18:57:46 xgs-ntb-watch: link unhealthy, full reset
+18:57:46 ntb_hw_epf: endpoint unreachable, dropping spad read   ×1
+18:57:47 ntb_hw_epf: endpoint unreachable, dropping spad write  ×10
+18:57:5x xgs-ntb: eth0 UP / eth0.100 UP 192.168.100.2/24 / eth0.31 UP 192.168.0.50/24
+```
+
+x86 的 uptime 全程连续（没有 panic、没有重启），NPU 侧 `eth0` 也随之变 UP。
 
 ## 20.8 重启的真实代价（一次完整实测）
 
@@ -298,14 +305,56 @@ depmod -a && reboot
 交换机一死，NPU 就只能从 console 进（p4 也没了），所以动 `mv88e6xxx` 之前必须确认
 `/dev/ttyS2` 这条路是通的。
 
-## 20.10 自愈的一个漏洞（已修）
+## 20.10 自愈：两个叠在一起的漏洞（都已修，实测通过）
 
-原来 `xgs-ntb-watch` 只看 `carrier`。今天踩到的是另一种坏法：**主机侧读到的 carrier 仍然是 1，
-而 NPU 那侧已经把链路丢了** —— 两边状态不一致，`carrier` 恒为 1，watcher 永远不会动手，
-链路就一直是死的。
+### 漏洞一：watcher 只看 `carrier`
 
-现在 watcher 同时检查 `carrier` 和**实际可达性**（ping `192.168.100.1`），任一异常持续约 60 秒
-就重新枚举。
+主机侧读到的 `carrier` 仍然是 1，而 NPU 那侧已经把链路丢了 —— 两边状态不一致，
+`carrier` 恒为 1，watcher 永远不动手。
+
+→ 现在同时检查 `carrier` 和**实际可达性**（ping `192.168.100.1`）。
+
+### 漏洞二：`ntb_epf_spad_write()` 会在端点上写野指针（**这才是主因**）
+
+修好判据之后发现，watcher 一动手整机就 panic。抓住的现场：
+
+```
+BUG: unable to handle page fault for address: ffffd14d00afffff
+Oops: 0002 [#1] PREEMPT SMP NOPTI
+RIP: ntb_epf_spad_write+0x34/0x40 [ntb_hw_epf]
+Call Trace:
+ ntb_transport_link_cleanup+0xae/0xd0 [ntb_transport]
+ ntb_transport_free
+ ntb_remove
+ bus_remove_driver / ntb_transport_exit / __do_sys_delete_module
+Kernel panic - not syncing: Fatal exception
+```
+
+原因和之前修过的门铃是同一类：`spad_offset` 是从**端点 BAR 里读出来的寄存器**，
+端点没了以后读回 `0xffffffff`，直接当偏移用 → 写到不相干的页 → `panic_on_oops=1` 立刻重启。
+之前的补丁只给 `ntb_epf_peer_db_set()` 加了守卫，**漏了 spad 的读和写**。
+
+→ [ntb/0101-ntb_hw_epf.patch](../ntb/0101-ntb_hw_epf.patch) 现在给
+`ntb_epf_spad_read()` / `ntb_epf_spad_write()` 也加了同样的判据（`~0U` 或超出 1 MiB 的 ctrl BAR 就丢弃），
+日志是 `endpoint unreachable, dropping spad read/write`。
+
+### 漏洞三（顺带）：只 `remove`+`rescan` 不够
+
+NPU 重启后它自己重新编程了 BAR 尺寸寄存器和 inbound iATU，旧的 BAR 地址全指向空气。
+所以恢复必须是**完整重置**，顺序不能改：
+
+```
+down eth0.31 / eth0.100 / eth0
+rmmod ntb_netdev → ntb_transport → ntb_hw_epf     （顺序反了就等于把设备从活着的驱动脚下抽走）
+echo 1 > /sys/bus/pci/devices/0000:03:00.0/remove
+echo 1 > /sys/bus/pci/rescan                       （让主机重新读 BAR 尺寸并重新分配）
+xgs-ntb-up.sh                                      （握手、重建 VLAN、补地址）
+```
+
+这段现在内联在 `xgs-ntb-watch.sh` 的 `recover()` 里，失败后还有 30 s 冷却。
+
+> 教训：**别在 x86 上手工 `rmmod ntb_hw_epf`** —— 在端点已经失联时，那一步会把整机带崩。
+> 交给 watcher 做（它按正确顺序来），或者关机钩子做。
 
 ## 20.11 当前网络
 

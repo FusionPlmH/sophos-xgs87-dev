@@ -25,7 +25,7 @@ NPU_ROOT=${NPU_ROOT:-/srv/npu}
 KVER=${KVER:-6.12.117+deb13-arm64}
 ARCH=arm64
 CROSS=aarch64-linux-gnu-
-REPO=$(cd "$(dirname "$0")/.." && pwd)
+REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 mkdir -p "$OBJ"
 

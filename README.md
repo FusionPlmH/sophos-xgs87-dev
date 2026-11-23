@@ -32,6 +32,8 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 | x86 借道拿家里内网地址 | ✅ | `192.168.0.50`，VLAN 31 透传 |
 | 一条链路跑管理段 + LAN | ✅ | VLAN 100 / VLAN 31（docs/20） |
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
+| NPU 单独重启 → x86 自动恢复 | ✅ | `xgs-ntb-watch` 做完整重置（rmmod → remove/rescan → 重建），实测 90 s 自己回来、x86 不重启（docs/20 §20.10） |
+| x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
 | NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/20 §20.8） |
 | NPU 内核 `CONFIG_PSTORE_CONSOLE` | ✅ | 已重编并上线（37.7 → 44.3 MB），console 后端 `[ramoops-1] enabled`，但受上一条限制用不上 |
 | 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 `PERST#` 复位。软件手段已穷尽（停 EP、关 panic、看门狗 inactive 都试过），要改 ATF 才有意义（docs/20 §20.8） |
