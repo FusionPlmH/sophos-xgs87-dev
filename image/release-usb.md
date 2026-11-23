@@ -58,7 +58,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 选项 | 做什么 | 风险 |
 |---|---|---|
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | 通过 vNTB 把 `debian-npu.tar.zst` 解到 NPU 的 root 分区（默认 `/dev/mmcblk0p2`）| 目标分区被 `mkfs.ext4`；**动手前会先问要不要备份** |
+| `2` 重装 NPU | NPU 上用 `nbd-server` 把 `p2` 导出来，x86 接成 `/dev/nbd0`，然后 **x86 这边**做 `mkfs.ext4` + 解包 + 放 DTB（默认 `/dev/mmcblk0p2`）| 目标分区被整个重写；**动手前会先问要不要备份**，装完自动重启 NPU |
 | `3` 查看状态 | 磁盘、vNTB 链路、NPU 是否可达、SSH 通不通 | 只读 |
 | `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 内置盘 |
 | `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |

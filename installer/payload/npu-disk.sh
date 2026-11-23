@@ -42,19 +42,32 @@ if [ "$RW" = 1 ]; then
 	[ "$ok" = RW ] || { echo "取消"; exit 1; }
 fi
 
-echo "== NPU（$NPU）上起 nbd-server 导出 $PART"
-$SSH "admin@$NPU" "sudo pkill -f 'nbd-server $PORT' 2>/dev/null || true
-	sudo nbd-server $PORT $PART $([ "$RW" = 1 ] || echo -r)
-	sleep 1
-	ss -ltn 2>/dev/null | grep -q ':$PORT ' && echo listening || echo 没起来"
+echo "== NPU（$NPU）上起 nbd-server 导出 $PART（$([ "$RW" = 1 ] && echo 读写 || echo 只读)）"
+# 配置文件形式：命令行形式（nbd-server PORT FILE）在 3.2x 里固定是只读导出。
+RO=$([ "$RW" = 1 ] && echo false || echo true)
+{ printf '%s\n' "$NPU_PASS"; cat <<CONF
+mkdir -p /etc/nbd-server
+cat > /etc/nbd-server/xgs87.conf <<INNER
+[generic]
+[xgs87]
+exportname = $PART
+readonly = $RO
+port = $PORT
+INNER
+pkill -f 'nbd-server -C /etc/nbd-server/xgs87.conf' 2>/dev/null || true
+setsid nbd-server -C /etc/nbd-server/xgs87.conf >/var/log/xgs87-nbd.log 2>&1 &
+sleep 2
+ss -ltn 2>/dev/null | grep -q ':$PORT ' && echo listening || { echo 没起来; cat /var/log/xgs87-nbd.log; }
+CONF
+} | $SSH "admin@$NPU" "sudo -S -p '' bash -s"
 
 echo "== x86 这端接上"
 modprobe nbd max_part=8 2>/dev/null || true
 nbd-client -d "$NBD" 2>/dev/null || true
 if [ "$RW" = 1 ]; then
-	nbd-client -p "$NPU" "$PORT" "$NBD" >/dev/null
+	nbd-client -N xgs87 -p "$NPU" "$PORT" "$NBD" >/dev/null
 else
-	nbd-client -r -p "$NPU" "$PORT" "$NBD" >/dev/null
+	nbd-client -N xgs87 -r -p "$NPU" "$PORT" "$NBD" >/dev/null
 fi
 
 echo
@@ -66,6 +79,6 @@ echo "  sudo dd if=$NBD bs=4M | zstd > /media/xgs87-bak/npu-p2.img.zst"
 echo
 echo "用完断开："
 echo "  sudo umount /mnt; sudo nbd-client -d $NBD"
-echo "  ssh admin@$NPU 'sudo pkill -f \"nbd-server $PORT\"'"
+echo "  ssh admin@$NPU 'sudo pkill -f nbd-server'"
 printf '按回车返回菜单...'
 read -r _

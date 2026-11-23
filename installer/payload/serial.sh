@@ -91,16 +91,38 @@ serial_login() {
 # "XGS87DONE<pid>" 会立刻匹配到我们自己敲的那一行。所以发出去的是
 #   echo XGS87$(echo DONE)$$
 # 回显里是那个 $(...) 原文，只有真正执行完才有光秃秃的 XGS87DONE<pid>。
+#
+# sudo 在串口上会问密码，这里替它回答一次（$NPU_PASS）。
 serial_run() {
 	_cmd=$1
 	_to=${2:-60}
 	_mark="XGS87DONE$$"
 	serial_send "$_cmd; echo XGS87\$(echo DONE)$$"
-	if ! serial_read_until "$_mark" "$_to"; then
+	_SERIAL_BUF=
+	_answered=0
+	_end=$(( $(date +%s) + _to ))
+	while [ "$(date +%s)" -le "$_end" ]; do
+		_SERIAL_BUF="$_SERIAL_BUF$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')"
+		case "$_SERIAL_BUF" in
+		*"$_mark"*) break ;;
+		esac
+		if [ "$_answered" = 0 ]; then
+			case "$_SERIAL_BUF" in
+			*"password for"*)
+				serial_send "$NPU_PASS"
+				_answered=1
+				;;
+			esac
+		fi
+	done
+	case "$_SERIAL_BUF" in
+	*"$_mark"*) ;;
+	*)
 		printf '%s\n' "$_SERIAL_BUF"
 		echo "serial: 等 $_mark 超时（命令：$_cmd）" >&2
 		return 1
-	fi
+		;;
+	esac
 	printf '%s\n' "$_SERIAL_BUF" | grep -v -e "$_mark" -e 'XGS87$(echo DONE)' || true
 	return 0
 }

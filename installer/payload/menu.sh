@@ -30,7 +30,7 @@ $(store_state)
 
 选择一个操作：" 22 78 11 \
 			"1" "重装 x86：把 debian-x86.img 写进本机内置盘（整盘覆盖）" \
-			"2" "重装 NPU：把 debian-npu.tar.zst 送到 NPU 的 root 分区（会先问要不要备份）" \
+			"2" "重装 NPU：用 NBD 把 debian-npu.tar.zst 写进它的 root 分区（会先问要不要备份）" \
 			"3" "查看状态：磁盘、vNTB 链路、NPU 是否在线" \
 			"4" "备份 x86 内置盘到 U 盘的备份分区" \
 			"6" "备份 NPU 分区到 U 盘的备份分区" \
