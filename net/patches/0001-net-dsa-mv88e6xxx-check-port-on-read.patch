@@ -1,0 +1,39 @@
+From e3624f5eeac40e2f95e54e5ed684222438d56e23 Mon Sep 17 00:00:00 2001
+From: Jakub Kicinski <kuba@kernel.org>
+Date: Fri, 18 Sep 2026 11:53:25 -0700
+Subject: net: dsa: mv88e6xxx: check the port when reading back a policy rule
+
+chip->policies is one IDR for the whole switch, so the location an
+ETHTOOL_GRXCLSRULE caller supplies can name a rule belonging to any port.
+mv88e6xxx_get_rxnfc() copies it out without looking at policy->port, which
+lets a user on one user port read the MAC address and VID of a policy an
+admin installed on another.  ETHTOOL_GRXCLSRULE needs no CAP_NET_ADMIN.
+
+The GRXCLSRLCNT and GRXCLSRLALL arms of the same switch statement already
+filter on policy->port, which makes the GRXCLSRULE omission look
+unintentional. Nonetheless, changing this does carry some regression
+risk.
+
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+Link: https://patch.msgid.link/20260918185326.3940857-2-kuba@kernel.org
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+---
+ drivers/net/dsa/mv88e6xxx/chip.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/dsa/mv88e6xxx/chip.c b/drivers/net/dsa/mv88e6xxx/chip.c
+index 8cf5681f58067..461167199a714 100644
+--- a/drivers/net/dsa/mv88e6xxx/chip.c
++++ b/drivers/net/dsa/mv88e6xxx/chip.c
+@@ -2457,7 +2457,7 @@ static int mv88e6xxx_get_rxnfc(struct dsa_switch *ds, int port,
+ 	case ETHTOOL_GRXCLSRULE:
+ 		err = -ENOENT;
+ 		policy = idr_find(&chip->policies, fs->location);
+-		if (policy) {
++		if (policy && policy->port == port) {
+ 			memcpy(fs, &policy->fs, sizeof(*fs));
+ 			err = 0;
+ 		}
+-- 
+cgit 1.3.1-korg
+

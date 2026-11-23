@@ -1,26 +1,43 @@
 #!/bin/sh
-# Keep the vNTB link to the NPU alive.  The NPU is the endpoint, so every time
-# it reboots the host has to re-enumerate the device; nothing does that by
-# itself, and worse, the link can sit at carrier 0 forever.
+# Keep the vNTB link to the NPU alive.
+#
+# It fails in two different ways and only one of them is obvious:
+#
+#   * the endpoint vanishes (NPU reboots) and eth0 sits at carrier 0, which a
+#     re-enumeration fixes;
+#   * the two sides disagree -- the host still reads carrier 1 while the NPU
+#     has dropped the link, so nothing ever notices and the link stays dead
+#     until someone pokes it.
+#
+# So both the carrier and actual reachability are watched, and either one
+# failing for a minute triggers the up script.
 set -u
 
 NTB_DEV=/sys/bus/ntb/devices/0000:03:00.0
 PCI_DEV=/sys/bus/pci/devices/0000:03:00.0
-last=0
+PEER=192.168.100.1
+INTERVAL=15
+LIMIT=4			# ~60 s of trouble before acting
+
+miss=0
 
 while :; do
-	carrier=0
-	[ -r /sys/class/net/eth0/carrier ] && carrier=$(cat /sys/class/net/eth0/carrier 2>/dev/null || echo 0)
+	healthy=1
 
-	if [ ! -e "$NTB_DEV" ] || [ "$carrier" != 1 ]; then
-		now=$(date +%s)
-		if [ -e "$PCI_DEV" ] && [ $((now - last)) -ge 60 ]; then
-			last=$now
-			logger -t xgs-ntb-watch "link down (carrier=$carrier), re-enumerating"
-			/usr/local/sbin/xgs-ntb-up.sh >> /var/log/xgs-ntb-watch.log 2>&1
-		fi
+	if [ ! -e "$NTB_DEV" ]; then
+		healthy=0
 	else
-		# Link is healthy: make sure our addresses survived.
+		carrier=$(cat /sys/class/net/eth0/carrier 2>/dev/null || echo 0)
+		[ "$carrier" = 1 ] || healthy=0
+	fi
+
+	if [ "$healthy" = 1 ]; then
+		ping -c 1 -W 2 "$PEER" >/dev/null 2>&1 || healthy=0
+	fi
+
+	if [ "$healthy" = 1 ]; then
+		miss=0
+		# make sure the plumbing survived whatever happened last time
 		ip link set eth0 up 2>/dev/null
 		for vid in 100 31; do
 			vl=eth0.$vid
@@ -30,6 +47,14 @@ while :; do
 		done
 		ip addr show dev eth0.100 2>/dev/null | grep -q '192.168.100.2/' || \
 			ip addr add 192.168.100.2/24 dev eth0.100 2>/dev/null
+	else
+		miss=$((miss + 1))
+		if [ "$miss" -ge "$LIMIT" ] && [ -e "$PCI_DEV" ]; then
+			miss=0
+			logger -t xgs-ntb-watch "link unhealthy, re-enumerating"
+			/usr/local/sbin/xgs-ntb-up.sh >> /var/log/xgs-ntb-watch.log 2>&1
+		fi
 	fi
-	sleep 15
+
+	sleep "$INTERVAL"
 done

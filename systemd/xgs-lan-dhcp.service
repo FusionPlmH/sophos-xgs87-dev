@@ -1,0 +1,14 @@
+[Unit]
+Description=DHCP client on br-lan (address on the house LAN)
+After=xgs-lan-uplink.service
+Wants=xgs-lan-uplink.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/pkill -x dhcpcd
+ExecStart=/usr/sbin/dhcpcd -4 -B -w br-lan
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

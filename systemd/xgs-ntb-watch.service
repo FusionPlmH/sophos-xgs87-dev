@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch the vNTB link to the NPU and re-enumerate when it dies
+After=xgs-ntb.service
+Wants=xgs-ntb.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/xgs-ntb-watch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

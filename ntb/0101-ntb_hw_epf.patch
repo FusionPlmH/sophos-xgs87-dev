@@ -1,0 +1,54 @@
+--- a/drivers/ntb/hw/epf/ntb_hw_epf.c
++++ b/drivers/ntb/hw/epf/ntb_hw_epf.c
+@@ -338,17 +338,17 @@
+ 	int ret;
+ 	int i;
+ 
+-	irq = pci_alloc_irq_vectors(pdev, msi_min, msi_max, PCI_IRQ_MSIX);
++	/*
++	 * The CN9130 DesignWare endpoint advertises MSI-X but only raises MSI,
++	 * so asking for MSI-X leaves the host with an empty vector table and
++	 * the IOMMU logs IO_PAGE_FAULT address=0x0.  Use MSI only.
++	 */
++	irq = pci_alloc_irq_vectors(pdev, msi_min, msi_max, PCI_IRQ_MSI);
+ 	if (irq < 0) {
+-		dev_dbg(dev, "Failed to get MSIX interrupts\n");
+-		irq = pci_alloc_irq_vectors(pdev, msi_min, msi_max,
+-					    PCI_IRQ_MSI);
+-		if (irq < 0) {
+-			dev_err(dev, "Failed to get MSI interrupts\n");
+-			return irq;
+-		}
+-		argument &= ~MSIX_ENABLE;
++		dev_err(dev, "Failed to get MSI interrupts\n");
++		return irq;
+ 	}
++	argument &= ~MSIX_ENABLE;
+ 
+ 	for (i = 0; i < irq; i++) {
+ 		ret = request_irq(pci_irq_vector(pdev, i), ntb_epf_vec_isr,
+@@ -485,10 +485,23 @@
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * These registers live in the endpoint's BAR.  Once the endpoint is
++	 * gone -- the NPU rebooted, and no one told us -- the reads come back
++	 * as all ones, and multiplying that into the doorbell offset puts the
++	 * write into an unrelated kernel page: a page fault in here is how the
++	 * host used to die whenever the network stack still had a packet
++	 * queued while the peer disappeared.
++	 */
+ 	db_entry_size = readl(ndev->ctrl_reg + NTB_EPF_DB_ENTRY_SIZE);
+-
+ 	db_data = readl(ndev->ctrl_reg + NTB_EPF_DB_DATA(interrupt_num));
+ 	db_offset = readl(ndev->ctrl_reg + NTB_EPF_DB_OFFSET(interrupt_num));
++
++	if (db_entry_size == ~0U || db_offset == ~0U || db_data == ~0U) {
++		dev_warn_ratelimited(dev, "endpoint unreachable, dropping doorbell\n");
++		return -EIO;
++	}
++
+ 	writel(db_data, ndev->db_reg + (db_entry_size * interrupt_num) +
+ 	       db_offset);
+ 

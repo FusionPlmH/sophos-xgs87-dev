@@ -1,0 +1,44 @@
+From 242ebf4c51148d5202b9c57841082c44c4284082 Mon Sep 17 00:00:00 2001
+From: Jakub Kicinski <kuba@kernel.org>
+Date: Fri, 18 Sep 2026 11:53:26 -0700
+Subject: net: dsa: mv88e6xxx: check the port when deleting a policy rule
+
+ETHTOOL_SRXCLSRLDEL removes the policy the location names out of the
+switch-wide IDR without checking which port owns it, then hands it to
+mv88e6xxx_policy_apply() along with the port the request arrived on.
+Deleting another port's rule therefore purges an ATU entry on and clears
+the policy register of the requesting port, while the owning port keeps
+its hardware policy - and, with the software object freed, no longer has
+a location that can be used to remove it.
+
+Initially I thought that we're just able to delete a rule from one port
+using another port as a handle. But if the reading of the code outlined
+above is correct, this is just broken, not a "feature" someone could
+depend on.
+
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+Link: https://patch.msgid.link/20260918185326.3940857-3-kuba@kernel.org
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+---
+ drivers/net/dsa/mv88e6xxx/chip.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/dsa/mv88e6xxx/chip.c b/drivers/net/dsa/mv88e6xxx/chip.c
+index 461167199a714..70411d147677f 100644
+--- a/drivers/net/dsa/mv88e6xxx/chip.c
++++ b/drivers/net/dsa/mv88e6xxx/chip.c
+@@ -2503,8 +2503,9 @@ static int mv88e6xxx_set_rxnfc(struct dsa_switch *ds, int port,
+ 		break;
+ 	case ETHTOOL_SRXCLSRLDEL:
+ 		err = -ENOENT;
+-		policy = idr_remove(&chip->policies, fs->location);
+-		if (policy) {
++		policy = idr_find(&chip->policies, fs->location);
++		if (policy && policy->port == port) {
++			idr_remove(&chip->policies, fs->location);
+ 			policy->action = MV88E6XXX_POLICY_ACTION_NORMAL;
+ 			err = mv88e6xxx_policy_apply(chip, port, policy);
+ 			devm_kfree(chip->dev, policy);
+-- 
+cgit 1.3.1-korg
+

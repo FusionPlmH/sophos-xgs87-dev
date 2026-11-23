@@ -1,0 +1,51 @@
+--- a/drivers/pci/controller/dwc/pcie-designware-plat.c
++++ b/drivers/pci/controller/dwc/pcie-designware-plat.c
+@@ -18,6 +18,8 @@
+ #include <linux/resource.h>
+ #include <linux/types.h>
+ 
++#include <linux/pci-ep-cfs.h>
++
+ #include "pcie-designware.h"
+ 
+ struct dw_plat_pcie {
+@@ -52,7 +54,7 @@
+ 	case PCI_IRQ_MSI:
+ 		return dw_pcie_ep_raise_msi_irq(ep, func_no, interrupt_num);
+ 	case PCI_IRQ_MSIX:
+-		return dw_pcie_ep_raise_msix_irq(ep, func_no, interrupt_num);
++		return -EINVAL;
+ 	default:
+ 		dev_err(pci->dev, "UNKNOWN IRQ type\n");
+ 	}
+@@ -63,7 +65,13 @@
+ static const struct pci_epc_features dw_plat_pcie_epc_features = {
+ 	.linkup_notifier = false,
+ 	.msi_capable = true,
+-	.msix_capable = true,
++	.msix_capable = false,
++	.align = SZ_1M,
++	.bar = {
++		[BAR_1] = { .type = BAR_RESERVED },
++		[BAR_3] = { .type = BAR_RESERVED },
++		[BAR_5] = { .type = BAR_RESERVED },
++	},
+ };
+ 
+ static const struct pci_epc_features*
+@@ -156,6 +164,9 @@
+ 
+ 		pci_epc_init_notify(pci->ep.epc);
+ 
++		/* pci-epc-core is built without CONFIG_PCI_ENDPOINT_CONFIGFS */
++		pci_ep_cfs_add_epc_group(dev_name(dev));
++
+ 		break;
+ 	default:
+ 		dev_err(dev, "INVALID device type %d\n", dw_plat_pcie->mode);
+@@ -195,3 +206,5 @@
+ 	.probe = dw_plat_pcie_probe,
+ };
+ builtin_platform_driver(dw_plat_pcie_driver);
++
++MODULE_LICENSE("GPL");

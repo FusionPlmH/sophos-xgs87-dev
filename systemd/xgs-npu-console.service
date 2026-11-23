@@ -1,0 +1,16 @@
+[Unit]
+Description=Capture the NPU console (ttyS2) to /var/log/npu-console.log
+After=dev-ttyS2.device
+DefaultDependencies=no
+Before=multi-user.target
+ConditionPathExists=/dev/ttyS2
+
+[Service]
+Type=simple
+ExecStartPre=/bin/stty -F /dev/ttyS2 57600 raw -echo -crtscts
+ExecStart=/bin/sh -c "exec cat /dev/ttyS2 >> /var/log/npu-console.log"
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=sysinit.target
