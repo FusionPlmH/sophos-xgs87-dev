@@ -25,6 +25,19 @@ sudo systemctl daemon-reload
 sudo systemctl enable xgs87-growroot
 ```
 
+`image/setup.sh` 另外做了几件"减负"的事，不在这个目录里：
+
+- `/etc/systemd/journald.conf.d/xgs87.conf`：`SystemMaxUse=64M`、`SystemKeepFree=256M`。
+  journal 是唯一的现场取证材料（见 [20](../docs/20-lan-over-vntb.md) §20.8），不能关，
+  但要封顶 —— 真机上一度攒到 248 MB。
+- `systemctl mask getty@tty1.service man-db.timer dpkg-db-backup.timer e2scrub_all.timer
+  xfs_scrub_all.timer`：没有显示器/键盘、没有 man 页、没有 LVM/XFS，dpkg 的每日备份
+  只是 eMMC 磨损。`fstrim.timer` 和 `apt-daily*` 保留。
+- `image/overlay/common/etc/systemd/system/ssh.service.d/10-xgs87-hostkeys.conf`：
+  镜像里刻意不带 `/etc/ssh/ssh_host_*`（否则每块盘同一身份），而 Debian 13 的
+  `ssh.service` 只有 `ExecStartPre=sshd -t`、**自己不会生成**，所以 drop-in 里
+  先 `ssh-keygen -A` 再 `sshd -t`。没有这个，装完机就没有 SSH。
+
 ## NPU 侧（`npu/`）
 
 | unit | 脚本 | 干什么 |

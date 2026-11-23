@@ -143,4 +143,22 @@ apt-get clean
 rm -rf /var/lib/apt/lists/* /var/cache/apt
 find /var/log -type f -exec truncate -s0 {} +
 
+# --- keep the journal, bound the journal ------------------------------------
+# It is the only forensic trace of a lockup (docs/20 §20.8), so it stays on --
+# 248 MB of it piled up on the live x86 -- and the timers that maintain things
+# this image does not have are masked: no keyboard or monitor, no man pages,
+# no LVM (e2scrub) and no XFS.  fstrim and apt-daily stay.
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/xgs87.conf <<'EOF'
+[Journal]
+SystemMaxUse=64M
+SystemKeepFree=256M
+EOF
+systemctl mask getty@tty1.service man-db.timer dpkg-db-backup.timer \
+	e2scrub_all.timer xfs_scrub_all.timer >/dev/null
+
+# image/overlay comes from a Windows checkout, so everything in it arrives
+# mode 0777 -- systemd warns about world-writable drop-ins and keeps going.
+chmod 644 /etc/systemd/system/ssh.service.d/*.conf
+
 echo "== setup.sh done"
