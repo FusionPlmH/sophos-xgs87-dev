@@ -1,6 +1,6 @@
 # 13 · NPU 换系统方案（Debian vs OpenWrt）与 10G SFP 落地路径
 
-> ✅ **方案已落地**：NPU 现在跑的就是 Debian 13 + 6.12.117，SFP 跑 10G。
+> 🏷 **状态（2026-11-23 复核）**：✅ **方案已落地** —— NPU 现在跑的就是 Debian 13 + 6.12.117，SFP 实测 10G。
 > 本文保留取舍过程（OpenWrt vs Debian、DTS 那一行改动、回滚路径）；实施细节与踩坑见 [14](14-npu-debian-hardware.md) 和 [20](20-lan-over-vntb.md)。
 
 本文回答两个问题：
