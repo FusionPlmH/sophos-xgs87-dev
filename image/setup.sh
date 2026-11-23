@@ -108,6 +108,9 @@ echo "admin:P@ssw0rd" | chpasswd
 chmod 755 /home
 install -d -o admin -g admin -m 0755 /home/admin
 chown -R admin:admin /home/admin
+# ping 默认不带 setuid，非 root 会 "missing cap_net_raw+p" —— 维护脚本里的
+# find_npu 就是被这个坑过（明明通却报 NPU 不可达）。
+if command -v setcap >/dev/null 2>&1; then setcap cap_net_raw+ep /usr/bin/ping 2>/dev/null || true; fi
 passwd -l root
 cat > /etc/ssh/sshd_config.d/10-xgs87.conf <<'EOF'
 PermitRootLogin no

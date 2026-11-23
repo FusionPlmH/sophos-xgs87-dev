@@ -17,7 +17,7 @@ NPU=${NPU:-192.168.100.1}
 IMG=${IMG:-/var/tmp/npu-p2.img}
 TAR=${TAR:-$PAYLOAD/debian-npu.tar.zst}
 DTB=${DTB:-$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)}
-MNT=${MNT:-/mnt/npuroot}
+MNT=${MNT:-/var/tmp/npuroot}
 PART=${PART:-/dev/mmcblk0p2}
 PNAME=${PART##*/}
 
