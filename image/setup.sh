@@ -102,6 +102,12 @@ fi
 # log in over ssh, so everything is done as admin through sudo.
 useradd --create-home --shell /bin/bash --groups sudo admin
 echo "admin:P@ssw0rd" | chpasswd
+# useradd 建的家目录权限取决于当时的 umask 和 uid 分配，装完就出现过
+# "/home/admin: change directory failed: Permission denied"（home 进去了没权限，
+# 或者 /home 本身不是 755）。这里显式钉死，别让它再依赖 useradd 的心情。
+chmod 755 /home
+install -d -o admin -g admin -m 0755 /home/admin
+chown -R admin:admin /home/admin
 passwd -l root
 cat > /etc/ssh/sshd_config.d/10-xgs87.conf <<'EOF'
 PermitRootLogin no
