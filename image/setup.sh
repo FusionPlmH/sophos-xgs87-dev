@@ -45,14 +45,21 @@ fi
 if [ "$VARIANT" = full ]; then
 	PKG=xgs87-$SIDE
 	VER=$(sed -n 's/^PACKAGE_VERSION="\(.*\)"/\1/p' /opt/xgs87/kernel/"$SIDE"/dkms.conf)
-	mkdir -p /usr/src/$PKG-$VER
-	cp /opt/xgs87/kernel/"$SIDE"/*.c /opt/xgs87/kernel/"$SIDE"/Makefile \
-	   /opt/xgs87/kernel/"$SIDE"/dkms.conf /usr/src/$PKG-$VER/ 2>/dev/null || true
-	cp /opt/xgs87/kernel/"$SIDE"/*.h /usr/src/$PKG-$VER/ 2>/dev/null || true
-	dkms add "$PKG/$VER"
-	dkms build "$PKG/$VER"
-	dkms install "$PKG/$VER" --force
-	echo "== dkms: $(dkms status "$PKG")"
+	# Inside the chroot uname -r is the *host* kernel, so ask the tree which
+	# kernel is actually installed here.
+	KVER=$(ls /lib/modules | sort -V | tail -1)
+	if [ ! -d "/lib/modules/$KVER/build" ]; then
+		echo "== no headers for $KVER, skipping the DKMS build" >&2
+	else
+		mkdir -p /usr/src/$PKG-$VER
+		cp /opt/xgs87/kernel/"$SIDE"/*.c /opt/xgs87/kernel/"$SIDE"/Makefile \
+		   /opt/xgs87/kernel/"$SIDE"/dkms.conf /usr/src/$PKG-$VER/ 2>/dev/null || true
+		cp /opt/xgs87/kernel/"$SIDE"/*.h /usr/src/$PKG-$VER/ 2>/dev/null || true
+		dkms add "$PKG/$VER"
+		dkms build "$PKG/$VER" -k "$KVER"
+		dkms install "$PKG/$VER" -k "$KVER" --force
+		echo "== dkms: $(dkms status "$PKG")"
+	fi
 fi
 
 # --- housekeeping -----------------------------------------------------------

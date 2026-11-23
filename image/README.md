@@ -52,6 +52,25 @@ zstd -dc xgs87-npu-full.tar.zst | tar -xpf - -C /mnt
 
 ## GitHub Actions
 
-`.github/workflows/image.yml` 用矩阵同时构建 `amd64` 和 `arm64`（后者靠
-`qemu-user-static` + binfmt），产物作为 artifact 上传，保留 14 天。
-手动触发时可以选 `full` / `base`。
+两个**独立**的 workflow，各自跑在原生架构的 runner 上（不做交叉编译、不用 qemu）：
+
+| workflow | runner | 产物 |
+|---|---|---|
+| [image-x86.yml](../.github/workflows/image-x86.yml) | `ubuntu-24.04`（amd64） | `xgs87-x86-*.img.zst`（可启动镜像）+ `xgs87-x86-*.tar.zst` |
+| [image-npu.yml](../.github/workflows/image-npu.yml) | `ubuntu-24.04-arm`（aarch64，公开仓库免费） | `xgs87-npu-*.tar.zst` + `cn9130-*.dtb` |
+
+push 到 `main`（且改到 `image/` `kernel/` `systemd/` `board/`）或者手动 `workflow_dispatch` 触发。
+
+**产物自动发 Release**：两个 workflow 都写到同一个 tag `images-<UTC 日期>-<短 sha>`，
+谁先跑完谁先建 release，后跑完的用 `gh release upload --clobber` 补上自己的文件
+（创建和上传都有 5 次重试，避免并发撞车）。
+
+```
+images-20261123-aa03d9e
+├── xgs87-x86-full.img.zst
+├── xgs87-x86-full.tar.zst
+├── xgs87-npu-full.tar.zst
+└── cn9130-sophos-xgs87w-sfp10g-aa03d9e.dtb
+```
+
+⚠️ arm64 runner 在**私有**仓库要付费计划；本仓库是公开的，`ubuntu-24.04-arm` 免费。

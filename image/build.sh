@@ -51,7 +51,7 @@ OUT=${OUT:-$REPO/out/xgs87-$SIDE-$VARIANT.tar.zst}
 mkdir -p "$(dirname "$OUT")"
 [ "$(id -u)" = 0 ] || { echo "run as root (mmdebstrap)" >&2; exit 1; }
 
-PKGS=$(cat "$REPO/image/packages-common.list" "$REPO/image/packages-$SIDE.list" |
+PKGS=$({ cat "$REPO/image/packages-common.list"; echo; cat "$REPO/image/packages-$SIDE.list"; } |
 	grep -v '^#' | grep -v '^$' | paste -sd, -)
 if [ "$VARIANT" = full ]; then
 	PKGS="$PKGS,dkms,build-essential,linux-headers-$ARCH"

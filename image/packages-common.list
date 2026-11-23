@@ -1,9 +1,14 @@
-# Shared packages for both machines.
+# Packages both machines need.  Everything here is required by a unit or a
+# script in systemd/, or by the boot path -- nothing is "nice to have".
 systemd,systemd-sysv,udev,dbus,kmod
 apt,ca-certificates
-ifupdown,iproute2,iputils-ping,ethtool,net-tools
+iproute2,iputils-ping,ethtool
 openssh-server
-vim-tiny,less,psmisc,procps
+psmisc,procps,util-linux,util-linux-extra
+less,vim-tiny
 zstd,xz-utils
 systemd-timesyncd,fake-hwclock
-console-setup,locales,tzdata
+systemd-resolved
+tzdata,locales,console-setup
+# the NPU still carries a legacy /etc/network/interfaces for lo
+ifupdown

@@ -1,0 +1,110 @@
+name: image npu
+
+# Builds on a native arm64 runner (free for public repositories) so there is no
+# qemu and no cross-compilation.  Writes into the same images-<date>-<sha>
+# release as the x86 workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'kernel/**'
+      - 'systemd/**'
+      - 'board/**'
+      - '.github/workflows/image-npu.yml'
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'full (with DKMS toolchain) or base'
+        default: 'full'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: image-npu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm we are actually on aarch64
+        run: uname -m && test "$(uname -m)" = aarch64
+
+      - name: Decide tag and variant
+        id: vars
+        run: |
+          VARIANT="${{ github.event.inputs.variant }}"
+          echo "variant=${VARIANT:-full}" >> "$GITHUB_OUTPUT"
+      - id: tag
+        run: echo "tag=images-$(date -u +%Y%m%d)-$(echo $GITHUB_SHA | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd device-tree-compiler
+
+      - name: Build rootfs (native arm64)
+        run: |
+          sudo ./image/build.sh --arch arm64 --variant "${{ steps.vars.outputs.variant }}" \
+            --out "out/xgs87-npu-${{ steps.vars.outputs.variant }}.tar.zst"
+
+      - name: Build the board DTB
+        run: |
+          ./tools/build/build-dtb.sh
+          cp out/cn9130-sophos-xgs87w-sfp10g.dtb \
+             "out/cn9130-sophos-xgs87w-sfp10g-${GITHUB_SHA:0:7}.dtb"
+
+      - name: Report
+        run: |
+          ls -lh out/
+          tar --use-compress-program=unzstd -tf \
+            "out/xgs87-npu-${{ steps.vars.outputs.variant }}.tar.zst" \
+            | grep -E '^\./(boot|usr/local/sbin|etc/systemd/system)/' | head -12
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-npu
+          path: |
+            out/xgs87-npu-*.tar.zst
+            out/*.dtb
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: xgs87-npu
+          path: out
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -e
+          ls -lh out/
+          for i in 1 2 3 4 5; do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            gh release create "$TAG" --title "$TAG" \
+              --notes "自动构建：$(date -u +%Y-%m-%dT%H:%MZ) / ${GITHUB_SHA:0:7}
+
+          - \`xgs87-npu-*.tar.zst\` — NPU 根文件系统（解到 eMMC 的 root 分区）
+          - \`cn9130-sophos-xgs87w-sfp10g-*.dtb\` — 板级设备树，放 \`/boot/\`
+
+          U-Boot 侧设置见仓库 docs/03 与 docs/07。" && break || sleep 5
+          done
+          for f in out/*; do
+            for i in 1 2 3 4 5; do
+              gh release upload "$TAG" "$f" --clobber && break || sleep 5
+            done
+          done
+          gh release view "$TAG" --json assets --jq '.assets[].name'

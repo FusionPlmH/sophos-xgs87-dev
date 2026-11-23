@@ -1,6 +1,19 @@
-# NPU side.  Kernel and switch drivers come from Debian; the handful of
-# modules Debian does not build are in kernel/npu and installed via DKMS.
-linux-image-arm64
-mtd-utils,i2c-tools
-u-boot-tools
+#
+# NPU side (CN9130, arm64).
+#
+# REQUIRED by our units and scripts:
+#   dhcpcd-base      -> /usr/sbin/dhcpcd for xgs-lan-dhcp.service
+#   libubootenv-tool -> fw_printenv; xgs-ports-init.sh reads ethaddr from the
+#                       U-Boot environment to derive per-port MACs.  Without
+#                       it every port keeps the same MAC and nothing warns.
+#   initramfs-tools  -> bootcmd loads /boot/initrd.img
+#   ethtool          -> the port / SFP checks used throughout docs/
+#
+# Kernel and switch drivers are stock Debian; the modules Debian does not
+# build are in kernel/npu and installed by DKMS.
+linux-image-arm64,initramfs-tools,linux-base
+dhcpcd-base,libubootenv-tool,ethtool
+u-boot-tools,mtd-utils,i2c-tools
+nftables
+pciutils
 iperf3,tcpdump

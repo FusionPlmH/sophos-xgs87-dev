@@ -1,5 +1,14 @@
-# x86 side.  No network hardware of its own, so nothing NIC specific.
-grub-efi-amd64,grub-efi-amd64-signed,shim-signed,efibootmgr
+#
+# x86 side.
+#
+# netcat-openbsd is REQUIRED: xgs-netconsole.service runs /usr/bin/nc -u -l -k
+# to receive the NPU's kernel console.  Missing it does not break the boot, it
+# just leaves you blind exactly when you need the log.
+#
+# This machine has no network hardware of its own -- the only netdev is the
+# vNTB link -- so everything that touches it is on the critical path.
 linux-image-amd64
+grub-efi-amd64,grub-efi-amd64-signed,shim-signed,efibootmgr
+netcat-openbsd
 pciutils,usbutils,dmidecode
 iperf3,tcpdump

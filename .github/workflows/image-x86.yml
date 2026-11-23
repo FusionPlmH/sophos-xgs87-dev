@@ -1,0 +1,109 @@
+name: image x86
+
+# Builds on a native amd64 runner -- no cross-compilation, no qemu.
+# Artifacts land in a release tagged images-<date>-<sha>, which both this and
+# the npu workflow write to; the second one to finish just adds its asset.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'kernel/**'
+      - 'systemd/**'
+      - 'board/**'
+      - '.github/workflows/image-x86.yml'
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'full (with DKMS toolchain) or base'
+        default: 'full'
+      size:
+        description: 'disk image size'
+        default: '4G'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: image-x86-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      variant: ${{ steps.vars.outputs.variant }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide tag and variant
+        id: vars
+        run: |
+          VARIANT="${{ github.event.inputs.variant }}"
+          echo "variant=${VARIANT:-full}" >> "$GITHUB_OUTPUT"
+      - id: tag
+        run: echo "tag=images-$(date -u +%Y%m%d)-$(echo $GITHUB_SHA | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd dosfstools fdisk mtools
+
+      - name: Build rootfs
+        run: |
+          sudo ./image/build.sh --arch amd64 --variant "${{ steps.vars.outputs.variant }}" \
+            --out "out/xgs87-x86-${{ steps.vars.outputs.variant }}.tar.zst"
+
+      - name: Build bootable image
+        run: |
+          sudo ./image/mkdisk.sh \
+            --rootfs "out/xgs87-x86-${{ steps.vars.outputs.variant }}.tar.zst" \
+            --out "out/xgs87-x86-${{ steps.vars.outputs.variant }}.img" \
+            --size "${{ github.event.inputs.size || '4G' }}"
+          zstd -T0 -10 -f --rm "out/xgs87-x86-${{ steps.vars.outputs.variant }}.img"
+
+      - name: Report
+        run: |
+          ls -lh out/
+          df -h / | tail -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-x86
+          path: out/xgs87-x86-*
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: xgs87-x86
+          path: out
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -e
+          ls -lh out/
+          for i in 1 2 3 4 5; do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            gh release create "$TAG" --title "$TAG" \
+              --notes "自动构建：$(date -u +%Y-%m-%dT%H:%MZ) / ${GITHUB_SHA:0:7}
+
+          - \`xgs87-x86-*.img.zst\` — 可启动磁盘镜像（GPT + ESP + ext4），\`zstd -d\` 后 dd 到 eMMC
+          - \`xgs87-x86-*.tar.zst\` — 同一个根文件系统，不想要镜像时用这个
+
+          NPU 的产物由 image-npu 工作流写进同一个 release。" && break || sleep 5
+          done
+          for f in out/*; do
+            for i in 1 2 3 4 5; do
+              gh release upload "$TAG" "$f" --clobber && break || sleep 5
+            done
+          done
+          gh release view "$TAG" --json assets --jq '.assets[].name'
