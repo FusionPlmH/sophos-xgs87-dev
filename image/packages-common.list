@@ -11,7 +11,9 @@ zstd,xz-utils
 systemd-timesyncd,fake-hwclock
 # growpart, for the first-boot root partition growth
 cloud-guest-utils
+# tzdata for the clock, but no locales/console-setup: the box is driven over a
+# serial console, and C.UTF-8 is built into glibc (image/setup.sh sets it).
 systemd-resolved
-tzdata,locales,console-setup
+tzdata
 # the NPU still carries a legacy /etc/network/interfaces for lo
 ifupdown

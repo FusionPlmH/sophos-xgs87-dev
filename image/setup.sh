@@ -15,6 +15,9 @@ x86) HOSTNAME=debian; ARCH=amd64 ;;
 esac
 echo "$HOSTNAME" > /etc/hostname
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME" > /etc/hosts
+# There is no `locales` package in the image (nothing reads translations here),
+# but C.UTF-8 is built into glibc, so the console still copes with UTF-8 names.
+printf 'LANG=C.UTF-8\n' > /etc/locale.conf
 
 # --- units and scripts, straight from the repository ------------------------
 # common/ is the same on both machines (root partition growth on first boot).

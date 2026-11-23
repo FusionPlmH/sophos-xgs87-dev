@@ -171,7 +171,7 @@ umount "$WORK/root" "$WORK/data"
 losetup -d "$LOOP"; LOOP=
 
 echo "== 压缩"
-zstd -T0 -19 --long=27 -f --rm "$OUT" -o "$OUT.zst"
+zstd -T0 -10 -f --rm "$OUT" -o "$OUT.zst"
 ls -lh "$OUT.zst"
 cat <<EOM
 

@@ -69,11 +69,20 @@ echo "== $ARCH / $VARIANT -> $OUT"
 TAR=${OUT%.zst}
 rm -f "$OUT" "$TAR"
 
+# These machines have no screen, no keyboard and no translator: drop the doc
+# tree (keeping the copyright files dpkg policy asks for), the man pages, the
+# gettext catalogs and the locale sources.  ~100 MB that never gets read, and
+# excluding them at unpack time is free -- deleting them afterwards is not.
 mmdebstrap \
 	--architectures="$ARCH" \
 	--variant=minbase \
 	--components="main contrib non-free-firmware" \
 	--include="$PKGS" \
+	--dpkgopt='path-exclude=/usr/share/doc/*' \
+	--dpkgopt='path-include=/usr/share/doc/*/copyright' \
+	--dpkgopt='path-exclude=/usr/share/man/*' \
+	--dpkgopt='path-exclude=/usr/share/locale/*' \
+	--dpkgopt='path-exclude=/usr/share/i18n/*' \
 	--customize-hook='mkdir -p "$1/opt/xgs87/systemd" "$1/opt/xgs87/kernel" "$1/opt/xgs87/board"' \
 	--customize-hook="sync-in $REPO/image/overlay/common /" \
 	--customize-hook="sync-in $REPO/image/overlay/$SIDE /" \
@@ -85,7 +94,7 @@ mmdebstrap \
 	"$SUITE" "$TAR" "$MIRROR"
 
 echo "== compress"
-zstd -T0 -19 --long=27 --rm -f "$TAR" -o "$OUT"
+zstd -T0 -10 --rm -f "$TAR" -o "$OUT"
 ls -lh "$OUT"
 echo
 echo "x86: ./image/mkdisk.sh --rootfs $OUT --out out/xgs87-x86.img"
