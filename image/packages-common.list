@@ -4,10 +4,13 @@ systemd,systemd-sysv,udev,dbus,kmod
 apt,ca-certificates
 iproute2,iputils-ping,ethtool
 openssh-server
+sudo
 psmisc,procps,util-linux,util-linux-extra
 less,vim-tiny
 zstd,xz-utils
 systemd-timesyncd,fake-hwclock
+# growpart, for the first-boot root partition growth
+cloud-guest-utils
 systemd-resolved
 tzdata,locales,console-setup
 # the NPU still carries a legacy /etc/network/interfaces for lo

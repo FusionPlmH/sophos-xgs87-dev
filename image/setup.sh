@@ -17,8 +17,12 @@ echo "$HOSTNAME" > /etc/hostname
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME" > /etc/hosts
 
 # --- units and scripts, straight from the repository ------------------------
+# common/ is the same on both machines (root partition growth on first boot).
+install -m755 /opt/xgs87/systemd/common/*.sh /usr/local/sbin/
+install -m644 /opt/xgs87/systemd/common/*.service /etc/systemd/system/
 install -m755 /opt/xgs87/systemd/"$SIDE"/*.sh /usr/local/sbin/
 install -m644 /opt/xgs87/systemd/"$SIDE"/*.service /etc/systemd/system/
+systemctl enable xgs87-growroot
 mkdir -p /etc/systemd/network
 for f in /opt/xgs87/systemd/"$SIDE"/*.network; do
 	[ -e "$f" ] && install -m644 "$f" /etc/systemd/network/
@@ -62,6 +66,17 @@ if [ "$VARIANT" = full ]; then
 		echo "== dkms: $(dkms status "$PKG")"
 	fi
 fi
+
+# --- accounts ---------------------------------------------------------------
+# One unprivileged account with sudo; root is locked and cannot log in over
+# ssh.  This is a network appliance, not a shell box.
+echo "admin:P@ssw0rd" | chpasswd
+usermod -aG sudo admin
+passwd -l root
+cat > /etc/ssh/sshd_config.d/10-xgs87.conf <<'EOF'
+PermitRootLogin no
+PasswordAuthentication yes
+EOF
 
 # --- housekeeping -----------------------------------------------------------
 systemctl enable systemd-timesyncd ssh

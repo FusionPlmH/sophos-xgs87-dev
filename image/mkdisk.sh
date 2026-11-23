@@ -12,7 +12,7 @@ set -eu
 
 ROOTFS=
 OUT=out/xgs87-x86.img
-SIZE=8G
+SIZE=auto
 ESP_MIB=476
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -41,7 +41,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== create $OUT ($SIZE)"
+# Smallest image that still holds the root filesystem plus a little slack; the
+# first boot grows the partition to fill whatever disk it was written to, so
+# there is no reason to ship a 4 GB image for 700 MB of data.
+if [ "$SIZE" = auto ]; then
+	BYTES=$(zstd -dc "$ROOTFS" | wc -c)
+	NEED=$(( BYTES + BYTES / 8 + 256 * 1024 * 1024 ))
+	SIZE=$(( (NEED / 1048576 + 1) * 1048576 ))
+fi
+
+echo "== create $OUT ($SIZE bytes)"
 rm -f "$OUT"
 truncate -s "$SIZE" "$OUT"
 sfdisk "$OUT" <<EOF

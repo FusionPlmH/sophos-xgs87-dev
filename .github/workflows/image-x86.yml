@@ -112,7 +112,7 @@ jobs:
 
           NPU 的产物由 image-npu 工作流写进同一个 release。" && break || sleep 5
           done
-          for f in out/*; do
+          for f in out/*.img.zst; do
             for i in 1 2 3 4 5; do
               gh release upload "$TAG" "$f" --clobber && break || sleep 5
             done
