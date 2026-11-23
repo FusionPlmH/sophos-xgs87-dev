@@ -147,7 +147,8 @@ find /var/log -type f -exec truncate -s0 {} +
 # It is the only forensic trace of a lockup (docs/20 §20.8), so it stays on --
 # 248 MB of it piled up on the live x86 -- and the timers that maintain things
 # this image does not have are masked: no keyboard or monitor, no man pages,
-# no LVM (e2scrub) and no XFS.  fstrim and apt-daily stay.
+# no LVM (e2scrub), no XFS, and no unattended apt run (updates are deliberate
+# on an appliance whose kernel package may be held).
 mkdir -p /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/xgs87.conf <<'EOF'
 [Journal]
@@ -155,7 +156,17 @@ SystemMaxUse=64M
 SystemKeepFree=256M
 EOF
 systemctl mask getty@tty1.service man-db.timer dpkg-db-backup.timer \
-	e2scrub_all.timer xfs_scrub_all.timer >/dev/null
+	e2scrub_all.timer xfs_scrub_all.timer \
+	apt-daily.timer apt-daily-upgrade.timer >/dev/null
+
+# /tmp in RAM (what DietPi does by default): nothing here wants a temp file on
+# eMMC, and the payload scripts stream rather than write.
+if [ -e /usr/lib/systemd/system/tmp.mount ]; then
+	mkdir -p /etc/systemd/system/tmp.mount.d
+	printf '[Mount]\nOptions=mode=1777,strictatime,nosuid,nodev,size=128M,nr_inodes=1m\n' \
+		> /etc/systemd/system/tmp.mount.d/size.conf
+	systemctl enable tmp.mount >/dev/null
+fi
 
 # image/overlay comes from a Windows checkout, so everything in it arrives
 # mode 0777 -- systemd warns about world-writable drop-ins and keeps going.

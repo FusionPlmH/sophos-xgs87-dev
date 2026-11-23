@@ -15,5 +15,3 @@ cloud-guest-utils
 # serial console, and C.UTF-8 is built into glibc (image/setup.sh sets it).
 systemd-resolved
 tzdata
-# the NPU still carries a legacy /etc/network/interfaces for lo
-ifupdown
