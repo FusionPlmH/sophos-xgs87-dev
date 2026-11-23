@@ -1,0 +1,2 @@
+# <file system> <mount point> <type> <options> <dump> <pass>
+UUID=@ROOT_UUID@ / ext4 defaults,noatime,errors=remount-ro 0 1

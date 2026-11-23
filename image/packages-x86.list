@@ -1,0 +1,5 @@
+# x86 side.  No network hardware of its own, so nothing NIC specific.
+grub-efi-amd64,grub-efi-amd64-signed,shim-signed,efibootmgr
+linux-image-amd64
+pciutils,usbutils,dmidecode
+iperf3,tcpdump

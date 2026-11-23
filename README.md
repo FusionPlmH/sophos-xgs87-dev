@@ -34,6 +34,8 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
 | NPU 单独重启 → x86 自动恢复 | ✅ | `xgs-ntb-watch` 做完整重置（rmmod → remove/rescan → 重建），实测 90 s 自己回来、x86 不重启（docs/20 §20.10） |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
+| **内核/系统可以随便升级** | ✅ | 两台都用**发行版内核 + DKMS**：x86 实测 6.12.94 → **6.12.118** 自动重编，NPU 用发行版内核（`kernel/npu`），自编内核已退役 |
+| SFP 自适应模块 | ✅ | 端口只声明 `1000base-x` 基线 + `sfp` phandle，phylink 按插入的模块切换（实测 10G 模块被自动提到 `10gbase-r`） |
 | NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/20 §20.8） |
 | NPU 内核 `CONFIG_PSTORE_CONSOLE` | ✅ | 已重编并上线（37.7 → 44.3 MB），console 后端 `[ramoops-1] enabled`，但受上一条限制用不上 |
 | 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 `PERST#` 复位。软件手段已穷尽（停 EP、关 panic、看门狗 inactive 都试过），要改 ATF 才有意义（docs/20 §20.8） |
@@ -119,6 +121,10 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [docs/19-module-vs-kernel-rebuild.md](docs/19-module-vs-kernel-rebuild.md) | 模块 vs 重编内核、换模块的失联风险、风扇归属 |
 | [docs/20-lan-over-vntb.md](docs/20-lan-over-vntb.md) | **一条 PCIe 链路跑两套网络**、NPU 串口的真相、hrtimer 把 RTT 从 4 ms 打到 0.6 ms、模块替换实录 |
 | [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本，按 **`npu/` / `x86/`** 分目录 |
+| [kernel/npu/](kernel/npu/) | NPU 侧 out-of-tree 模块（DKMS 包：vNTB、`spi-orion`、`clkfix`） |
+| [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |
+| [image/](image/) | **最小化 Debian 构建**：`mmdebstrap` 脚本、软件包清单、x86 磁盘镜像、GitHub Actions |
+| [.github/workflows/](.github/workflows/) | CI：`arm64` / `amd64` 分开构建 rootfs |
 | [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
 | [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
 | [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-npu/`、`on-x86/`、`on-pc/` |

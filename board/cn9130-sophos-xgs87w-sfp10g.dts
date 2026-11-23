@@ -222,7 +222,18 @@
 			port@9 {
 				reg = <9>;
 				label = "sfp";
-				phy-mode = "10gbase-r";
+				/*
+				 * 1000base-x is only the *baseline*: because the port has
+				 * an sfp phandle, phylink switches to whatever the module
+				 * asks for (2.5gbase-x, 5gbase-r, 10gbase-r) as long as
+				 * mv88e6393x advertises it in supported_interfaces, which
+				 * it does.
+				 *
+				 * Do NOT drop phy-mode entirely: with PHY_INTERFACE_MODE_NA
+				 * the validation falls back to gmii and fails with -EINVAL
+				 * ("failed to connect to PHY"), leaving the port dead.
+				 */
+				phy-mode = "1000base-x";
 				managed = "in-band-status";
 				sfp = <&sfp>;
 			};

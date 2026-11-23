@@ -100,7 +100,19 @@ port@9 {
 
 **这四步缺一不可**——早期我们手写第 1 步（+ 一个通用 PCS 复位）的结果是：
 链路 `0x0F4D`（10 Gbps UP）但整机不转发（见 [12.11](12-measurements.md#1211)）。
-现在用标准 DSA 路径，`ethtool sfp` 实测 **10000 Mb/s**。
+
+> **现在改成了自适应**（2026-11-23 实测）：端口只保留 **`1000base-x` 基线** + `sfp = <&sfp>`，
+> 由 phylink 按插入的模块切换接口模式。10G 模块实测被自动提到 `10gbase-r`：
+>
+> ```
+> mv88e6085 ...: configuring for inband/10gbase-r link mode
+> mv88e6085 ...: switched to inband/10gbase-r link mode
+> sfp: Link is Up - 10Gbps/Full - flow control off
+> ```
+>
+> ⚠️ **不要干脆删掉 `phy-mode`**：`PHY_INTERFACE_MODE_NA` 会让校验退化成 `gmii`，
+> 报 `validation of gmii ... failed: -EINVAL` → `failed to connect to PHY`，端口直接死。
+> 1G / 2.5G 模块没实测（手上只有 10G 模块），但走的是同一条 phylink 路径。
 
 > 也可以更"标准"：把 `phy-mode`/`managed` 都删掉，只留 `sfp = <&sfp>`，
 > 让 phylink 完全按模块能力协商。我们用的是显式 `10gbase-r`，因为只用 10G 模块。

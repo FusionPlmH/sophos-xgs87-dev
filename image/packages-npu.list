@@ -1,0 +1,6 @@
+# NPU side.  Kernel and switch drivers come from Debian; the handful of
+# modules Debian does not build are in kernel/npu and installed via DKMS.
+linux-image-arm64
+mtd-utils,i2c-tools
+u-boot-tools
+iperf3,tcpdump

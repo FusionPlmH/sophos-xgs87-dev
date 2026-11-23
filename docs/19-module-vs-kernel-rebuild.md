@@ -47,8 +47,26 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j16 Imag
 > 现有模块不用跟着重编。这次的产物已上线，`printk: legacy console [ramoops-1] enabled` 可见；
 > 但 ramoops 本身在这块板子上没用（每次复位都 DDR scrub），见 [20 §20.8](20-lan-over-vntb.md)。
 
-⚠️ **反过来的坑更致命**：模块绑死在内核版本上。两台机器都已经
-`apt-mark hold linux-image-*` —— 一次 `apt upgrade` 就会让 x86 失去唯一的网口（见 [09 §9.4](09-remaining-work.md)）。
+⚠️ **反过来的坑更致命**：模块绑死在内核版本上。**已解决（2026-11-23）** ——
+所有 out-of-tree 模块都改成了 DKMS 包（[kernel/x86](../kernel/x86/)、[kernel/npu](../kernel/npu/)），
+内核升级时 `dkms` 自动重编。实机验证：x86 从 6.12.94 升到 6.12.118，重启后链路自己回来；
+NPU 则干脆切回**发行版内核**（自编的 `CONFIG_PSTORE_CONSOLE` 内核已退役，因为 ramoops 本来就没用）。
+
+`mv88e6xxx` / `mvpp2` 也不再替换了：两个补丁（TCAM 越权、`AGGR_TXQ_SIZE 512`）都只是加固/调优，
+用发行版原版即可，补丁留在 [net/patches/](../net/patches/) 里备用。
+
+## 19.3 DKMS 是怎么组织的
+
+```
+kernel/npu/   ntb_core ntb_transport ntb_netdev pci_ep_cfs pci_epf_vntb
+              pcie_dw_plat spi-orion clkfix          → 8 个模块，一个 DKMS 包
+kernel/x86/   ntb_core ntb_transport ntb_netdev ntb_hw_epf   → 4 个模块
+```
+
+- 源码是**上游文件 + `ntb/*.patch`**，直接放在包里（Debian 的 headers 包不带这些驱动的源码）。
+- `DEST_MODULE_LOCATION = /updates/dkms`，所以会**覆盖** `kernel/` 里的同名模块，不用动发行版文件。
+- 装法：`kernel/npu/install.sh` / `kernel/x86/install.sh`（会自己装 `dkms` 和对应 headers）。
+- 验尸命令：`dkms status`，应为 `xgs87-npu/1.0.0, 6.12.117+deb13-arm64, aarch64: installed`。
 
 ## 19.3 风险：换模块可能失联
 

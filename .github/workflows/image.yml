@@ -1,0 +1,66 @@
+name: build rootfs
+
+on:
+  push:
+    paths:
+      - 'image/**'
+      - 'kernel/**'
+      - 'systemd/**'
+      - 'board/**'
+      - '.github/workflows/image.yml'
+  pull_request:
+    paths:
+      - 'image/**'
+      - 'kernel/**'
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'full (with DKMS toolchain) or base'
+        default: 'full'
+
+jobs:
+  build:
+    name: ${{ matrix.side }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - side: x86
+            arch: amd64
+          - side: npu
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mmdebstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap zstd qemu-user-static binfmt-support
+
+      - name: Register the arm64 binfmt handler
+        if: matrix.arch == 'arm64'
+        run: |
+          ls /proc/sys/fs/binfmt_misc/ || true
+          grep -q aarch64 /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null ||
+            sudo update-binfmts --enable qemu-aarch64
+          cat /proc/sys/fs/binfmt_misc/qemu-aarch64
+
+      - name: Build
+        run: |
+          VARIANT="${{ github.event.inputs.variant }}"
+          VARIANT=${VARIANT:-full}
+          sudo ./image/build.sh \
+            --arch ${{ matrix.arch }} --variant "$VARIANT" \
+            --out "out/xgs87-${{ matrix.side }}-$VARIANT.tar.zst"
+
+      - name: Report
+        run: |
+          ls -lh out/
+          sudo tar --use-compress-program=unzstd -tf out/*.tar.zst | head -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xgs87-${{ matrix.side }}
+          path: out/*.tar.zst
+          retention-days: 14

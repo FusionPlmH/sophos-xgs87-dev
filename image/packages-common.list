@@ -1,0 +1,9 @@
+# Shared packages for both machines.
+systemd,systemd-sysv,udev,dbus,kmod
+apt,ca-certificates
+ifupdown,iproute2,iputils-ping,ethtool,net-tools
+openssh-server
+vim-tiny,less,psmisc,procps
+zstd,xz-utils
+systemd-timesyncd,fake-hwclock
+console-setup,locales,tzdata
