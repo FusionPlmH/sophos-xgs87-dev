@@ -34,6 +34,14 @@ if ping -c1 -W1 "$NPU" >/dev/null 2>&1; then
 	*) echo "分区要写 /dev/... 的绝对路径"; exit 1 ;;
 	esac
 	echo "⚠️  会 mkfs.ext4 $PART 并解包，NPU 上原有的东西会没。"
+	printf '先在 U 盘上备份 %s 吗？[Y/n] ' "$PART"
+	read -r bk
+	case "${bk:-y}" in
+	y | Y) "$HERE/backup-npu.sh" "$PART" || {
+		echo "备份没成功，已中止 —— 没有格式化任何东西。"
+		exit 1
+	} ;;
+	esac
 	printf '输入 YES 继续：'
 	read -r ok
 	[ "$ok" = YES ] || exit 1
@@ -61,9 +69,20 @@ if ping -c1 -W1 "$NPU" >/dev/null 2>&1; then
 	read -r _
 else
 	echo "== NPU 不可达。起 HTTP 服务，从 NPU 的控制台手动装："
-	ADDR=$(ip -4 -br a show eth0.100 2>/dev/null | awk '{print $3}' | cut -d/ -f1)
-	ADDR=${ADDR:-192.168.100.2}
+	# 别假设地址：vNTB 链路没起来时 eth0.100 根本不存在，bind 会失败
+	# （OSError: Cannot assign requested address）。
+	ADDR=$(ip -4 -br a show up 2>/dev/null |
+		awk '$1 != "lo" && $3 ~ /^[0-9]/ { print $3 }' | cut -d/ -f1 | head -1)
 	PORT=${PORT:-8080}
+	if [ -z "$ADDR" ]; then
+		echo
+		echo "⚠️  x86 现在没有任何 IPv4 地址 —— vNTB 链路大概没起来。"
+		echo "    ip -br a            看接口"
+		echo "    systemctl status xgs-ntb xgs-ntb-watch"
+		echo "    链路起来后重选本项即可；实在不行可以："
+		echo "      cd $PAYLOAD && python3 -m http.server $PORT --bind 0.0.0.0"
+		exit 1
+	fi
 	cd "$PAYLOAD"
 	echo
 	echo "  x86 上已经跑起：  python3 -m http.server $PORT --bind $ADDR"

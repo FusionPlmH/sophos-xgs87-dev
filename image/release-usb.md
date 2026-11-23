@@ -54,14 +54,14 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 选项 | 做什么 | 风险 |
 |---|---|---|
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | 通过 vNTB 把 `debian-npu.tar.zst` 解到 NPU 的 root 分区（默认 `/dev/mmcblk0p2`） | 目标分区被 `mkfs.ext4` |
+| `2` 重装 NPU | 通过 vNTB 把 `debian-npu.tar.zst` 解到 NPU 的 root 分区（默认 `/dev/mmcblk0p2`）| 目标分区被 `mkfs.ext4`；**动手前会先问要不要备份** |
 | `3` 查看状态 | 磁盘、vNTB 链路、NPU 是否可达、SSH 通不通 | 只读 |
 | `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 U 盘的 payload 分区 | 需要 U 盘剩余空间 ≥ 内置盘 |
+| `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 U 盘 | 需要 U 盘剩余空间 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |
 | `5` shell | 直接进 root shell（U 盘系统） | — |
 | `9` / `0` | 关机 / 重启 | — |
 
-选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台
-（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装。
+`2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
 
 重装完 x86 后首次开机会自动把 root 分区扩到盘尾（`xgs87-growroot.service`）。
 登录 **`admin` / `P@ssw0rd`**（`sudo` 要密码），`root` 已锁定、SSH 拒绝 root。
