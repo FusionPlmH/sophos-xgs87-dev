@@ -47,6 +47,9 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j16 Imag
 > 现有模块不用跟着重编。这次的产物已上线，`printk: legacy console [ramoops-1] enabled` 可见；
 > 但 ramoops 本身在这块板子上没用（每次复位都 DDR scrub），见 [20 §20.8](20-lan-over-vntb.md)。
 
+⚠️ **反过来的坑更致命**：模块绑死在内核版本上。两台机器都已经
+`apt-mark hold linux-image-*` —— 一次 `apt upgrade` 就会让 x86 失去唯一的网口（见 [09 §9.4](09-remaining-work.md)）。
+
 ## 19.3 风险：换模块可能失联
 
 `mv88e6xxx.ko` 和 `mvpp2.ko` 是 DSA 的底座：

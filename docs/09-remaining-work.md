@@ -87,7 +87,17 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | "NPU 是无风扇设计" | ❌ 不成立 —— 有风扇，只是软件不可控 |
 | "NPU 是 Buildroot 空密码" | ❌ 不成立 —— 现在跑 Debian，root 有密码 |
 
-## 9.4 如果要重做一遍（换机 / 重刷的最小路径）
+## 9.4 维护红线（会把机器搞成砖的事）
+
+| 别做 | 后果 | 现状 |
+|---|---|---|
+| **`apt upgrade` 内核** | x86 的 `ntb_*.ko` 和 NPU 的 `mv88e6xxx`/`mvpp2`/vNTB 全是**对着特定内核版本编的**，换内核 → vermagic 不匹配 → 全不加载。x86 因此**彻底没有网络**（它只有 vNTB 这一个网口），只能靠 COM5 串口救；NPU 则 9 个口全消失 | ✅ 两台都已 `apt-mark hold linux-image-*`（2026-11-23）。真要升内核：先按新版本重编所有模块，再升级 |
+| 手工 `rmmod ntb_hw_epf`（x86） | 端点已失联时 `ntb_epf_spad_write()` 会写野指针 → panic（§见 [20](20-lan-over-vntb.md) §20.10） | 已修（spad 守卫），但顺序错了仍危险 —— 交给 `xgs-ntb-watch`/关机钩子做 |
+| 写 SPI `mtd0` | U-Boot 在那儿，写坏就得靠 MCP2210 或 JTAG 救 | 只读，从不写；有备份 |
+| 格式化 `/persistent`（p4） | 丢机型和 MAC 基址 | 只读使用 |
+| 往 `p1` 上放系统 | 那是原厂冷备槽，留着回滚 | 空着 |
+
+## 9.5 如果要重做一遍（换机 / 重刷的最小路径）
 
 1. **备份**：eMMC 整盘 + `mtd0`(U-Boot) + `mtd1`(env)，SHA256 存档（[07](07-storage.md)）。
 2. **改 U-Boot env**：`bootcmd` → `bootcmd_deb`（`ext4load` Image + dtb + initrd → `booti`），
@@ -95,7 +105,7 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 3. **DTB**：`board/cn9130-sophos-xgs87w-sfp10g.dts`（本仓库，含 `ramoops`）。
 4. **模块**：`tools/build/build-npu-net.sh`、`tools/build/build-npu-vntb.sh`、`tools/build/build-x86-vntb.sh`。
 5. **网络**：`systemd/npu/` 装到 NPU、`systemd/x86/` 装到 x86（见 [systemd/README.md](../systemd/README.md)、[20](20-lan-over-vntb.md)）。
-6. **别做的事**：`mtd0` 永不写；不要在 x86 上手工 `rmmod ntb_hw_epf`（会把自己搞崩）。
+6. **别做的事**：见 §9.4 的维护红线（内核包要 hold、`mtd0` 永不写、别手工 `rmmod ntb_hw_epf`）。
 
 > 完整的实测数据见 [12-measurements.md](12-measurements.md)；
 > 每篇文档开头都有状态标记（✅ 实测 / 📦 原厂档案 / 💡 设想 / ⚠️ 未验证）。
