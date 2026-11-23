@@ -60,6 +60,12 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 现成工具：[tools/on-x86/npu-console.sh](../tools/on-x86/npu-console.sh)（在 x86 上跑，`sudo npu-console login`
 然后 `sudo npu-console '命令'`）。
 
+维护 U 盘的串口菜单里还有一项 **`7` NPU 串口控制台**（`installer/payload/npu-console.sh`）：
+直接 `picocom -b 57600 /dev/ttyS2`（没有 picocom 就用 `cat` 双向中继，按 Ctrl-D 退出）。
+
+> 不需要 chroot 进内置盘的系统：`/dev/ttyS2` 属于 x86 这块板子，U 盘系统、装好的 Debian、
+> 甚至 BIOS 之后任何跑在 x86 上的系统都能开它。**唯一限制是同一时刻只能有一个读者**（见 8.5）。
+
 ## 8.5 自动化时的坑（全部踩过）
 
 1. **`/dev/ttyS2` 同一时刻只能有一个读者**。两个 `cat` 会把字节流切成乱码 —— 这是最容易
