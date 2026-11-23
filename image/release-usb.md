@@ -65,6 +65,21 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | `5` shell | 直接进 root shell（U 盘系统） | — |
 | `7` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
 | `8` NPU 硬盘 | 让 NPU 用 `nbd-server` 导出它的 `p2`，在 x86 上变成 `/dev/nbd0`，可以 `mount` / `fsck -n` / `dd` | **默认只读**；`--rw` 要确认 NPU 没在使用该分区 |
+| `u` U-Boot | 让 NPU 重启并停在它自己的 `=> ` 提示符（连敲 20 s 空格），然后串口交给你 | 只是"进得去"；它读不到 x86 的 U 盘，写不了整份 rootfs |
+
+## 写 NPU 的几种办法，哪种该用在哪
+
+| 办法 | 数据通道 | NPU 需要活着到什么程度 | 190 MB 大约要 | 适合 |
+|---|---|---|---|---|
+| **NBD**（菜单 `2` / `8`） | vNTB，块级 TCP | 能跑到用户态、能起 `nbd-server` | **1–2 分钟**，接近 1 Gbit/s | ✅ **写整份 rootfs、备份、fsck** |
+| ssh + tar | vNTB，TCP | 还要 sshd、host key、tar/zstd | 1–2 分钟 | 有 sshd 时最省事，但一处坏就全废 |
+| U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
+| U-Boot `tftpboot` | 网口（end0→交换机，或 `mvswitch` 拉起 SFP port9） | 同上 | 10G 时很快 | ⚠️ 得先有 SFP 模块 + TFTP 服务，交换机在 U-Boot 里没初始化 |
+| U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
+| 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、起 `nbd-server` |
+
+**结论**：写镜像走 **NBD**；U-Boot 留给"NPU 连用户态都起不来"的场合 —— 它能做的恰恰是 NBD 做不到的事：
+`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
 | `9` / `0` | 关机 / 重启 | — |
 
 `2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。

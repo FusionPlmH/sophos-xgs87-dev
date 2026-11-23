@@ -151,7 +151,9 @@ partno=AMDA0200-0001
 
 - 上电后 `Autoboot in 3 seconds - press SPACE to stop...`，3 秒内敲任意键（空格即可）。
 - 从 Linux 里：`reboot`，然后立刻在串口上连续发空格（每 150 ms 一个，坚持 8-10 秒）。
-  可用本仓库的做法：x86 上跑一个小脚本同时负责 `reboot` 和"敲空格"。
+  可直接用 `debian-usb` 菜单的 **`u`**（`installer/payload/npu-uboot.sh`），它自己发
+  `sudo -S systemctl reboot` + 密码，然后连敲 20 秒空格再交给 picocom；手工的话就是
+  `npu-console.sh` 里按住空格。
 
 ## 3.5 x86 启动
 
