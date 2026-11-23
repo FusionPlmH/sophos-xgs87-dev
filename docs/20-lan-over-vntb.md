@@ -1,5 +1,7 @@
 # 20 — 一条 PCIe 链路同时跑两套网络
 
+> 🏷 **状态（2026-11-23 复核）**：✅ **全部实测**：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、ramoops 取证。
+
 > 目标：保留 x86 ↔ NPU 的 `192.168.100.0/24` 管理通道，同时让 x86 直接拿到家里路由器
 > `192.168.0.0/24` 的 DHCP 地址，不再需要单独给 x86 插网线。
 
@@ -178,9 +180,22 @@ NPU 的 Linux 只要 **10.8 s**（kernel 3.8 + userspace 7.0），
 | 关掉 `panic_on_oops` / `hardlockup_panic` | 日志里连 panic 都没有，说明不是软件 panic |
 | 看门狗状态 | `/sys/class/watchdog/watchdog0/state=inactive`，不是它 |
 
-复位发生在**主机断链的那一瞬间**（不是 30 秒后），且内核一行字都不打 ⇒ 是 SoC/ATF 对
-PERST# / 链路掉线的反应，属于板级设计（这颗 EP 本来就不预期主机会单独重启）。
-要靠 ATF/板级配置解决，超出内核能改的范围。
+#### 用 ramoops 把这件事钉死
+
+给 NPU 的 DTB 加了 `ramoops`（DRAM 最后 1 MiB，`ramoops@7ff00000`，`/sys/fs/pstore` 可用；
+DTB 在 [board/](../board/)，旧版备份为 `/boot/*.dtb.pre-ramoops`），然后把
+`panic_on_oops` / `hardlockup_panic` 打开再复现：
+
+```
+npu uptime: 53s          ← 又复位了
+pstore: 0 records        ← 但一个字都没留下
+```
+
+**内核根本没参与**。若掉链路径只是 oops 或 lockup，pstore 里必然出现 `dmesg-ramoops-0`；
+一条都没有 ⇒ 复位发生在内核以下，即 **PERST# 引起的 SoC/ATF 级复位**，Linux 侧无法处理。
+
+复位发生在**主机断链的那一瞬间**（不是 30 秒后），属于板级设计（这颗 EP 本来就不预期主机会
+单独重启）。要靠 ATF/板级配置解决，超出内核能改的范围 —— 这条路到此为止。
 
 **实际影响**：x86 重启 → NPU 跟着重启 → 40 秒后两者都自己回来，链路、VLAN、DHCP 全部自动重建。
 不需要人碰机器，但 NPU 的 uptime 会归零。

@@ -1,5 +1,7 @@
 # 02 · 架构设计
 
+> 🏷 **状态（2026-11-23 复核）**：✅ **架构已复核**。已推翻两条旧结论：①NTB 不需要换内核（外挂模块即可）②交换芯片**有** mainline 驱动（DSA 已跑起 9 个口）。SFP 实测 10G。
+
 ## 2.1 为什么是两颗芯片
 
 原厂（Sophos SFOS）把功能切成两层：
@@ -46,7 +48,8 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
               ── BAR4=memory(1 MiB) ─────► ntb_netdev  → ntb0
 ```
 
-实测性能（来自该项目文档）：**NPU→x86 630 Mbit/s，x86→NPU 1.7 Gbit/s**。
+性能：**本机实测单流 TCP 1.20 Gbit/s、ping RTT 0.6 ms**（改 hrtimer 轮询后，见 [20](20-lan-over-vntb.md) §20.5）。
+参考项目自报的数字是 630 Mbit/s / 1.7 Gbit/s，与本机不同批次测法，不直接可比。
 
 ### 三个必须注意的坑
 
@@ -56,8 +59,9 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
 
 另外要 `transport_mtu=2048`（默认 64 KiB 帧会让 1 MiB 窗口只有 15 个槽）。
 
-> 本机 NPU 内核 config 里 **没有 CONFIG_NTB**（`CONFIG_MVPP2=y`, `CONFIG_MVPP2X=m`，无 NTB 项），
-> 所以必须换内核——这也是做 OpenWrt 的主要理由。
+> **更正（2026-11-23）**：本机 Debian 内核确实没有 NTB（`CONFIG_NTB` 未编），但**不需要换内核** ——
+> 这套 NTB 全是**外挂模块**（`ntb_core` / `ntb_transport` / `ntb_netdev` / `pci_epf_vntb` / `pcie_dw_plat`），
+> 对着现成 headers 编出来 `insmod` 就能跑。构建见 [tools/](../tools/)，四个真实 bug 见 [17](17-x86-npu-shared-mgmt.md) §17.6。
 
 ## 2.4 通路三：串口（永远可用）
 
@@ -72,12 +76,12 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 5760
 ```
   面板 RJ45×4 ── 内置 PHY ─┐
                             ├── 88E6193X ── port0 ── 10GBase-KR ── CN9130 mvpp2 (eth0)
-  SFP F1 ── 1000BASE-X ────┘                     (Comphy lane 4, SFI0)
+  SFP F1 ── 10GBASE-R ─────┘                     (Comphy lane 4, SFI0)  ← 实测 10G
 ```
 
 - **转发不经过任何 CPU**：面板口之间由交换芯片硬件转发。
 - CPU 口只处理上联流量（路由/防火墙/管理）。
-- 原厂 x86 看到 8 个口其实是 NPU 通过 PCIe 转发的"虚拟端口"；真正做交换的是 88E6193X。
+- 原厂 x86 看到的那些口是 NPU 通过 PCIe 转发的"虚拟端口"；真正做交换的是 88E6193X。
 - 10G 的 CPU 链路意味着 x86↔NPU 的瓶颈在 PCIe（Gen3 ×2 ≈ 2 GB/s 理论）而不是网络。
 
 ## 2.6 启动与复位时序
@@ -103,7 +107,7 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 5760
 
 ## 2.7 电源与散热
 
-- 两路 DC 输入（冗余），无风扇，整机被动散热。
+- 单路 DC 输入（整机一颗电源，**x86 和 NPU 共用**，所以断电两台一起下）。
 - 空闲温度：x86 `k10temp` 约 40-50 ℃，NPU 6 个 thermal zone 52-55 ℃。
 - 满负载（4 核 A72 + 交换）预计 60-70 ℃，可接受。
 
@@ -111,7 +115,7 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 5760
 
 1. **x86 没有网口**，要联网必须经过 NPU —— 要么 NTB/PCIe 隧道，要么把 NPU 当网关。
 2. **面板口只能由 NPU 驱动**，x86 无法直接收发包（除非 NTB 转发）。
-3. **交换芯片没有 mainline 驱动**（本机内核无 `mv88e6xxx`/DSA），要么用 U-Boot 配，
-   要么换带 DSA 的内核。
+3. ~~交换芯片没有 mainline 驱动~~ **已解决**：Debian 自带 `mv88e6xxx` + DSA，9 个口（p1–p8 + sfp）
+   全部作为普通 netdev 出现，面板口之间由硬件转发。TCAM 越权补丁要自己编，见 [20](20-lan-over-vntb.md) §20.9。
 4. **x86 只有 2 核 4 GB**，适合轻量服务，不适合重计算。
 5. **串口是唯一可靠的带外通道**，设计升级/回滚流程时一定要留着它。

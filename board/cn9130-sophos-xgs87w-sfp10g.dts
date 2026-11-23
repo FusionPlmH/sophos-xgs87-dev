@@ -1,0 +1,269 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Sophos XGS 87w/107w NPU — CN9130 + 88E6193X.
+ *
+ * Based on the upstream device tree
+ *   arch/arm64/boot/dts/marvell/cn9130-sophos-xgs107w.dts
+ * (commit 0f72e965, "arm64: dts: marvell: Add Sophos XGS 107w NPU board").
+ *
+ * Local change: switch port 9 (front-panel SFP+ cage "F1") carries no
+ * phy-mode / managed property, so phylink derives the interface from the
+ * inserted module.  Upstream pins it to 1000base-x, which limits the cage to
+ * 1 Gbps; with this DT a 10GBASE-SR module negotiates 10GBASE-R.
+ */
+
+/dts-v1/;
+
+#include "cn9130.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "Sophos XGS 87w/107w (CN9130 NPU, SFP auto-negotiate)";
+	compatible = "sophos,xgs107w-npu", "marvell,cn9130";
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	aliases {
+		ethernet0 = &cp0_eth0;
+		i2c1 = &cp0_i2c1;
+	};
+
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x80000000>;
+	};
+
+	reserved-memory {
+		/* OP-TEE, reserved by the firmware */
+		tee@4400000 {
+			reg = <0x0 0x4400000 0x0 0x1000000>;
+			no-map;
+		};
+
+		/*
+		 * Last megabyte of DRAM kept for pstore/ramoops.  This board has no
+		 * console of its own -- getting to it means going out through the x86 --
+		 * and the vNTB link-drop path can wedge the kernel hard enough that
+		 * netconsole never gets a frame away.  With this, the next boot can read
+		 * the panic or lockup trace back out of /sys/fs/pstore instead of
+		 * guessing.
+		 */
+		ramoops@7ff00000 {
+			compatible = "ramoops";
+			reg = <0x0 0x7ff00000 0x0 0x100000>;
+			record-size = <0x20000>;
+			no-map;
+		};
+		};
+
+	/* Front-panel SFP cage "F1", wired to switch port 9 */
+	sfp: sfp {
+		compatible = "sff,sfp";
+		/*
+		 * 10GBASE-T SFP+ modules declare 2.5-2.6 W, far above the 1.0 W
+		 * default the SFP core assumes when this property is absent, and
+		 * would otherwise be refused at power-on.  This is a permission
+		 * gate, not a current limit: the module still draws what it needs.
+		 */
+		maximum-power-milliwatt = <2600>;
+		i2c-bus = <&cp0_i2c1>;
+		los-gpios = <&cp0_gpio1 1 GPIO_ACTIVE_HIGH>;
+		tx-fault-gpios = <&cp0_gpio1 2 GPIO_ACTIVE_HIGH>;
+		mod-def0-gpios = <&cp0_gpio1 3 GPIO_ACTIVE_LOW>;
+		tx-disable-gpios = <&cp0_gpio1 7 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+/* eMMC on the AP */
+&ap_sdhci0 {
+	bus-width = <8>;
+	non-removable;
+	mmc-ddr-1_8v;
+	status = "okay";
+};
+
+/*
+ * The MPP pin muxing is left as configured by the boot loader; the pin
+ * controller node only exists to back the GPIO banks.
+ */
+&cp0_syscon0 {
+	cp0_pinctrl: pinctrl {
+		compatible = "marvell,cp115-standalone-pinctrl";
+	};
+};
+
+&cp0_i2c1 {
+	/* I2C bus of the SFP cage */
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+/* 4 MB SPI NOR with U-Boot and its environment, read-only on purpose */
+&cp0_spi0 {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <40000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "u-boot";
+				reg = <0x0 0x3f0000>;
+				read-only;
+			};
+
+			partition@3f0000 {
+				label = "u-boot-env";
+				reg = <0x3f0000 0x10000>;
+				/* writable so fw_setenv works from Linux */
+			};
+		};
+	};
+};
+
+&cp0_ethernet {
+	status = "okay";
+};
+
+/* 10G link to switch port 0 */
+&cp0_eth0 {
+	phy-mode = "10gbase-r";
+	phys = <&cp0_comphy4 0>;
+	managed = "in-band-status";
+	status = "okay";
+};
+
+&cp0_mdio {
+	status = "okay";
+
+	switch@2 {
+		compatible = "marvell,mv88e6190";
+		reg = <2>;
+		/*
+		 * No reset-gpios: the boot loader has already brought the switch
+		 * up, and a hard reset at probe time would wipe the port modes
+		 * (port 9 must stay in 10GBASE-R for the SFP+ cage).
+		 */
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				ethernet = <&cp0_eth0>;
+				phy-mode = "10gbase-r";
+				managed = "in-band-status";
+			};
+
+			port@1 {
+				reg = <1>;
+				label = "p1";
+			};
+
+			port@2 {
+				reg = <2>;
+				label = "p2";
+			};
+
+			port@3 {
+				reg = <3>;
+				label = "p3";
+			};
+
+			port@4 {
+				reg = <4>;
+				label = "p4";
+			};
+
+			port@5 {
+				reg = <5>;
+				label = "p5";
+			};
+
+			port@6 {
+				reg = <6>;
+				label = "p6";
+			};
+
+			port@7 {
+				reg = <7>;
+				label = "p7";
+			};
+
+			port@8 {
+				reg = <8>;
+				label = "p8";
+			};
+
+			/*
+			 * SFP+ cage: 10GBASE-R, module presence handled by phylink/sfp.
+			 * "managed" is mandatory here: without it phylink uses
+			 * MLO_AN_PHY, asks DSA for a PHY, and DSA falls back to the
+			 * switch internal MDIO bus address 9, where the SerDes block
+			 * answers with a bogus phy_id 0x00000393 and no abilities.
+			 */
+			port@9 {
+				reg = <9>;
+				label = "sfp";
+				phy-mode = "10gbase-r";
+				managed = "in-band-status";
+				sfp = <&sfp>;
+			};
+		};
+	};
+};
+
+/*
+ * PCIe controller 0 faces the x86 host.  The boot firmware leaves it in
+ * endpoint mode with the link trained, so drive it as a DesignWare endpoint:
+ * pci-epf-vntb then hands the host a virtual Ethernet (ntb_netdev), which is
+ * the only way the x86 -- it has no NIC of its own -- reaches the network.
+ *
+ * reg layout follows the stock DT (pcie-ep@600000 / pci-ep-uio): the DBI is
+ * at 0xf2600000, the shadow DBI at 0xf2604000 and the outbound window at
+ * 0x80_0000_0000 (256 MB of the 32 GB the firmware reserved there).
+ * dma-coherent must NOT be set: this PCIe master does not snoop the CPU
+ * caches, so coherent buffers would go stale.
+ */
+&cp0_pcie0 {
+	/delete-property/ device_type;
+	/delete-property/ dma-coherent;
+	/delete-property/ msi-parent;
+	/delete-property/ bus-range;
+	/delete-property/ ranges;
+	/delete-property/ interrupt-map;
+	/delete-property/ interrupt-map-mask;
+	/delete-property/ #address-cells;
+	/delete-property/ #size-cells;
+	/delete-property/ #interrupt-cells;
+	/delete-property/ num-lanes;
+	/delete-property/ interrupts;
+	/delete-property/ clock-names;
+	/delete-property/ clocks;
+
+	compatible = "snps,dw-pcie-ep";
+	reg = <0 0xf2600000 0 0x1000>,
+	      <0 0xf2604000 0 0x1000>,
+	      <0x80 0x0 0x0 0x10000000>;
+	reg-names = "dbi", "dbi2", "addr_space";
+	clocks = <&cp0_clk 1 13>;
+	clock-names = "core";
+	max-functions = /bits/ 8 <1>;
+	num-ib-windows = <8>;
+	num-ob-windows = <8>;
+	status = "okay";
+};

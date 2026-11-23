@@ -162,7 +162,7 @@ port@9 {
 | NPU 起不来 | U-Boot 3 秒 autoboot，串口可打断；`bootcmd_stock` 回原厂 |
 | 2 GB 内存 | Debian 最小安装约 300 MB 常驻，够用；不要装桌面 |
 | eMMC 寿命 | rootfs 开 `noatime`、日志限流；p1 只有 500 MB，注意空间 |
-| 散热 | 无风扇机型，持续 10G 转发需关注 SoC 温度（`tsen`/thermal zone） |
+| 散热 | 机箱有风扇但软件不可控（见 19）；持续 10G 转发仍需关注 SoC 温度（`tsen`） |
 | PCIe EP | Debian 侧不启用 endpoint，就不会卡在 "Waiting for host driver handshake" |
 | x86 重启会复位 NPU + 交换机 | 已实测；跑 Debian 时注意别让 x86 无人值守重启 |
 

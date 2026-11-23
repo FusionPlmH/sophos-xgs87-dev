@@ -14,18 +14,27 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 前面板 p8 → br-mgmt access 口                  插笔记本可同时访问 .1 / .2
 ```
 
-| 能力 | 状态 |
-|---|---|
-| NPU 跑 Debian 13（eMMC 自启） | ✅ |
-| 9 个网口（p1–p8 + SFP）在 Debian 下工作 | ✅ |
-| SFP+ 10GBASE-R | ✅ |
-| x86 ↔ NPU PCIe vNTB 链路（含 bridge/netdev） | ✅ 单流 1.2 Gbit/s、RTT 0.6 ms |
-| x86 自己拿到家里内网地址（无需网线） | ✅ 一条 PCIe 链路同时跑管理段和 LAN |
-| EIP197 硬件加密 | ✅ 可启用，但实测不划算，默认不开（见 docs/16） |
-| `mvpp2` 聚合 TX 队列 512 | ✅ 自编译模块 |
-| `mv88e6xxx` TCAM 越权修复 | ✅ 交叉编译打上（见 docs/20 §20.9） |
-| 风扇软件控制 | ❌ 板载定速/硬件温控，不可控（docs/19） |
-| 完整开机无牵连重启 | ❌ 主机断 PCIe 链路时 NPU 会被 PERST# 复位（硬件行为，docs/20 §20.8） |
+**2026-11-23 在现机上逐项复核过**，标记含义：✅ 实测通过 ｜ 📦 原厂档案 ｜ ❌ 不可用 ｜ ⚠️ 未验证。
+
+| 驱动 / 功能 | 状态 | 证据 |
+|---|---|---|
+| NPU Debian 13 自启（eMMC） | ✅ | `/` 在 `mmcblk0p2`，4 分区，见 docs/07 |
+| `mvpp2`（10G MAC，`end0`） | ✅ | 自编译模块，`AGGR_TXQ_SIZE=512` |
+| `mv88e6xxx` + DSA（9 个口） | ✅ | `p1–p8` + `sfp` 全部为 netdev；TCAM 补丁已打（docs/20 §20.9） |
+| 面板 1G / SFP+ 10G | ✅ | `ethtool`：`p1/p4` 1000 Mb/s、`sfp` **10000 Mb/s** |
+| `spi_orion` + MTD | ✅ | `mtd0` u-boot 4032 KiB、`mtd1` env 64 KiB、`fw_printenv` 可读 |
+| `crypto_safexcel`（EIP197） | ✅ | `/proc/crypto` 1318 行，safexcel 注册 rfc4106/4309/4543 —— **能跑但比 CPU 慢，默认不用**（docs/16） |
+| thermal（6 zone）+ 9 hwmon | ✅ | `ap-ic`/`ap-cpu0..3`/`cp0-ic` 49–51 ℃；`sfp` + 8 个 PHY 温度 |
+| PWM / GPIO | ✅ | `pwmchip0-2`、3 个 `gpiochip`（base 0/32/64） |
+| **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`；`ap-cpu-clk` 段错误未修，降频/调频不可用 |
+| 风扇 | ✅有 / ❌不可控 | 整机一颗，上电即转；无 SuperIO、无 ACPI 风扇、DT 无 `fan` 节点（docs/19 §19.6） |
+| x86 ↔ NPU vNTB | ✅ | 单流 1.2 Gbit/s、RTT 0.6 ms（docs/20 §20.5） |
+| x86 借道拿家里内网地址 | ✅ | `192.168.0.50`，VLAN 31 透传 |
+| 一条链路跑管理段 + LAN | ✅ | VLAN 100 / VLAN 31（docs/20） |
+| 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
+| NPU 掉链 lockup 取证 | ✅ | 已加 `ramoops`，证明复位发生在内核以下（docs/20 §20.8） |
+| 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 PERST# 复位，ramoops 零记录 ⇒ 硬件行为 |
+| LED / PCA9555 极性 | ⚠️ | 沿用原厂记录，未逐一验证（docs/06） |
 
 ## 一分钟看懂这台机器
 

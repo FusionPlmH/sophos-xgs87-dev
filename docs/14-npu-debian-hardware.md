@@ -1,5 +1,7 @@
 # 14 — NPU 跑 Debian：硬件完成度与驱动补齐
 
+> 🏷 **状态（2026-11-23 复核）**：✅ **实测**：SFP+ 10G、SPI NOR/MTD、EIP197 均已在现机复核。
+
 > 本文记录把 NPU（Marvell CN9130）从原厂 Buildroot 换成 **Debian 13 (trixie, kernel 6.12.117+deb13-arm64)**
 > 之后，逐个子系统把驱动/固件补齐的全过程。所有结论均来自实机验证。
 >

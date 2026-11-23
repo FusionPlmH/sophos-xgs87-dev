@@ -1,5 +1,7 @@
 # 18 同族平台调研：能抄什么、不能抄什么
 
+> 🏷 **状态（2026-11-23 复核）**：🔎 **调研结论**：每条都标了"可采纳/不适用"；其中 TCAM 补丁已在本机打上（见 20 §20.9）。
+
 对 CN913x / Armada-8K 家族的公开源码做了一轮系统调研（4 个方向并行：SolidRun+Armbian+OpenWrt、
 MikroTik+QNAP+IEI 等整机厂、Marvell MUSDK+EVK、FreeBSD+主线提交历史）。
 
@@ -135,7 +137,7 @@ Debian 的 arm64 内核**没编** `CONFIG_ARM_ARMADA_8K_CPUFREQ` 和 `CONFIG_ARM
 | **QNAP TS-435XeU** | GPL 是 399 MB tarball，镜像 7 KB/s，未取到；硬件 2.2 GHz 这一条已够用（见 18.6） |
 | **IEI M901/M902、Kontron、Advantech、Portwell** | 无公开 BSP（需会员门户） |
 | **Armbian** | 零 CN913x 支持 |
-| **风扇/PWM 控制**（CN9132 CEX-7 的 `pwm-fan` 示例） | XGS 87 **无风扇**，不适用 |
+| **风扇/PWM 控制**（CN9132 CEX-7 的 `pwm-fan` 示例） | XGS 87 **有风扇**，但软件控制不了（NPU 原厂 DTB 无 `fan`/`pwm` 节点、x86 无 SuperIO），想接管得先量出 PWM/TACH 接在哪根 MPP 上 |
 | **U-Boot `10gbase-r` 补丁**（SolidRun，2 行） | 只有要在 SFP+ 上 netboot 才需要 |
 | **SPI MISO sample delay quirk**（SolidRun CN9132） | 我们 SPI NOR 读得正常，不需要；将来若出现随机位翻转可回来看 |
 | **ATF I²C 复活补丁**（SDA stuck high） | 我们的 SFP EEPROM 在 cp0_i2c1 上；真卡死时值得抄 |

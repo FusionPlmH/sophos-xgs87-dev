@@ -1,5 +1,7 @@
 # 04 · NPU 系统（原厂 Buildroot）
 
+> 🏷 **状态（2026-11-23 复核）**：📦 **原厂档案（已退役）**：Buildroot 系统已被 Debian 13 替换，本文只作排查硬件问题时的参考。
+
 > ⚠️ **本文是历史档案**：这里的 Buildroot 系统在 2026-11-22 已被 Debian 13 替换。
 > 保留它是因为原厂的初始化顺序、驱动清单和 VPD 布局仍然是排查硬件问题的唯一参考。
 > 当前系统见 [14-npu-debian-hardware.md](14-npu-debian-hardware.md)，网络与自启见 [20](20-lan-over-vntb.md)。
