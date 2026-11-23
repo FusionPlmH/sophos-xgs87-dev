@@ -64,6 +64,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |
 | `5` shell | 直接进 root shell（U 盘系统） | — |
 | `7` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
+| `8` NPU 硬盘 | 让 NPU 用 `nbd-server` 导出它的 `p2`，在 x86 上变成 `/dev/nbd0`，可以 `mount` / `fsck -n` / `dd` | **默认只读**；`--rw` 要确认 NPU 没在使用该分区 |
 | `9` / `0` | 关机 / 重启 | — |
 
 `2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。

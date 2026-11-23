@@ -1,10 +1,18 @@
 #!/bin/sh
 # 把 debian-npu.tar.zst 装到 NPU 的 root 分区。
 #
-#   A. NPU 还能启动到 Debian：通过 vNTB 链路直接推过去（最省事）
-#   B. NPU 起不来：起一个 HTTP 服务，从 x86 的 ttyS2 控制台在 NPU 上手动拉
+# 顺序是"由快到慢、由自动到手动"：
 #
-# 注意：x86 摸不到 NPU 的 eMMC，所有写入都是在 NPU 上执行的。
+#   A. vNTB/网络能到 NPU：直接 ssh 推过去（约 1 Gbit/s）
+#   B. 到不了：用 x86 的 ttyS2 串口登录 NPU，问出它的 br-lan 地址和 VLAN，
+#      在 x86 这边镜像同样的 VLAN + 同网段地址 —— 顺便把 sshd 修一遍 ——
+#      然后再走 A
+#   C. 串口也进不去：起 HTTP 服务，把命令打到屏幕上让人在 NPU 控制台敲
+#
+# 数据永远走网络；串口只当控制通道（115200 的线搬 190 MB 要几个小时）。
+#
+# 注意：x86 摸不到 NPU 的 eMMC —— 两台机器只有 PCIe(vNTB) 和一路 UART，
+# 所有写入都是在 NPU 上执行的。
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -13,13 +21,84 @@ TAR=$PAYLOAD/debian-npu.tar.zst
 DTB=$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)
 . "$PAYLOAD/lib.sh"
 SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
+SERIAL=${SERIAL:-/dev/ttyS2}
 
 [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; exit 1; }
 [ -n "$DTB" ] || { echo "找不到 DTB"; exit 1; }
 
+# 从串口把 NPU 的 br-lan 摸清楚，并在 x86 这边把同样的 VLAN + 地址建出来。
+# 成功则 $NPU 可以被 ssh 到。
+serial_repair() {
+	TTY=$SERIAL . "$PAYLOAD/serial.sh" || return 1
+	echo "== 串口登录 NPU（$SERIAL，只能是它自己一个读者）"
+	serial_login || {
+		echo "   登录不上（NPU 没起来？密码不是 $NPU_PASS？）"
+		return 1
+	}
+
+	echo "== 问它现在的网络"
+	info=$(serial_run 'ip -4 -br a' 25) || true
+	printf '%s\n' "$info" | sed 's/^/   /'
+	lan=$(printf '%s\n' "$info" |
+		awk '$1 ~ /^(br-lan|br0|br-wan)/ && $3 ~ /^[0-9]/ { print $3; exit }')
+	[ -n "$lan" ] || { echo "   br-lan 上没有 IPv4 地址，没得镜像" ; return 1; }
+
+	vid=$(serial_run 'ip -d link show master br-lan' 25 2>/dev/null |
+		sed -n 's/.*vlan protocol 802.1Q id \([0-9][0-9]*\).*/\1/p' | head -1) || vid=
+	# 旧固件的桥可能没有 vlan 设备（直接桥 vNTB），那就按 untagged 处理。
+	vid=${vid:-0}
+	echo "== NPU 的 br-lan：$lan，VLAN ${vid:-无}"
+
+	npu_ip=${lan%/*}
+	case "$lan" in
+	*/24) net=$(printf '%s' "$npu_ip" | cut -d. -f1-3) ;;
+	*)
+		echo "   只认得 /24 的 br-lan（现在是 $lan），先手工处理："
+		echo "   ip addr add <同网段地址>/24 dev $SERIAL 这类命令在 x86 上跑"
+		return 1
+		;;
+	esac
+	mine=$net.200
+	[ "$mine" = "$npu_ip" ] && mine=$net.201
+
+	if [ "$vid" = 0 ]; then
+		target=eth0
+	else
+		target=eth0.$vid
+		ip link show "$target" >/dev/null 2>&1 ||
+			ip link add link eth0 name "$target" type vlan id "$vid" || return 1
+	fi
+	ip link set "$target" up 2>/dev/null || true
+	ip addr show dev "$target" | grep -q " $mine/" ||
+		ip addr add "$mine/24" dev "$target" || return 1
+	echo "== x86 这边补上 $target = $mine/24"
+
+	if ping -c1 -W2 "$npu_ip" >/dev/null 2>&1; then
+		echo "== 通了：$npu_ip"
+	else
+		echo "   还是 ping 不通 $npu_ip（链路/桥没通）"
+		return 1
+	fi
+
+	# 镜像里刻意不带 ssh host key，Debian 13 的 ssh.service 自己也不会生成，
+	# 于是"网络通但 ssh 连不上"。串口这边正好能补。
+	echo "== 让 NPU 那边把 ssh 修好"
+	serial_run 'sudo ssh-keygen -A >/dev/null 2>&1; sudo systemctl restart ssh' 60 |
+		sed 's/^/   /' || true
+	NPU=$npu_ip
+	export NPU
+	return 0
+}
+
 echo "== 先把 vNTB 链路拉起来（U 盘的 x86 系统里就有这些单元）"
 systemctl start xgs-ntb xgs-ntb-watch 2>/dev/null || true
 NPU=$(find_npu 30) || NPU=
+
+if [ -z "$NPU" ] && [ -e "$SERIAL" ]; then
+	echo "== 网络到不了 NPU，改从 $SERIAL 串口直接驱动它"
+	serial_repair || true
+	[ -n "${NPU:-}" ] || NPU=
+fi
 
 if [ -n "$NPU" ]; then
 	echo "== NPU 在线（$NPU），直接推过去（走 vNTB，约 1 Gbit/s）"
@@ -34,7 +113,7 @@ if [ -n "$NPU" ]; then
 	printf '先在 U 盘上备份 %s 吗？[Y/n] ' "$PART"
 	read -r bk
 	case "${bk:-y}" in
-	y | Y) "$HERE/backup-npu.sh" "$PART" || {
+	y | Y) NPU=$NPU "$HERE/backup-npu.sh" "$PART" || {
 		echo "备份没成功，已中止 —— 没有格式化任何东西。"
 		exit 1
 	} ;;
@@ -76,14 +155,13 @@ else
 		echo "⚠️  x86 现在没有任何 IPv4 地址 —— vNTB 链路大概没起来。"
 		echo "    ip -br a            看接口"
 		echo "    systemctl status xgs-ntb xgs-ntb-watch"
-		echo "    链路起来后重选本项即可；实在不行可以："
-		echo "      cd $PAYLOAD && python3 -m http.server $PORT --bind 0.0.0.0"
+		echo "    菜单选 7 可以直接开 NPU 串口看一眼。"
 		exit 1
 	fi
 	cd "$PAYLOAD"
 	echo
 	echo "  x86 上已经跑起：  python3 -m http.server $PORT --bind 0.0.0.0"
-	echo "  然后在 NPU 控制台（x86 的 /dev/ttyS2，57600）里执行："
+	echo "  然后在 NPU 控制台（菜单选 7，或 x86 的 /dev/ttyS2，57600）里执行："
 	echo
 	for a in $ADDRS; do
 		echo "    # NPU 在 $a 那个网段时："
@@ -94,9 +172,8 @@ else
 	echo "    mount /dev/mmcblk0p2 /mnt && tar -xpf /tmp/x.tar.zst -C /mnt"
 	echo "    cp /tmp/cn9130-*.dtb /mnt/boot/ && umount /mnt && reboot"
 	echo
-	echo "  NPU 上还没有地址就先给它一个（旧镜像的管理段是 192.168.100.0/24，"
-	echo "  新的是 10.234.56.0/24）："
-	echo "    ip addr add 192.168.100.9/24 dev eth0; ip link set eth0 up"
+	echo "  NPU 上没有 wget 的话先用 apt 装，或者接了网线直接从上游拉："
+	echo "    sudo apt-get install -y wget"
 	echo
 	echo "  DTB 也在同一个目录下。按 Ctrl-C 结束服务。"
 	exec python3 -m http.server "$PORT" --bind 0.0.0.0

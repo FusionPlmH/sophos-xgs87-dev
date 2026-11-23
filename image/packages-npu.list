@@ -8,6 +8,8 @@
 #                       it every port keeps the same MAC and nothing warns.
 #   initramfs-tools  -> bootcmd loads /boot/initrd.img
 #   ethtool          -> the port / SFP checks used throughout docs/
+#   nbd-server       -> export p1/p2 to the x86, so the maintenance stick can
+#                       mount/fsck/dd the NPU's storage as /dev/nbd0
 #
 # Kernel and switch drivers are stock Debian; the modules Debian does not
 # build are in kernel/npu and installed by DKMS.
@@ -16,4 +18,5 @@ dhcpcd-base,libubootenv-tool,ethtool
 u-boot-tools,mtd-utils,i2c-tools
 nftables
 pciutils
+nbd-server
 iperf3,tcpdump

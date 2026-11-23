@@ -35,6 +35,7 @@ $(store_state)
 			"4" "备份 x86 内置盘到 U 盘的备份分区" \
 			"6" "备份 NPU 分区到 U 盘的备份分区" \
 			"7" "NPU 串口控制台（ttyS2，57600）—— NPU 起不来时从这里进" \
+			"8" "把 NPU 的 p2 挂成本机 /dev/nbd0（NBD，默认只读）" \
 			"5" "shell（exit 返回菜单）" \
 			"9" "关机" \
 			"0" "重启" 3>&1 1>&2 2>&3
@@ -42,7 +43,7 @@ $(store_state)
 		printf '\nXGS 87 维护盘  (payload: %s)\n' "$PAYLOAD" >&2
 		printf '%s\n\n' "$(store_state)" >&2
 		printf '  1 重装 x86    2 重装 NPU    3 状态\n' >&2
-		printf '  4 备份 x86    6 备份 NPU    7 NPU 串口\n' >&2
+		printf '  4 备份 x86    6 备份 NPU    7 NPU 串口    8 NPU 硬盘\n' >&2
 		printf '  5 shell       9 关机       0 重启\n' >&2
 		printf '选择: ' >&2
 		read -r answer || return 1
@@ -58,6 +59,7 @@ while :; do
 	4) "$PAYLOAD/backup-x86.sh"; printf '\n按回车返回菜单...'; read -r _ ;;
 	6) "$PAYLOAD/backup-npu.sh"; printf '\n按回车返回菜单...'; read -r _ ;;
 	7) "$PAYLOAD/npu-console.sh" ;;
+	8) "$PAYLOAD/npu-disk.sh"; printf '\n按回车返回菜单...'; read -r _ ;;
 	5) /bin/sh ;;
 	9) poweroff ;;
 	0) reboot ;;

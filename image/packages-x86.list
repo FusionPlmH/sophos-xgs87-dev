@@ -19,3 +19,5 @@ whiptail,python3-minimal
 picocom
 # the USB stick's backup partition is exfat, and it gets cut on first boot
 exfatprogs,gdisk
+# attach the NPU's eMMC as /dev/nbd0 from the maintenance stick
+nbd-client
