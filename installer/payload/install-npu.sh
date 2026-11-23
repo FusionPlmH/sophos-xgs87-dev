@@ -1,15 +1,18 @@
 #!/bin/sh
-# 把 debian-npu.tar.zst 装到 NPU 的 root 分区 —— 做法是 NBD。
+# 把 debian-npu.tar.zst 装到 NPU 的 root 分区。
 #
-# 思路：NPU 只跑一条命令把 p2 导出来（nbd-server），x86 接上 /dev/nbd0 之后
-# 就把它当本地盘用：mkfs、mount、解包全在 x86 这边做。好处是 NPU 那边不需要
-# wget/tar/zstd、不需要 ssh 传大文件，数据只走块设备；坏处是 NPU 得能跑到
-# nbd-server 这一句。
+# 四级阶梯，按"前提最容易满足"排，任一级失败自动往下一级走：
 #
-#   A. vNTB 通了 → ssh 起 nbd-server（密码用 sudo -S 喂）
-#   B. 网不到 → 用 x86 的 ttyS2 串口登录，问出 br-lan 地址和 VLAN、在 x86 上
-#      镜像同样的 VLAN、顺手修 sshd，然后再走 A
-#   C. 两条都不行 → 提示去菜单 7 手动起 nbd-server，然后重选本项
+#   1. ssh + tar：NPU 能 ssh 且有 tar/zstd（哪个镜像都有）→ x86 这边 mkfs，
+#      190 MB 直接流进 NPU 的 tar（npu_ssh_stream 用 sudo -A，stdin 留给数据）
+#   2. NBD：NPU 上有 nbd-server（或能装上）→ 块设备，x86 本地 mkfs/解包/fsck
+#   3. U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
+#      旁路（NPU 一进 U-Boot，vNTB 就断了）。会先停掉 xgs-ntb-watch，免得它
+#      的 PCIe rescan 把刚停住的 U-Boot 打飞
+#   4. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
+#
+# 网不到 NPU 时先走串口（ttyS2）登录一遍：问出 br-lan 地址和 VLAN、在 x86 上
+# 镜像同样的 VLAN、顺手把 sshd 的 host key 修好，再回到第 1 级。
 #
 # ⚠️ 写的是块设备：NPU 如果正跑着这个分区，边写边用会把文件系统写坏。真机上
 # 就是"装系统"这个语义，装完要重启。
