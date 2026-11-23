@@ -51,6 +51,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mmdebstrap zstd dosfstools fdisk mtools
 
+      - name: Debian archive keys
+        # Ubuntu's debian-archive-keyring predates trixie, so mmdebstrap cannot
+        # verify the trixie Release file and stops with NO_PUBKEY.
+        run: |
+          cd /tmp
+          curl -fsS http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/ \
+            | grep -o 'debian-archive-keyring_[0-9.]*_all\.deb' | sort -uV | tail -1 > kr.name
+          curl -fsSLO "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$(cat kr.name)"
+          sudo dpkg -i "$(cat kr.name)"
+
       - name: Build rootfs
         run: |
           sudo bash ./image/build.sh --arch amd64 --variant "${{ steps.vars.outputs.variant }}" \
