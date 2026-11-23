@@ -6,8 +6,8 @@
 # kernel headers it runs.  Every source change lives in ntb/*.patch; to add
 # one, edit the patched tree, then regenerate the patch with diff -u.
 #
-#   ./tools/build-npu-vntb.sh            # build
-#   B=/tmp/ntb ./tools/build-npu-vntb.sh # build somewhere else
+#   ./tools/build/build-npu-vntb.sh            # build
+#   B=/tmp/ntb ./tools/build/build-npu-vntb.sh # build somewhere else
 set -eu
 
 SRC=${SRC:-/srv/lsrc-deb/usr/src/linux-source-6.12}

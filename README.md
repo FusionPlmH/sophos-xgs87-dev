@@ -10,7 +10,7 @@
 ```
 x86  192.168.0.50   Debian 13.6 / 6.12.94   ──┐  家里内网（DHCP，走 vNTB VLAN 31）
 NPU  192.168.0.66   Debian 13.6 / 6.12.117  ──┘
-x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
+x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 前面板 p8 → br-mgmt access 口                  插笔记本可同时访问 .1 / .2
 ```
 
@@ -34,7 +34,7 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.7 ms
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
 | NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/20 §20.8） |
 | NPU 内核 `CONFIG_PSTORE_CONSOLE` | ✅ | 已重编并上线（37.7 → 44.3 MB），console 后端 `[ramoops-1] enabled`，但受上一条限制用不上 |
-| 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 PERST# 复位，ramoops 零记录 ⇒ 硬件行为 |
+| 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 `PERST#` 复位。软件手段已穷尽（停 EP、关 panic、看门狗 inactive 都试过），要改 ATF 才有意义（docs/20 §20.8） |
 | LED / PCA9555 极性 | ⚠️ | 沿用原厂记录，未逐一验证（docs/06） |
 
 ## 一分钟看懂这台机器
