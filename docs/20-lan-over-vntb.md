@@ -185,11 +185,54 @@ PERST# / 链路掉线的反应，属于板级设计（这颗 EP 本来就不预�
 **实际影响**：x86 重启 → NPU 跟着重启 → 40 秒后两者都自己回来，链路、VLAN、DHCP 全部自动重建。
 不需要人碰机器，但 NPU 的 uptime 会归零。
 
-## 20.9 还是开着的问题
+## 20.9 模块替换：一个成功，一个回滚
 
-1. `ntb_transport` 的 link-cleanup 在掉链时会把 NPU 卡住（`qp 0: Link Cleanup` 打两条之后静默），
-   现在靠 NPU 自身复位兜底。要根治得先能在掉链瞬间抓到栈 —— 这颗芯片没有 pstore/ramoops，
-   netconsole 又挂在 `br-lan` 上，掉链时桥端口全 down 发不出包（挂 `p4` 也不行，DSA 端口不支持 netpoll）。
-   下一步可以做：给 DTB 加 `ramoops` 节点，让 panic/lockup 落盘。
-2. `p8` 前面板现在还空着，`br-mgmt` 靠 `eth0.100` 撑着；插笔记本即可同时访问 `.1` / `.2`。
-3. PC 的那块 USB 网卡（`Ethernet 2`）从 Windows 里消失了，所以 `192.168.1.1` 这条路暂时不通。
+| 模块 | 改动 | 结果 |
+|---|---|---|
+| `mvpp2` | `MVPP2_AGGR_TXQ_SIZE` 256 → **512** | ✅ 已上线，`end0`/DSA 正常工作 |
+| `mv88e6xxx` | 两个 TCAM 越权补丁（`e3624f5eeac4` + `242ebf4c5114`） | ❌ **加载后 DSA 完全不 probe**，9 个面板口全部消失，已回滚 |
+
+`mv88e6xxx` 的失败现象：`/sys/class/net` 里只剩 `end0 eth0 lo`，dmesg 里**一行错误都没有**
+（不是符号错误，符号错 modprobe 会直接报）。判断是外挂 Makefile 少了内核 Kbuild 里某个
+`mv88e6xxx-$(CONFIG_...)` 条件对象导致驱动注册表不完整；模块本身能加载，只是 `dsa_register_switch()`
+之后再无下文。正确做法是在完整内核源码树里 `make M=drivers/net/dsa/mv88e6xxx`，
+而不是把驱动目录抠出来自己拼 Makefile。
+
+回滚方式（已验证，两次成功）：
+
+```sh
+D=/lib/modules/6.12.117+deb13-arm64/kernel/drivers/net/dsa/mv88e6xxx
+cp -a $D/mv88e6xxx.ko.xz.orig $D/mv88e6xxx.ko.xz
+depmod -a && reboot
+```
+
+回滚时的关键点：**交换机一死，NPU 就只能从 console 进**（`p4` 也没了，家里网络一并消失），
+所以动 `mv88e6xxx` 之前必须确认 `/dev/ttyS2` 这条路是通的。
+
+## 20.10 自愈的一个漏洞（已修）
+
+原来 `xgs-ntb-watch` 只看 `carrier`。今天踩到的是另一种坏法：**主机侧读到的 carrier 仍然是 1，
+而 NPU 那侧已经把链路丢了** —— 两边状态不一致，`carrier` 恒为 1，watcher 永远不会动手，
+链路就一直是死的。
+
+现在 watcher 同时检查 `carrier` 和**实际可达性**（ping `192.168.100.1`），任一异常持续约 60 秒
+就重新枚举。
+
+## 20.11 当前网络
+
+| 位置 | 地址 | 说明 |
+|---|---|---|
+| x86 | `192.168.0.50`（DHCP，MAC `02:58:47:53:00:31`） | 家里内网，可直连 SSH |
+| NPU | `192.168.0.66`（DHCP on `br-lan`） | 家里内网，可直连 SSH |
+| x86 ↔ NPU 管理 | `192.168.100.2` ↔ `.1` | VLAN 100 走 vNTB，RTT **0.46 ms** |
+| 前面板 p8 | `br-mgmt` access 口 | 插笔记本同时访问 `.1` / `.2` |
+
+## 20.12 还是开着的问题
+
+1. `ntb_transport` 的 link-cleanup 在掉链时会把 NPU 卡住（两条 `qp 0: Link Cleanup` 之后静默），
+   随后被复位。要根治得能在掉链瞬间抓到栈 —— 这颗芯片没有 pstore/ramoops，netconsole 又挂在
+   `br-lan` 上（掉链时桥端口全 down，发不出包；挂 `p4` 也不行，DSA 端口不支持 netpoll）。
+   下一步：给 DTB 加 `ramoops` 节点，让 panic/lockup 落盘。
+2. x86 上手工 `rmmod ntb_hw_epf` 仍会把它自己搞崩（`panic_on_oops` 之后 30 秒自重启）。
+   关机流程（`xgs-ntb-stop.service`）是安全的，手工拆要小心。
+3. PC 那块 USB 网卡（Windows 里的 `Ethernet 2`）已从系统里消失，`192.168.1.1` 这条路暂时不通。
