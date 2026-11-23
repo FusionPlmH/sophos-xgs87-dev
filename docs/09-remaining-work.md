@@ -38,14 +38,13 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | SFP+ 实测 10000 Mb/s | [14](14-npu-debian-hardware.md) |
 | `mvpp2` 自编译（`AGGR_TXQ_SIZE=512`） | [20](20-lan-over-vntb.md) §20.9 |
 | SPI NOR / MTD / `fw_printenv` | [14](14-npu-debian-hardware.md) |
-| EIP197 激活（能用，但比 CPU 慢，默认不启用） | [16](16-eip197-activated.md) |
 | thermal 6 zone + 9 hwmon、PWM、GPIO | [01](01-hardware.md) |
 | x86 ↔ NPU vNTB（1.2 Gbit/s，RTT 0.6 ms） | [17](17-x86-npu-shared-mgmt.md)、[20](20-lan-over-vntb.md) |
 | 一条链路同时跑管理段 + 家里 LAN（VLAN 100 / 31），x86 拿到 DHCP | [20](20-lan-over-vntb.md) |
 | 管理段和家里 LAN 在交换芯片上真正隔离（`br-lan` 用 VLAN 31，不再是默认 VLAN 1） | [20](20-lan-over-vntb.md) §20.1 |
 | 掉链 / 关机不再 oops（peer_db 校验、spad 守卫、关机道别） | [20](20-lan-over-vntb.md) §20.7 |
 | 崩溃取证：netconsole 双目标（NPU → x86 + PC） | [20](20-lan-over-vntb.md) §20.8 |
-| 镜像构建：`image/` + 三个 CI workflow（x86 / npu / usb），自动发 release | [image/README.md](../image/README.md)、[21](21-reproduce.md) |
+| 镜像构建：`image/` + 一个 CI workflow（`target=x86/npu/usb/all`），自动发 release | [image/README.md](../image/README.md)、[21](21-reproduce.md) |
 | 维护（诊断）U 盘：整盘重装 x86、vNTB 推 NPU、备份内置盘 | [22](22-from-sfos.md)、[image/release-usb.md](../image/release-usb.md) |
 | 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
 
@@ -55,7 +54,7 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 
 | # | 事项 | 现状 / 卡在哪 |
 |---|---|---|
-| 1 | **`cpufreq` 不可用** | `/sys/devices/system/cpu/cpu0/cpufreq` 根本不存在；`ap-cpu-clk` 模块段错误未修。修好才能降频省电 / 看真实频率。线索见 [15](15-performance.md) |
+| 1 | **`cpufreq` 不可用** | `/sys/devices/system/cpu/cpu0/cpufreq` 根本不存在；`ap-cpu-clk` 模块段错误未修。修好才能降频省电 / 看真实频率 |
 | 2 | **x86 断 PCIe 链路 → NPU 整机复位** | 软件手段已穷尽（停 EP、关 panic、看门狗确认 inactive 都试过），判定是 SoC/ATF 对 `PERST#` 的反应。**要改 ATF 才有意义**，见 [20](20-lan-over-vntb.md) §20.8 |
 | 3 | **掉链时 `ntb_transport` 的 lockup** | 现在靠 NPU 自身复位兜底。`ramoops` 这条路已证伪（每次复位都重跑 DDR scrub，保留区必被清空），改用 **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前最后几行已经能落在磁盘上 —— 判据见 [20](20-lan-over-vntb.md) §20.8，只差一次复现 |
 | 4 | **风扇不可控** | 整机一颗风扇，上电即转，温控曲线在硬件里；x86 无 SuperIO/ACPI 风扇，NPU DT 无 `fan`/`pwm` 节点。想做软件调速得先把 PWM 通道跟风扇对上（[19](19-module-vs-kernel-rebuild.md) §19.6） |
@@ -69,7 +68,6 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | 7 | **MCP2210 SPI NOR 读写工具** | x86 侧那颗 MCP2210（USB→SPI）驱动没写；救砖时才有用 |
 | 8 | **x86 的 i2c-dev / GPIO 暴露** | 目前没开，接外设时再弄 |
 | 9 | **`dev_write … 4 f002/2000` 的字段含义** | 已确认是 SerDes/PCS 块，细节要 datasheet |
-| 10 | **EIP197 是否值得启用** | 正确性过了但比 CPU 慢；只有大包量场景才需要重测（[16](16-eip197-activated.md)） |
 
 ### 低优先级 / 也许永远不做
 

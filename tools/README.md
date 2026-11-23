@@ -5,7 +5,6 @@
 
 ```
 tools/build/    在 PC 的 WSL 上跑（需要 x86_64 主机 + 交叉工具链）
-tools/on-npu/   在 NPU 上跑
 tools/on-x86/   在 x86 上跑
 tools/on-pc/    在 Windows PC 上跑（串口工具）
 ```
@@ -53,19 +52,6 @@ md5sum $OBJ/Module.symvers $NPU_ROOT/usr/src/linux-headers-$KVER/Module.symvers
   不要用 `localversion` 文件（会和它叠加成两份）。
 - **模块不压缩**：`xz -9` 的 64 MiB 字典超出内核解码器上限，会静默 `status 6` 不加载。
 
-## `on-npu/` — 在 NPU 上跑
-
-| 文件 | 说明 |
-|---|---|
-| `afalg_bench.c` | 走 AF_ALG 直接量内核 crypto：`check` 做已知向量校验，`bench <sec>` 测吞吐。用来比 EIP197（`safexcel-*`）和 ARMv8 crypto（`cbc-aes-ce`） |
-
-```sh
-# NPU 上
-gcc -O2 -o afalg_bench afalg_bench.c
-./afalg_bench check
-./afalg_bench bench 5
-```
-
 ## `on-x86/` — 在 x86 上跑
 
 | 文件 | 说明 |
@@ -97,8 +83,3 @@ WAIT=8 sudo ./npu-console.sh 'dmesg | tail'
 
 发布前跑一遍 [tools/check-hygiene.sh](check-hygiene.sh)：它只认“设计里就该出现的”MAC
 和示例网段，发现别的就报错——防止真实 MAC / 内网地址 / Windows 用户路径又混进来。
-
-## 不在这个目录里的构建配方
-
-- [modules/build.sh](../modules/build.sh) —— NPU 的 `clkfix.ko` / `spi-orion.ko`，
-  在 **arm64 的 Debian 13 rootfs**（NPU 本机，或 PC 上的 `/srv/npu` chroot）里 `make`。

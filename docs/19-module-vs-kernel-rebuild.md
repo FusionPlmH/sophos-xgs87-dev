@@ -14,7 +14,7 @@
 | vNTB 全套 | `drivers/ntb/`、`drivers/pci/endpoint/` | 都没编 | 外挂模块（[ntb/](../ntb/)），见 [17](17-x86-npu-shared-mgmt.md) |
 | x86 侧 NTB 栈 | 同上（amd64） | 都没编 | 外挂模块，见 [tools/build](../tools/build/) |
 | cpufreq（OPP）+ thermal 降频 | `drivers/cpufreq/armada-8k-cpufreq.c`、`drivers/clk/mvebu/ap-cpu-clk.c` | 两个都**没编** | 两个模块都试了：`ap-cpu-clk` 段错误，`armada-8k-cpufreq` 报 `Cannot get clock for CPU 0`，**仍未修** |
-| safexcel 8 ring / MUSDK SAM | `drivers/crypto/inside-secure/` | `=m` | 大工程，见 [18](18-same-soc-platforms.md) §18.5 |
+| safexcel 8 ring / MUSDK SAM | `drivers/crypto/inside-secure/` | `=m` | 大工程，暂不做（CPU 侧足够快） |
 
 顺带确认：`CONFIG_ARMADA_THERMAL=m`、`CONFIG_CPU_THERMAL=y`、`CONFIG_THERMAL_GOV_STEP_WISE=y`
 —— **热管理框架齐的**，缺的只有"能降频的 cooling device"。

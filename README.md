@@ -23,7 +23,7 @@ x86 ↔ NPU 管理段 192.168.100.2 ↔ .1            VLAN 100，RTT 0.6 ms
 | `mv88e6xxx` + DSA（9 个口） | ✅ | `p1–p8` + `sfp` 全部为 netdev；TCAM 补丁已打（docs/20 §20.9） |
 | 面板 1G / SFP+ 10G | ✅ | `ethtool`：`p1/p4` 1000 Mb/s、`sfp` **10000 Mb/s** |
 | `spi_orion` + MTD | ✅ | `mtd0` u-boot 4032 KiB、`mtd1` env 64 KiB、`fw_printenv` 可读 |
-| `crypto_safexcel`（EIP197） | ✅ | `/proc/crypto` 1318 行，safexcel 注册 rfc4106/4309/4543 —— **能跑但比 CPU 慢，默认不用**（docs/16） |
+| `crypto_safexcel`（EIP197） | ✅ | `/proc/crypto` 1318 行，safexcel 注册 rfc4106/4309/4543 —— **能跑但比 CPU 慢，默认不用** |
 | thermal（6 zone）+ 9 hwmon | ✅ | `ap-ic`/`ap-cpu0..3`/`cp0-ic` 49–51 ℃；`sfp` + 8 个 PHY 温度 |
 | PWM / GPIO | ✅ | `pwmchip0-2`、3 个 `gpiochip`（base 0/32/64） |
 | **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`；`ap-cpu-clk` 段错误未修，降频/调频不可用 |
@@ -114,14 +114,10 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [docs/07-storage.md](docs/07-storage.md) | eMMC 分区表、SPI NOR、镜像布局与备份策略 |
 | [docs/08-console-access.md](docs/08-console-access.md) | 进机方式与坑（含 57600 这件事的来龙去脉） |
 | [docs/09-remaining-work.md](docs/09-remaining-work.md) | **改造笔记：还剩什么没做、缺什么**（唯一的待办清单） |
-| [docs/10-ideas.md](docs/10-ideas.md) | **这台机器独特设计的最佳用法**（持续更新） |
 | [docs/12-measurements.md](docs/12-measurements.md) | 实测记录：LED、SFP 10G、原厂交换机初始化序列、PCIe、GPIO、备份 |
 | [docs/13-npu-os-plan.md](docs/13-npu-os-plan.md) | 为什么选 Debian（不是 OpenWrt）、DTS 一行让 SFP 跑 10G、当时的安装步骤 |
 | [docs/14-npu-debian-hardware.md](docs/14-npu-debian-hardware.md) | Debian 下硬件补齐：SFP+ 10G、SPI NOR/MTD、`fw_printenv`、EIP197 |
-| [docs/15-performance.md](docs/15-performance.md) | 性能标定：CPU 1.6 GHz、转发、加密、可采纳项清单 |
-| [docs/16-eip197-activated.md](docs/16-eip197-activated.md) | **EIP197 激活成功**、正确性验证、CPU 成本实测、为何最终不启用 |
 | [docs/17-x86-npu-shared-mgmt.md](docs/17-x86-npu-shared-mgmt.md) | **x86 与 NPU 共享 p8 管理口**：阶段 1 桥接、阶段 2 NTB 的四个真实 bug |
-| [docs/18-same-soc-platforms.md](docs/18-same-soc-platforms.md) | **同族平台调研**：上游 Sophos DTS、88E6193X 的 PTP/TCAM、mvpp2 旋钮、EP 的 `dbi2` 陷阱 |
 | [docs/19-module-vs-kernel-rebuild.md](docs/19-module-vs-kernel-rebuild.md) | 模块 vs 重编内核、换模块的失联风险、风扇归属 |
 | [docs/20-lan-over-vntb.md](docs/20-lan-over-vntb.md) | **一条 PCIe 链路跑两套网络**、NPU 串口的真相、hrtimer 把 RTT 从 4 ms 打到 0.6 ms、模块替换实录 |
 | [docs/21-reproduce.md](docs/21-reproduce.md) | **换一台机器怎么把两套系统重新做出来**：构建步骤、占位符约定、发布前检查 |
@@ -134,8 +130,7 @@ x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.p
 | [.github/workflows/](.github/workflows/) | CI：一个 `image.yml`，手动触发，`target=x86/npu/usb/all` 选产物，各自跑在原生 runner 上 |
 | [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
 | [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
-| [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-npu/`、`on-x86/`、`on-pc/` |
-| [modules/](modules/) | EIP197 / clkfix 等早期实验模块 |
+| [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-x86/`、`on-pc/` |
 | [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
 
 ## 关键事实速查
