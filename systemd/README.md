@@ -32,7 +32,7 @@ sudo systemctl enable xgs87-growroot
 | `xgs-ports-up.service` | `xgs-ports-init.sh` | 等 DSA 把 `p1–p8`/`sfp` 建出来 → 按 U-Boot env 的 `ethaddr` 推 9 个 MAC → 全部 `up` 让 PHY 协商 |
 | `xgs-vntb.service` | `xgs-vntb.sh` | configfs 建 `pci_epf_vntb`（VID `1957:0809`）、`start` EPC、再装 `ntb_transport` + `ntb_netdev` |
 | `xgs-mgmt-bridge.service` | `xgs-mgmt-bridge.sh` | `br-mgmt` = `p8` + `eth0.100`，`192.168.100.1/24`；`p8` 是 untagged access 口 |
-| `xgs-lan-uplink.service` | `xgs-lan-uplink.sh` | `br-lan` = `p4` + `eth0.31`，**纯 L2 透传**（不配地址、不跑 STP） |
+| `xgs-lan-uplink.service` | `xgs-lan-uplink.sh` | `br-lan` = `p4` + `eth0.31`，**纯 L2 透传**（不配地址、不跑 STP）；桥里用 **VLAN 31** 过滤，和 `br-mgmt` 的 VLAN 1 分开，避免管理段溢到面板口 |
 | `xgs-lan-dhcp.service` | —（直接 `dhcpcd`） | NPU 自己在 `br-lan` 上拿一个家里内网的地址 |
 | `xgs-netconsole.service` | —（`modprobe netconsole`） | 把内核 console 推给 x86（管理 VLAN）和 PC（`br-lan`）。**这是崩溃取证的主要手段**，见 [docs/20](../docs/20-lan-over-vntb.md) §20.8 |
 

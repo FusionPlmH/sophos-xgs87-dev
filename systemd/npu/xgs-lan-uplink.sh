@@ -49,11 +49,27 @@ ip link set "$VL" up
 ip link show "$BR" >/dev/null 2>&1 || ip link add name "$BR" type bridge
 # Plain L2 passthrough: no STP (nothing to loop with) and no learning delay,
 # so the x86's DHCP request is forwarded the moment it arrives.
+#
+# br-mgmt keeps the switch's default VLAN 1 on p8.  If this bridge also used
+# VLAN 1 the two bridges would land in the same hardware VLAN ("hw VLAN 1
+# already used by port 8 in br-mgmt") and the management segment would leak
+# onto the panel port, so br-lan gets its own VID and filters in the bridge.
 ip link set "$BR" type bridge stp_state 0 forward_delay 0 2>/dev/null || true
+ip link set "$BR" type bridge vlan_default_pvid 0 2>/dev/null || true
+ip link set "$BR" type bridge vlan_filtering 1 2>/dev/null || true
 
 ip link set "$PORT" master "$BR"
 ip link set "$PORT" up
 ip link set "$VL" master "$BR"
 ip link set "$BR" up
+
+# p4 and the vNTB VLAN carry house-LAN frames; the bridge's own port needs the
+# same VID too (`self`), otherwise the NPU's own address on br-lan stops
+# passing traffic.
+bridge vlan del dev "$PORT" vid 1 2>/dev/null || true
+bridge vlan del dev "$VL" vid 1 2>/dev/null || true
+bridge vlan add dev "$PORT" vid "$VID" pvid untagged 2>/dev/null || true
+bridge vlan add dev "$VL" vid "$VID" pvid untagged 2>/dev/null || true
+bridge vlan add dev "$BR" vid "$VID" pvid untagged self 2>/dev/null || true
 
 echo "xgs-lan-uplink: $BR = $PORT + $VL ($(cat /sys/class/net/$PORT/carrier 2>/dev/null | sed 's/1/link up/;s/0/no link/'))"

@@ -28,6 +28,11 @@ x86 和 NPU 之间**只有** PCIe vNTB 这一个 netdev（`eth0` / `pci-vntb 000
 
 p8 依然是 **access 口**：直接插网线只看得到未打标签的 `192.168.100.0/24`，管理帧不会溢到面板上。
 
+交换机上两段用**不同的硬件 VLAN**：`br-mgmt` 留在默认 VLAN 1，`br-lan` 显式用 VLAN 31
+（`vlan_filtering 1` + `vlan_default_pvid 0`，桥自己的端口也要 `self` 加进去）。不这么做
+mv88e6xxx 会报 `p4: hw VLAN 1 already used by port 8 in br-mgmt`，两个段在交换芯片里
+其实是同一个广播域 —— 面板上的管理口和家里 LAN 会互通。
+
 实测：
 
 ```

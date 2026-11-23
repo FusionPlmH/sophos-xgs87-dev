@@ -80,6 +80,9 @@ PasswordAuthentication yes
 EOF
 
 # --- housekeeping -----------------------------------------------------------
+# The x86's FCH HD-audio controller has no codecs behind it; loading the driver
+# only produces probe errors.  Nothing on this appliance uses audio.
+printf 'blacklist snd_hda_intel\n' > /etc/modprobe.d/xgs87-no-audio.conf
 systemctl enable systemd-timesyncd ssh
 : > /etc/machine-id
 rm -f /etc/ssh/ssh_host_*

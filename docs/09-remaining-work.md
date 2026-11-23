@@ -42,6 +42,7 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通）
 | thermal 6 zone + 9 hwmon、PWM、GPIO | [01](01-hardware.md) |
 | x86 ↔ NPU vNTB（1.2 Gbit/s，RTT 0.6 ms） | [17](17-x86-npu-shared-mgmt.md)、[20](20-lan-over-vntb.md) |
 | 一条链路同时跑管理段 + 家里 LAN（VLAN 100 / 31），x86 拿到 DHCP | [20](20-lan-over-vntb.md) |
+| 管理段和家里 LAN 在交换芯片上真正隔离（`br-lan` 用 VLAN 31，不再是默认 VLAN 1） | [20](20-lan-over-vntb.md) §20.1 |
 | 掉链 / 关机不再 oops（peer_db 校验、spad 守卫、关机道别） | [20](20-lan-over-vntb.md) §20.7 |
 | 崩溃取证：netconsole 双目标（NPU → x86 + PC） | [20](20-lan-over-vntb.md) §20.8 |
 | 镜像构建：`image/` + 三个 CI workflow（x86 / npu / usb），自动发 release | [image/README.md](../image/README.md)、[21](21-reproduce.md) |
