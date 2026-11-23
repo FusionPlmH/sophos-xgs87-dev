@@ -28,6 +28,7 @@ MNT=${MNT:-/mnt}
 
 [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; exit 1; }
 [ -n "$DTB" ] || { echo "找不到 DTB"; exit 1; }
+chmod 755 "$PAYLOAD"/*.sh 2>/dev/null || true
 
 # 在 NPU 上跑一段脚本（需要 root）。密码从 stdin 喂给 sudo，命令体也走 stdin，
 # 这样不用和引号打架，也不会把密码留在进程表里。
@@ -96,6 +97,22 @@ cleanup_nbd() {
 
 echo "== 先把 vNTB 链路拉起来"
 systemctl start xgs-ntb xgs-ntb-watch 2>/dev/null || true
+
+# 默认先走 U-Boot（ext4 影像 → tftpboot → mmc write）：这条路不依赖 NPU 上的任何
+# 用户态程序，也不依赖它的 sshd。走不通（没有 tftpboot、没插网线、交换机没转发）
+# 才退到 NBD，那时脚本会先让 NPU 正常启动回去。
+if [ "${NO_UBOOT:-0}" != 1 ] && [ -x "$PAYLOAD/npu-uboot-install.sh" ]; then
+	echo "== 先试 U-Boot 方式（tftpboot + mmc write）"
+	if "$PAYLOAD/npu-uboot-install.sh"; then
+		echo
+		echo "NPU 写完了（U-Boot 路径），它正在重启。"
+		printf '按回车返回菜单...'
+		read -r _
+		exit 0
+	fi
+	echo "== U-Boot 那条路没走通，改用 NBD"
+fi
+
 NPU=$(find_npu 30) || NPU=
 
 if [ -z "$NPU" ] && [ -e "$SERIAL" ]; then

@@ -155,6 +155,10 @@ partno=AMDA0200-0001
   `sudo -S systemctl reboot` + 密码，然后连敲 20 秒空格再交给 picocom；手工的话就是
   `npu-console.sh` 里按住空格。
 
+> ⚠️ 停在 U-Boot 意味着 NPU 的 Linux 不在跑 —— **vNTB 也就断了**，x86 那两条 VLAN
+> （`eth0.100`/`eth0.200`）随之消失。要用 U-Boot 从 x86 传数据，必须插一块 USB 网卡、
+> 用网线接到面板口（交换机在 U-Boot 里默认转发）；只有串口的话 190 MB 要几个小时。
+
 ## 3.5 x86 启动
 
 ```

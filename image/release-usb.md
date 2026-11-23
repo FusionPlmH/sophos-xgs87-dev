@@ -58,7 +58,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 选项 | 做什么 | 风险 |
 |---|---|---|
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | NPU 上用 `nbd-server` 把 `p2` 导出来，x86 接成 `/dev/nbd0`，然后 **x86 这边**做 `mkfs.ext4` + 解包 + 放 DTB（默认 `/dev/mmcblk0p2`）| 目标分区被整个重写；**动手前会先问要不要备份**，装完自动重启 NPU |
+| `2` 重装 NPU | **先走 U-Boot**：把 rootfs 做成等大的 ext4 影像 → `tftpboot` 进 NPU 内存 → `mmc write` 到 `p2`；走不通再退到 **NBD**（NPU 上 `nbd-server` 导出 `p2`，x86 接成 `/dev/nbd0` 自己 `mkfs` + 解包） | 目标分区被整个重写；两条路都在装完时验证 `ext4load mmc 0:2 /boot/Image` |
 | `3` 查看状态 | 磁盘、vNTB 链路、NPU 是否可达、SSH 通不通 | 只读 |
 | `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 内置盘 |
 | `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |
@@ -71,15 +71,23 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 
 | 办法 | 数据通道 | NPU 需要活着到什么程度 | 190 MB 大约要 | 适合 |
 |---|---|---|---|---|
-| **NBD**（菜单 `2` / `8`） | vNTB，块级 TCP | 能跑到用户态、能起 `nbd-server` | **1–2 分钟**，接近 1 Gbit/s | ✅ **写整份 rootfs、备份、fsck** |
+| **U-Boot `tftpboot` + `mmc write`**（菜单 `2` 的第一步） | 网线（x86 的 USB 网卡 → 面板口，交换机在 U-Boot 里默认转发） | 停在 `=> ` 即可，**不依赖任何用户态** | 1 Gbit/s 下 ~1 分钟 | ✅ **首选**：NPU 全废也能装 |
+| **NBD**（菜单 `2` 的第二步 / `8`） | vNTB，块级 TCP | 能跑到用户态、能起 `nbd-server` | **1–2 分钟**，接近 1 Gbit/s | ✅ 没有网线时的退路；备份、fsck 用它 |
 | ssh + tar | vNTB，TCP | 还要 sshd、host key、tar/zstd | 1–2 分钟 | 有 sshd 时最省事，但一处坏就全废 |
 | U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
 | U-Boot `tftpboot` | 网口（end0→交换机，或 `mvswitch` 拉起 SFP port9） | 同上 | 10G 时很快 | ⚠️ 得先有 SFP 模块 + TFTP 服务，交换机在 U-Boot 里没初始化 |
 | U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
 | 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、起 `nbd-server` |
 
-**结论**：写镜像走 **NBD**；U-Boot 留给"NPU 连用户态都起不来"的场合 —— 它能做的恰恰是 NBD 做不到的事：
-`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
+**结论**：写镜像走 **U-Boot（tftpboot + mmc write）**，前提是插一块 USB 网卡做物理旁路；没有网卡就走 **NBD**。
+U-Boot 还能做 NBD 做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
+
+> ⚠️ **NPU 停在 U-Boot 时 vNTB 是断的**。x86 自己没有网口，那两条 VLAN（`eth0.100`/`eth0.200`）
+> 全在 NPU 的 Linux 里 —— NPU 一进 U-Boot，x86 立刻没网、没默认路由。
+> 所以 U-Boot 那条路的数据只能走 **物理旁路**：x86 的 USB 网卡 → 网线 → 面板口 → 交换机 → NPU `end0`
+> （交换机在 U-Boot 里是默认转发状态，够用）。脚本因此**先确认有载波网口才去停 NPU**，
+> 没网卡就直接退出，免得把机器停在"NPU 在 U-Boot、x86 又没网"的死角里。
+> 串口（`/dev/ttyS2`）全程不受影响 —— 它不经过 PCIe。
 | `9` / `0` | 关机 / 重启 | — |
 
 `2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
