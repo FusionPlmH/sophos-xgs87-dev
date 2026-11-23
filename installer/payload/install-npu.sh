@@ -67,11 +67,11 @@ if [ -n "$NPU" ]; then
 else
 	echo "== NPU 不可达（试过：$NPU_CANDIDATES）。起 HTTP 服务，从 NPU 的控制台手动装："
 	# 别假设地址：vNTB 链路没起来时 eth0.200 根本不存在，bind 会失败
-	# （OSError: Cannot assign requested address）。优先用 LAN 那段，
-	# NPU 修好后正好在同一个网段（10.234.56.0/24）。
-	ADDR=$(lan_addr)
+	# （OSError: Cannot assign requested address）。所以绑 0.0.0.0，把所有
+	# 现有地址都列出来 —— NPU 那边能用哪个就用哪个。
 	PORT=${PORT:-8080}
-	if [ -z "$ADDR" ]; then
+	ADDRS=$(local_addrs)
+	if [ -z "$ADDRS" ]; then
 		echo
 		echo "⚠️  x86 现在没有任何 IPv4 地址 —— vNTB 链路大概没起来。"
 		echo "    ip -br a            看接口"
@@ -82,14 +82,22 @@ else
 	fi
 	cd "$PAYLOAD"
 	echo
-	echo "  x86 上已经跑起：  python3 -m http.server $PORT --bind $ADDR"
+	echo "  x86 上已经跑起：  python3 -m http.server $PORT --bind 0.0.0.0"
 	echo "  然后在 NPU 控制台（x86 的 /dev/ttyS2，57600）里执行："
 	echo
-	echo "    wget http://$ADDR:$PORT/debian-npu.tar.zst -O /tmp/x.tar.zst"
+	for a in $ADDRS; do
+		echo "    # NPU 在 $a 那个网段时："
+		echo "    wget http://$a:$PORT/debian-npu.tar.zst -O /tmp/x.tar.zst"
+	done
+	echo
 	echo "    mkfs.ext4 -L xgsroot /dev/mmcblk0p2"
 	echo "    mount /dev/mmcblk0p2 /mnt && tar -xpf /tmp/x.tar.zst -C /mnt"
 	echo "    cp /tmp/cn9130-*.dtb /mnt/boot/ && umount /mnt && reboot"
 	echo
+	echo "  NPU 上还没有地址就先给它一个（旧镜像的管理段是 192.168.100.0/24，"
+	echo "  新的是 10.234.56.0/24）："
+	echo "    ip addr add 192.168.100.9/24 dev eth0; ip link set eth0 up"
+	echo
 	echo "  DTB 也在同一个目录下。按 Ctrl-C 结束服务。"
-	exec python3 -m http.server "$PORT" --bind "$ADDR"
+	exec python3 -m http.server "$PORT" --bind 0.0.0.0
 fi
