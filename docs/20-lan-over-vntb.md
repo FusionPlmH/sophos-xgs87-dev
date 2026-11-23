@@ -185,20 +185,53 @@ PERST# / 链路掉线的反应，属于板级设计（这颗 EP 本来就不预�
 **实际影响**：x86 重启 → NPU 跟着重启 → 40 秒后两者都自己回来，链路、VLAN、DHCP 全部自动重建。
 不需要人碰机器，但 NPU 的 uptime 会归零。
 
-## 20.9 模块替换：一个成功，一个回滚
+## 20.9 模块替换：两个都上了
 
 | 模块 | 改动 | 结果 |
 |---|---|---|
-| `mvpp2` | `MVPP2_AGGR_TXQ_SIZE` 256 → **512** | ✅ 已上线，`end0`/DSA 正常工作 |
-| `mv88e6xxx` | 两个 TCAM 越权补丁（`e3624f5eeac4` + `242ebf4c5114`） | ❌ **加载后 DSA 完全不 probe**，9 个面板口全部消失，已回滚 |
+| `mvpp2` | `MVPP2_AGGR_TXQ_SIZE` 256 → **512** | ✅ 交叉编译，已上线 |
+| `mv88e6xxx` | 两个 TCAM 越权补丁（`e3624f5eeac4` + `242ebf4c5114`） | ✅ 交叉编译，已上线，9 个口正常 |
 
-`mv88e6xxx` 的失败现象：`/sys/class/net` 里只剩 `end0 eth0 lo`，dmesg 里**一行错误都没有**
-（不是符号错误，符号错 modprobe 会直接报）。判断是外挂 Makefile 少了内核 Kbuild 里某个
-`mv88e6xxx-$(CONFIG_...)` 条件对象导致驱动注册表不完整；模块本身能加载，只是 `dsa_register_switch()`
-之后再无下文。正确做法是在完整内核源码树里 `make M=drivers/net/dsa/mv88e6xxx`，
-而不是把驱动目录抠出来自己拼 Makefile。
+### 交叉编译（不要再走 qemu 模拟）
 
-回滚方式（已验证，两次成功）：
+Debian 的 `linux-headers` 包里 `scripts/` 是 **arm64 二进制**（`fixdep`、`modpost`），
+在 x86 上跑不了，所以之前只能把整个 rootfs 塞进 qemu-user 里编 —— 一个 216 KB 的
+`mvpp2_main.c` 要十几分钟。正解是用**完整源码树 + 交叉编译器**，host 工具用宿主 gcc 编，
+只有模块代码走交叉 gcc：
+
+```sh
+apt-get install gcc-14-aarch64-linux-gnu flex bison bc libelf-dev libssl-dev
+
+# 1) 准备独立输出目录，喂进 NPU 自己的 config
+make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j16 modules_prepare
+
+# 2) modules_prepare 不生成 Module.symvers，从 headers 包里借
+cp /srv/npu/usr/src/linux-headers-6.12.117+deb13-arm64/Module.symvers /srv/kbuild/
+
+# 3) vermagic 必须带 Debian 的后缀，否则 modprobe 直接拒载
+#    （LOCALVERSION= 会被 olddefconfig 吃掉，源码根目录 localversion 文件会和
+#     CONFIG_LOCALVERSION 重复；正确做法是直接改 .config 里的 CONFIG_LOCALVERSION）
+grep CONFIG_LOCALVERSION /srv/kbuild/.config     # CONFIG_LOCALVERSION="+deb13-arm64"
+grep UTS_RELEASE /srv/kbuild/include/generated/utsrelease.h   # "6.12.117+deb13-arm64"
+
+# 4) 按内核自己的 Kbuild 编（不要在外部目录手拼 Makefile）
+make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+     M=$SRC/drivers/net/dsa/mv88e6xxx modules
+```
+
+一套下来 **十几秒**，比 qemu 快两个数量级。脚本见 [tools/build-npu-net.sh](../tools/build-npu-net.sh)。
+
+### 踩过的两个坑
+
+| 现象 | 真因 |
+|---|---|
+| 模块能加载，但 `p1..p8/sfp` 全部消失，dmesg 一行错都没有 | 我在外部目录**手拼 Makefile**，漏了内核 Kbuild 里的条件对象，`dsa_register_switch()` 之后没下文。必须用 in-tree Kbuild。 |
+| dmesg 出现 `decompression failed with status 6`，模块根本没被加载 | `xz -9` 的 64 MiB 字典**超出内核 xz 解码器允许范围**。要么用小字典（`--lzma2=dict=1MiB`），要么干脆不压缩直接放 `.ko` —— 现在就是直接放 `.ko`。 |
+
+第二个坑特别有欺骗性：`lsmod` 里看不到模块，但启动过程不报错，看起来就像"驱动不 probe"。
+
+### 回滚
 
 ```sh
 D=/lib/modules/6.12.117+deb13-arm64/kernel/drivers/net/dsa/mv88e6xxx
@@ -206,8 +239,8 @@ cp -a $D/mv88e6xxx.ko.xz.orig $D/mv88e6xxx.ko.xz
 depmod -a && reboot
 ```
 
-回滚时的关键点：**交换机一死，NPU 就只能从 console 进**（`p4` 也没了，家里网络一并消失），
-所以动 `mv88e6xxx` 之前必须确认 `/dev/ttyS2` 这条路是通的。
+交换机一死，NPU 就只能从 console 进（p4 也没了），所以动 `mv88e6xxx` 之前必须确认
+`/dev/ttyS2` 这条路是通的。
 
 ## 20.10 自愈的一个漏洞（已修）
 

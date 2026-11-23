@@ -1,62 +1,80 @@
 #!/bin/bash
-# Build the network-side modules for the NPU: the 88E6193X switch driver and
-# the PPv2 MAC driver.
+# Build the NPU's network modules: the 88E6193X switch driver and the PPv2 MAC
+# driver.  Cross-compiled in the full kernel source tree.
 #
-# Both are patched copies of the distribution source:
-#   net/patches/000{1,2}-*.patch  the two TCAM policy checks that are not in
-#                                 6.12.y (a user port could read or delete
-#                                 another port's policy rule)
-#   MVPP2_AGGR_TXQ_SIZE 256 -> 512
-#                                 256 aggregated TX descriptors is thin for a
-#                                 10G port; the register field is 10 bits wide
-#                                 so 512 still fits
+# Do not try this against Debian's linux-headers package: its scripts/ are
+# aarch64 binaries (fixdep, modpost), so on an x86 host nothing runs.  A full
+# tree builds those for the host with the host compiler and cross-compiles
+# only the module code, which turns a 20-minute qemu session into seconds.
 #
-# The switch driver must be built with exactly the same object list the
-# kernel's own Kbuild uses, otherwise the module loads but DSA never probes
-# and all nine front-panel ports simply do not appear.
+# Prerequisites on the host:
+#   apt-get install gcc-14-aarch64-linux-gnu flex bison bc libelf-dev libssl-dev
+#   ln -sf aarch64-linux-gnu-gcc-14 /usr/bin/aarch64-linux-gnu-gcc
+#
+# Patches applied:
+#   net/patches/000{1,2}-*.patch   the two TCAM policy checks missing from
+#                                  6.12.y (a user port could read or delete
+#                                  another port's policy rule)
+#   MVPP2_AGGR_TXQ_SIZE 256 -> 512  the register field is 10 bits wide, so 512
+#                                  still fits; 256 is thin for a 10G port
 set -eu
 
 SRC=${SRC:-/srv/lsrc-deb/usr/src/linux-source-6.12}
-B=${B:-/srv/npu/build/net}
-KDIR=${KDIR:-/usr/src/linux-headers-6.12.117+deb13-arm64}
+OBJ=${OBJ:-/srv/kbuild}
+NPU_ROOT=${NPU_ROOT:-/srv/npu}
+KVER=${KVER:-6.12.117+deb13-arm64}
+ARCH=arm64
+CROSS=aarch64-linux-gnu-
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
-rm -rf "$B"
-mkdir -p "$B/mv88e6xxx" "$B/mvpp2"
+mkdir -p "$OBJ"
 
-cp "$SRC"/drivers/net/dsa/mv88e6xxx/*.c "$SRC"/drivers/net/dsa/mv88e6xxx/*.h "$B/mv88e6xxx/"
-cp "$SRC"/drivers/net/ethernet/marvell/mvpp2/*.c \
-   "$SRC"/drivers/net/ethernet/marvell/mvpp2/*.h "$B/mvpp2/"
+if [ ! -f "$OBJ/.config" ]; then
+	cp "$NPU_ROOT/boot/config-$KVER" "$OBJ/.config"
+	# The Debian ABI suffix has to live in CONFIG_LOCALVERSION: a localversion
+	# file would stack on top of it, and LOCALVERSION= on the command line is
+	# dropped by olddefconfig.
+	sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"+deb13-arm64\"/" "$OBJ/.config"
+fi
 
-for p in 0001-net-dsa-mv88e6xxx-check-port-on-read.patch \
-	 0002-net-dsa-mv88e6xxx-check-port-on-delete.patch; do
-	patch -p5 -s -d "$B/mv88e6xxx" < "$REPO/net/patches/$p"
+make -C "$SRC" O="$OBJ" ARCH=$ARCH CROSS_COMPILE=$CROSS olddefconfig
+make -C "$SRC" O="$OBJ" ARCH=$ARCH CROSS_COMPILE=$CROSS -j"$(nproc)" modules_prepare
+
+# modules_prepare does not produce Module.symvers; borrow the one shipped with
+# the headers or modpost leaves ~120 symbols unresolved.
+if [ ! -s "$OBJ/Module.symvers" ]; then
+	cp "$NPU_ROOT/usr/src/linux-headers-$KVER/Module.symvers" "$OBJ/Module.symvers"
+fi
+
+grep UTS_RELEASE "$OBJ/include/generated/utsrelease.h"
+
+cd "$SRC"
+if ! grep -q 'policy->port != port' drivers/net/dsa/mv88e6xxx/chip.c; then
+	patch -p1 -s < "$REPO/net/patches/0001-net-dsa-mv88e6xxx-check-port-on-read.patch"
+	patch -p1 -s < "$REPO/net/patches/0002-net-dsa-mv88e6xxx-check-port-on-delete.patch"
+fi
+sed -i 's/^#define MVPP2_AGGR_TXQ_SIZE\t\t256$/#define MVPP2_AGGR_TXQ_SIZE\t\t512/' \
+	drivers/net/ethernet/marvell/mvpp2/mvpp2.h
+grep -n '^#define MVPP2_AGGR_TXQ_SIZE' drivers/net/ethernet/marvell/mvpp2/mvpp2.h
+
+for d in drivers/net/dsa/mv88e6xxx drivers/net/ethernet/marvell/mvpp2; do
+	rm -f "$SRC/$d"/*.o "$SRC/$d"/*.ko
+	make -C "$SRC" O="$OBJ" ARCH=$ARCH CROSS_COMPILE=$CROSS M="$SRC/$d" modules
 done
 
-sed -i 's/^#define MVPP2_AGGR_TXQ_SIZE\t\t256$/#define MVPP2_AGGR_TXQ_SIZE\t\t512/' \
-	"$B/mvpp2/mvpp2.h"
-grep -n '^#define MVPP2_AGGR_TXQ_SIZE' "$B/mvpp2/mvpp2.h"
+for k in "$SRC/drivers/net/dsa/mv88e6xxx/mv88e6xxx.ko" \
+	 "$SRC/drivers/net/ethernet/marvell/mvpp2/mvpp2.ko"; do
+	printf '%s\n  vermagic: %s\n' "$k" "$(modinfo -F vermagic "$k")"
+done
 
-# CONFIG_NET_DSA_MV88E6XXX_PTP and CONFIG_MVPP2_PTP are both off on this
-# kernel, so hwtstamp.o/ptp.o and mvpp2_tai.o are deliberately absent.
-cat > "$B/mv88e6xxx/Makefile" <<'EOF'
-obj-m := mv88e6xxx.o
-mv88e6xxx-y := chip.o devlink.o global1.o global1_atu.o global1_vtu.o \
-	global2.o global2_avb.o global2_scratch.o pcs-6185.o pcs-6352.o \
-	pcs-639x.o phy.o port.o port_hidden.o serdes.o smi.o switchdev.o trace.o
-CFLAGS_trace.o := -I$(src)
-EOF
+cat <<'EOM'
 
-cat > "$B/mvpp2/Makefile" <<'EOF'
-obj-m := mvpp2.o
-mvpp2-y := mvpp2_main.o mvpp2_prs.o mvpp2_cls.o mvpp2_debugfs.o
-EOF
+Install them UNCOMPRESSED.  An xz -9 archive uses a 64 MiB dictionary, which
+is outside what the kernel's xz decoder accepts; the module then silently
+fails with "decompression failed with status 6" and never loads:
 
-chroot /srv/npu make -C "$KDIR" M=/build/net/mv88e6xxx modules
-chroot /srv/npu make -C "$KDIR" M=/build/net/mvpp2 modules
-
-echo
-echo "WARNING: as of 2026-11-23 the mv88e6xxx built this way loads but DSA"
-echo "does not probe (no p1..p8/sfp appears), so the shipped module is still"
-echo "the distribution one.  mvpp2 builds and runs fine."
-ls -l "$B"/mv88e6xxx/mv88e6xxx.ko "$B"/mvpp2/mvpp2.ko
+    strip --strip-debug mv88e6xxx.ko mvpp2.ko
+    cp mv88e6xxx.ko /lib/modules/<kver>/kernel/drivers/net/dsa/mv88e6xxx/
+    cp mvpp2.ko     /lib/modules/<kver>/kernel/drivers/net/ethernet/marvell/mvpp2/
+    depmod -a && reboot
+EOM
