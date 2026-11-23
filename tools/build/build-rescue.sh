@@ -17,6 +17,7 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 NPU=
 OUT=$REPO/out/xgs87-rescue.tar.zst
 BUSYBOX_DEB=
+KERNEL_DIR=
 MIRROR=http://deb.debian.org/debian
 
 while [ $# -gt 0 ]; do
@@ -24,6 +25,7 @@ while [ $# -gt 0 ]; do
 	--npu)    NPU=$2; shift 2 ;;
 	--out)    OUT=$2; shift 2 ;;
 	--busybox-deb) BUSYBOX_DEB=$2; shift 2 ;;
+	--kernel) KERNEL_DIR=$2; shift 2 ;;
 	--mirror) MIRROR=$2; shift 2 ;;
 	-h|--help) sed -n '2,16p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
@@ -52,6 +54,12 @@ done
 	mkdir -p "$WORK/lib"; ln -s "$WORK/usr/lib/modules" "$WORK/lib/modules"
 }
 KVER=
+if [ -n "$KERNEL_DIR" ]; then
+	KVER=$(cat "$KERNEL_DIR/kver")
+	SRC_MODS="$KERNEL_DIR/modules/lib/modules/$KVER"
+else
+	SRC_MODS="$WORK/lib/modules/$KVER"
+fi
 for d in "$WORK"/lib/modules/*; do
 	[ -d "$d" ] && { KVER=${d##*/}; break; }
 done
@@ -64,9 +72,9 @@ KEEP="pci_ep_cfs pcie_dw_plat pci_epf_vntb ntb_core ntb_hw_epf ntb_transport ntb
       sdhci sdhci-of-dwcmshc mmc_block dw_mmc"
 mkdir -p "$R/lib/modules/$KVER"
 for m in $KEEP; do
-	f=$(find "$WORK/lib/modules/$KVER" -name "$m.ko*" | head -1)
+	f=$(find "$SRC_MODS" -name "$m.ko*" | head -1)
 	[ -n "$f" ] || continue
-	d=$R/lib/modules/$KVER/${f#"$WORK/lib/modules/$KVER/"}
+	d=$R/lib/modules/$KVER/${f#"$SRC_MODS/"}
 	mkdir -p "$(dirname "$d")"
 	cp "$f" "$d"
 done
@@ -102,7 +110,9 @@ echo "== 4/6 打 cpio"
 ( cd "$R" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 ) >"$WORK/initramfs.gz"
 
 echo "== 5/6 内核准备成 U-Boot 能 unzip 的 Image.gz"
-if [ -f "$WORK/boot/Image" ]; then
+if [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image.gz" ]; then
+	cp "$KERNEL_DIR/Image.gz" "$WORK/kernel.gz"
+elif [ -f "$WORK/boot/Image" ]; then
 	cp "$WORK/boot/Image" "$WORK/Image"
 	gzip -9 -f "$WORK/Image"
 	mv "$WORK/Image.gz" "$WORK/kernel.gz"
