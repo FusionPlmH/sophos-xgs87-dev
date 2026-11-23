@@ -43,11 +43,14 @@ trap cleanup EXIT
 
 # Smallest image that still holds the root filesystem plus a little slack; the
 # first boot grows the partition to fill whatever disk it was written to, so
-# there is no reason to ship a 4 GB image for 700 MB of data.
+# there is no reason to ship a 4 GB image for 700 MB of data.  The ESP is part
+# of the same image, so its 476 MiB has to be added on top of the root size --
+# and ext4 needs room for its inode table, bitmaps, journal and 5% reserved
+# blocks, hence the 15% + 256 MiB on the data.
 if [ "$SIZE" = auto ]; then
 	BYTES=$(zstd -dc "$ROOTFS" | wc -c)
-	NEED=$(( BYTES + BYTES / 8 + 256 * 1024 * 1024 ))
-	SIZE=$(( (NEED / 1048576 + 1) * 1048576 ))
+	SIZE=$(( ((BYTES + BYTES * 15 / 100 + 256 * 1024 * 1024
+		+ ESP_MIB * 1048576) / 1048576 + 1) * 1048576 ))
 fi
 
 echo "== create $OUT ($SIZE bytes)"
