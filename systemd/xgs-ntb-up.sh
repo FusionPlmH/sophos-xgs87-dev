@@ -51,7 +51,17 @@ for vid in "$MGMT_VID" "$LAN_VID"; do
 	vl=eth0.$vid
 	ip link show "$vl" >/dev/null 2>&1 || \
 		ip link add link eth0 name "$vl" type vlan id "$vid" || exit 1
-	ip link set "$vl" up
+done
+
+# ntb_netdev invents a random MAC on every boot and has no
+# ndo_set_mac_address, so pin the addresses on the VLAN devices instead.
+# Without this the DHCP lease (and every ssh known_hosts entry) changes on
+# each reboot.
+ip link set "eth0.$MGMT_VID" address 02:58:47:53:00:11 2>/dev/null || true
+ip link set "eth0.$LAN_VID" address 02:58:47:53:00:31 2>/dev/null || true
+
+for vid in "$MGMT_VID" "$LAN_VID"; do
+	ip link set "eth0.$vid" up
 done
 
 ip addr show dev "eth0.$MGMT_VID" | grep -q "${MGMT_ADDR%/*}/" || \
