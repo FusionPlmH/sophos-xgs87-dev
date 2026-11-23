@@ -9,8 +9,10 @@
 set -eu
 
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
-LSRC=${LSRC:-/srv/lsrc}
 OUT=${OUT:-$REPO/out}
+# Keep the sparse kernel clone inside the repo's out/ so this also works on a
+# CI runner, where /srv does not exist and $HOME is not writable by root.
+LSRC=${LSRC:-$OUT/linux-src}
 DTS=${DTS:-$REPO/board/cn9130-sophos-xgs87w-sfp10g.dts}
 
 if [ ! -d "$LSRC/arch/arm64/boot/dts/marvell" ]; then

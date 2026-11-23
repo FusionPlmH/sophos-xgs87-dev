@@ -14,3 +14,5 @@ __pycache__/
 *.ko
 *.o
 
+# build output (rootfs, images, the sparse kernel clone for build-dtb.sh)
+out/
