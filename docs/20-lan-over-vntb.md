@@ -90,30 +90,73 @@ cat /dev/ttyS2
 > **同一时刻只能有一个进程读 `/dev/ttyS2`**，两个 `cat` 会把数据流切成乱码 —— 这一个坑
 > 让排查多花了半小时。
 
-## 20.5 吞吐实测（iperf3，走 vNTB）
+## 20.5 吞吐与延迟实测（iperf3 + ping，走 vNTB）
 
-| 场景 | 结果 |
-|---|---|
-| 单流 TCP | **969 Mbits/s** |
-| 4 流 TCP | **1.18 Gbits/s** |
-| PCIe 链路 | 8.0 GT/s ×2 = 15.75 Gb/s 可用带宽（受 x86 根端口 x2 限制） |
+| 场景 | 原始（1 jiffy 轮询） | 改 hrtimer 之后 |
+|---|---|---|
+| 单流 TCP | 969 Mbits/s | **1.20 Gbits/s** |
+| 4 流 TCP | 1.18 Gbits/s | 1.18 Gbits/s |
+| ping RTT（x86→NPU） | 1.2 – 13.8 ms，avg 4 – 7 ms | **0.23 – 1.2 ms，avg 0.6 ms** |
+| 空闲 CPU | — | 0.0%（自动退避到 1 ms） |
+| PCIe 链路 | 8.0 GT/s ×2 = 15.75 Gb/s 可用（x86 根端口只给 x2） | 同 |
 
-4 流几乎不涨 → 瓶颈不在 CPU，而在 **单个 QP / 单发送队列**：`ntb_transport` 目前只建了
-1 个 QP，`ntb_netdev` 也只有一个 TX 队列，全部收敛到同一个 kthread。
-家里 LAN 是 1G，这个数够用；要榨干得加 QP（`num_qps`）并配多队列网卡。
+单流就能吃满 1.2 Gb/s、4 流不再涨 → 瓶颈是**单个 QP / 单发送队列**，不是 CPU。
+家里 LAN 是 1G，这个数已经够；要吃更多得上多 QP。
 
-## 20.6 自愈
+## 20.6 延迟的真正来源：门铃是被"轮询"的
+
+`pci_epf_vntb` 里 host 写门铃 BAR 不会在本侧产生中断，所以 EP 必须自己轮询：
+
+```c
+reset_handler:
+	queue_delayed_work(kpcintb_workqueue, &ntb->cmd_handler,
+			   msecs_to_jiffies(1));     /* HZ=250 → 4 ms */
+```
+
+`msecs_to_jiffies(1)` 在 HZ=250 的 Debian 内核上就是 **4 ms**，而 ping 的往返里至少要吃一次它
+—— 实测 RTT 4–7 ms 完全对得上。
+
+改成 hrtimer 并做**自适应退避**（`ntb/patch-hrtimer-poll.py`）：
+
+| 状态 | 周期 | 效果 |
+|---|---|---|
+| 有流量 | 250 µs | RTT 0.6 ms，单流 1.2 Gb/s |
+| 连续 8 次空闲 | 1 ms | 空闲 CPU 0.0% |
+
+```c
+static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
+{
+	struct epf_ntb *ntb = container_of(timer, struct epf_ntb, poll_timer);
+
+	queue_work(kpcintb_workqueue, &ntb->cmd_handler.work);
+	hrtimer_forward_now(timer, ns_to_ktime(ntb->poll_ns));
+	return HRTIMER_RESTART;
+}
+```
+
+构建（NPU 的 rootfs 挂在 WSL 里编）：
+
+```sh
+python3 ntb/patch-hrtimer-poll.py /srv/npu/build/ntb
+chroot /srv/npu make -C /usr/src/linux-headers-6.12.117+deb13-arm64 M=/build/ntb modules
+```
+
+## 20.7 自愈
 
 | 机制 | 位置 | 作用 |
 |---|---|---|
 | `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier`；掉线超过 60 s 就重新 `remove`+`rescan` 枚举端点、重建 VLAN、补地址。**NPU 重启后 x86 会自动重新接上** |
-| `/etc/sysctl.d/90-xgs-panic.conf` | 两边 | `kernel.panic=30`、`panic_on_oops=1`、`hardlockup_panic=1`。没有 console 的机器卡住等于要人跑一趟，宁可 panic 后自己重启 |
+| `/etc/sysctl.d/90-xgs-panic.conf` | 两边 | `kernel.panic=30`、`panic_on_oops=1`、`hardlockup_panic=1` |
 
-## 20.7 仍然开着的问题
+实测一次完整的 NPU 重启：x86 端 `ntb_hw_epf` 在端点消失时 oops → `panic_on_oops` 触发 panic →
+30 s 后自己重启 → 启动时 `xgs-ntb-watch` 重新枚举 → 链路和 DHCP 全部自动恢复，
+**全程不需要人碰机器**（两次重启冒烟验证通过）。
 
-1. **NPU 消失时 x86 会整机锁死**（`ntb_hw_epf` 还在读已经不存在的 BAR，UART 都不再出字符，
-   magic SysRq 也无效）。`panic_on_oops` 只在 oops 路径上有效，若真锁在 spinlock 里不会触发。
-   下次复现时用 netconsole（`6666@192.168.200.1/eth0`）抓 trace。
-2. **关机**：`systemctl reboot` 之后机器能自己回来，但会消耗 ~2 分钟，且文件系统不会被标记为
-   干净卸载（需要进一步确认是 panic 后重启还是正常重启）。
+## 20.8 仍然开着的问题
+
+1. **NPU 端点消失时 x86 会 oops**（`ntb_hw_epf` 仍在访问已经不存在的 BAR）。现在靠
+   `panic_on_oops` + `panic=30` 兜成"自愈重启"，但根因没修 —— 正解是给 `ntb_hw_epf`
+   加 link-down 处理，或让宿主端口支持热插拔（`pciehp`）走正常的设备移除路径。
+2. **两台机器会连锁重启**：x86 重启期间 NPU 侧 `ntb_netdev_close()` 会踩到已经掉线的 spad
+   （`vntb_epf_spad_read` oops），`panic_on_oops` 又把它重启一次。两边都自愈，但会多花一轮时间。
 3. `p8` 前线现在没人插，`br-mgmt` 靠 `eth0.100` 撑着；插上笔记本即可同时访问 `.1` / `.2`。
