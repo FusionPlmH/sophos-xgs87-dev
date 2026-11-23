@@ -81,14 +81,26 @@ umount "$MNT" || die "卸不下 $MNT"
 
 echo "== 写到 $NPU:$PART（NPU 上正在用的根分区，它会崩）"
 sync
-ssh $SSHOPT "$login@$NPU" "sync; dd of=$PART bs=1M 2>/dev/null; sync" <"$IMG" ||
-	echo "   （dd 返回非 0：NPU 很可能在写的中途崩了，这属于正常）"
+dd_rc=0
+ssh $SSHOPT "$login@$NPU" "sync; dd of=$PART bs=1M; sync" <"$IMG" || dd_rc=$?
 
 echo "== 回读校验前 4 MiB"
 a=$(dd if="$IMG" bs=1M count=4 2>/dev/null | md5sum | cut -d' ' -f1)
 b=$(ssh $SSHOPT "$login@$NPU" "dd if=$PART bs=1M count=4 2>/dev/null | md5sum" 2>/dev/null | cut -d' ' -f1)
 echo "   本地 $a"
-echo "   NPU  ${b:-回读失败（NPU 已崩，属正常）}"
-[ "$a" = "$b" ] && echo "== 校验一致" || echo "== 校验不一致/读不到 —— 重启 NPU 后再看"
+echo "   NPU  ${b:-回读失败（NPU 崩了，属正常）}"
 rm -f "$IMG"
-echo "== 完成。重启 NPU：断电，或从 U-Boot 里 reset"
+
+if [ "$a" = "$b" ]; then
+	echo "== 校验一致，写完了"
+	exit 0
+fi
+# 回读读不到有两种：NPU 在 dd 里崩了（正常，多半已经写完）或真的没写成。
+# dd 自己返回 0 说明整份灌完并 sync 过，按成功算，交给重启去验证。
+if [ "$dd_rc" = 0 ]; then
+	echo "== dd 返回 0（整份灌完并 sync），NPU 只是没能回读"
+	echo "== 重启 NPU 看它起不起来：断电，或从 U-Boot 里 reset"
+	exit 0
+fi
+echo "== 没写成（dd rc=$dd_rc），而且回读也对不上" >&2
+exit 1

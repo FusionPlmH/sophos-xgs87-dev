@@ -1,14 +1,16 @@
 #!/bin/sh
 # 把 debian-npu.tar.zst 装到 NPU 的 root 分区。
 #
-# 四级阶梯，按"前提最容易满足"排，任一级失败自动往下一级走：
+# 五级阶梯，按"前提最容易满足 + 破坏性从小到大"排，任一级失败自动往下一级走：
 #
-#   1. ssh + tar：NPU 能 ssh 且有 tar/zstd（哪个镜像都有）→ x86 这边 mkfs，
+#   1. ssh + tar：NPU 能 ssh 且有 tar/zstd（我们自己的镜像）→ x86 这边 mkfs，
 #      190 MB 直接流进 NPU 的 tar（npu_ssh_stream 用 sudo -A，stdin 留给数据）
-#   2. NBD：NPU 上有 nbd-server（或能装上）→ 块设备，x86 本地 mkfs/解包/fsck
-#   3. U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
+#   1b. ssh + dd：NPU 连 tar/zstd 都没有（原厂系统就是这样）→ x86 造一个等大的
+#      ext4 镜像，ssh + dd 整块灌进去。只要 busybox 的 dd
+#   2. U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
 #      旁路（NPU 一进 U-Boot，vNTB 就断了）。会先停掉 xgs-ntb-watch，免得它
 #      的 PCIe rescan 把刚停住的 U-Boot 打飞
+#   3. NBD：NPU 上有 nbd-server（或能装上）→ 块设备，x86 本地 mkfs/解包/fsck
 #   4. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
 #
 # 网不到 NPU 时先走串口（ttyS2）登录一遍：问出 br-lan 地址和 VLAN、在 x86 上
@@ -140,20 +142,17 @@ trap '' INT QUIT
 echo "   已开始，Ctrl+C 不再中断（要重来就等它跑完）。"
 export PART
 
-# 默认先走 U-Boot（ext4 影像 → tftpboot → mmc write）：这条路不依赖 NPU 上的任何
-# 用户态程序，也不依赖它的 sshd。走不通（没有 tftpboot、没插网线、交换机没转发）
-# 才退到 NBD，那时脚本会先让 NPU 正常启动回去。
-if [ "${NO_UBOOT:-0}" != 1 ] && [ -x "$PAYLOAD/npu-uboot-install.sh" ]; then
-	echo "== 先试 U-Boot 方式（tftpboot + mmc write）"
-	if "$PAYLOAD/npu-uboot-install.sh"; then
-		echo
-		echo "NPU 写完了（U-Boot 路径），它正在重启。"
-		printf '按回车返回菜单...'
-		read -r _
-		exit 0
-	fi
-	echo "== U-Boot 那条路没走通，改用 NBD"
-fi
+# U-Boot 放最后再试（见 try_uboot）：它会先把 NPU 停进 U-Boot，vNTB 一断就没
+# 退路了，所以必须等 ssh/整块写这些"不动 NPU"的路都失败之后再考虑。
+
+# U-Boot + tftp：NPU 起不来时唯一还能用的路，但得先把 NPU 停进 U-Boot（vNTB 会
+# 断，x86 只能靠面板口的 USB 网卡）。所以它排在所有"不动 NPU"的路之后。
+try_uboot() {
+	[ "${NO_UBOOT:-0}" != 1 ] || return 1
+	[ -x "$PAYLOAD/npu-uboot-install.sh" ] || return 1
+	echo "== 试 U-Boot 方式（tftpboot + mmc write）"
+	"$PAYLOAD/npu-uboot-install.sh"
+}
 
 # 最后一招：串口推 15 MB 急救包进去，让它把 vNTB 拉起来再写整盘。
 try_rescue() {
@@ -191,6 +190,7 @@ if [ -z "$NPU" ]; then
      sudo nbd-server -C /etc/nbd-server/xgs87.conf
    然后回来重新选本项。
 EOM
+	trap - INT QUIT
 	printf '按回车返回菜单...'
 	read -r _
 	try_rescue
@@ -209,6 +209,7 @@ if npu_ssh 'command -v tar && command -v zstd' >/dev/null 2>&1; then
 	if stream_install; then
 		echo
 		echo "NPU 写完了（ssh+tar 路径），它正在重启。"
+		trap - INT QUIT
 		printf '按回车返回菜单...'
 		read -r _
 		exit 0
@@ -220,13 +221,24 @@ fi
 
 echo "== 1/6 试 ssh + dd（整块 ext4 镜像；NPU 上只要 busybox 的 dd）"
 if sshdd_install; then
+	# 写完了：把 Ctrl+C 还回去，否则"按回车返回菜单"这里按 Ctrl+C 毫无反应。
+	trap - INT QUIT
 	echo
 	echo "NPU 写完了（ssh+dd 路径），重启它。"
 	printf '按回车返回菜单...'
 	read -r _
 	exit 0
 fi
-echo "== ssh+dd 也没成，退到 NBD"
+echo "== ssh+dd 也没成，退到 U-Boot（这一步会把 NPU 停进 U-Boot，vNTB 会断）"
+if try_uboot; then
+	trap - INT QUIT
+	echo
+	echo "NPU 写完了（U-Boot 路径），它正在重启。"
+	printf '按回车返回菜单...'
+	read -r _
+	exit 0
+fi
+echo "== U-Boot 那条路没走通，改用 NBD"
 
 echo "== 1/6 确认 NPU 上有 nbd-server"
 echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
@@ -310,6 +322,7 @@ npu_ssh "pkill -f 'nbd-server -C /etc/nbd-server/xgs87.conf' 2>/dev/null || true
 
 echo
 echo "NPU 写完了，正在重启。等它起来后菜单选 3 看状态。"
+trap - INT QUIT
 printf '按回车返回菜单...'
 read -r _
 exit 0
