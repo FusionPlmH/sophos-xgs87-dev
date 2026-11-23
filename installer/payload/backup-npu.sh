@@ -10,7 +10,7 @@ set -eu
 
 PAYLOAD=${PAYLOAD:-$(cd "$(dirname "$0")" && pwd)}
 . "$PAYLOAD/lib.sh"
-SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
+
 
 STORE=$(ensure_store) || {
 	echo "U 盘上没有可用的备份分区（/media/xgs87-bak 没挂上）。" >&2
@@ -19,6 +19,7 @@ STORE=$(ensure_store) || {
 	exit 1
 }
 
+export NPU
 NPU=$(find_npu 10) || {
 	echo "NPU 不可达（试过：$NPU_CANDIDATES）。vNTB 链路起来了吗？" >&2
 	exit 1
@@ -37,7 +38,7 @@ esac
 
 DEST=$STORE/npu-$(basename "$PART")-$(date +%Y%m%d-%H%M).img.gz
 
-SZ=$($SSH "admin@$NPU" "sudo blockdev --getsize64 $PART") || {
+SZ=$(npu_ssh "blockdev --getsize64 $PART") || {
 	echo "读不到 $PART 的大小（NPU 上的 ssh/sudo 有问题？）" >&2
 	exit 1
 }
@@ -50,7 +51,7 @@ echo "分区 $PART = $((SZ / 1024 / 1024)) MiB，备份分区剩余 $((AVAIL / 1
 }
 
 echo "== 开始备份到 $DEST"
-$SSH "admin@$NPU" "sudo dd if=$PART bs=4M" | gzip -1 > "$DEST"
+npu_ssh "dd if=$PART bs=4M" | gzip -1 > "$DEST"
 sync
 gzip -t "$DEST" || { echo "⚠️  备份文件 gzip 校验失败，不要依赖它" >&2; exit 1; }
 ls -lh "$DEST"

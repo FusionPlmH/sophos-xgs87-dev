@@ -56,3 +56,27 @@ local_addrs() {
 	ip -4 -br a show up 2>/dev/null |
 		awk '$1 != "lo" && $3 ~ /^[0-9]/ { print $3 }' | cut -d/ -f1
 }
+# ---------------------------------------------------------------- 登录 NPU ---
+# 维护盘上没有 admin 的 SSH key，而 admin 的密码是 NPU_PASS。ssh 在控制台上有
+# tty，默认会去 tty 上问密码 —— 脚本没法回答。用 SSH_ASKPASS + REQUIRE=force
+# 让它改成调用我们的小程序（OpenSSH 8.4+ 支持，Debian 13 是 10.x）。
+npu_ssh_setup() {
+	_ap=${TMPDIR:-/tmp}/.xgs87-askpass.$$
+	printf '#!/bin/sh\nprintf "%%s\\n" %s\n' "'$NPU_PASS'" >"$_ap"
+	chmod 700 "$_ap"
+	SSH_ASKPASS=$_ap
+	SSH_ASKPASS_REQUIRE=force
+	export SSH_ASKPASS SSH_ASKPASS_REQUIRE
+	NPU_SSH_OPTS="-o PreferredAuthentications=password -o PubkeyAuthentication=no
+		-o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
+}
+
+# npu_ssh <cmd>：以 admin 登录并用 sudo 跑一段脚本。
+# 密码既用于 ssh 登录（askpass），也用于 sudo（-S 从 stdin 读），所以第一行
+# 喂给 sudo，命令体跟在后面。
+npu_ssh() {
+	npu_ssh_setup
+	# shellcheck disable=SC2086  # 选项串就是要分词
+	{ printf '%s\n' "$NPU_PASS"; printf '%s\n' "$1"; } |
+		ssh $NPU_SSH_OPTS "admin@$NPU" "sudo -S -p '' bash -s"
+}

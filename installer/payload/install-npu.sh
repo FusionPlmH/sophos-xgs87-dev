@@ -20,7 +20,6 @@ PAYLOAD=${PAYLOAD:-$HERE}
 TAR=$PAYLOAD/debian-npu.tar.zst
 DTB=$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)
 . "$PAYLOAD/lib.sh"
-SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
 SERIAL=${SERIAL:-/dev/ttyS2}
 PORT=${PORT:-10809}
 NBD=${NBD:-/dev/nbd0}
@@ -30,12 +29,7 @@ MNT=${MNT:-/mnt}
 [ -n "$DTB" ] || { echo "找不到 DTB"; exit 1; }
 chmod 755 "$PAYLOAD"/*.sh 2>/dev/null || true
 
-# 在 NPU 上跑一段脚本（需要 root）。密码从 stdin 喂给 sudo，命令体也走 stdin，
-# 这样不用和引号打架，也不会把密码留在进程表里。
-npu_ssh() {
-	{ printf '%s\n' "$NPU_PASS"; printf '%s\n' "$1"; } |
-		$SSH "admin@$NPU" "sudo -S -p '' bash -s"
-}
+# 登录 NPU 并跑一段脚本：实现搬到 lib.sh 的 npu_ssh（askpass 登录 + sudo -S）。
 
 # 串口那条路：登录进去，问清楚 br-lan 的地址和 VLAN，在 x86 这边镜像出来。
 serial_repair() {

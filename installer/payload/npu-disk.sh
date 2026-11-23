@@ -15,7 +15,7 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 PAYLOAD=${PAYLOAD:-$HERE}
 . "$PAYLOAD/lib.sh"
-SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
+
 PORT=${PORT:-10809}
 NBD=${NBD:-/dev/nbd0}
 
@@ -45,22 +45,18 @@ fi
 echo "== NPU（$NPU）上起 nbd-server 导出 $PART（$([ "$RW" = 1 ] && echo 读写 || echo 只读)）"
 # 配置文件形式：命令行形式（nbd-server PORT FILE）在 3.2x 里固定是只读导出。
 RO=$([ "$RW" = 1 ] && echo false || echo true)
-{ printf '%s\n' "$NPU_PASS"; cat <<CONF
-mkdir -p /etc/nbd-server
-cat > /etc/nbd-server/xgs87.conf <<INNER
+npu_ssh "mkdir -p /etc/nbd-server
+	cat > /etc/nbd-server/xgs87.conf <<INNER
 [generic]
 [xgs87]
 exportname = $PART
 readonly = $RO
 port = $PORT
 INNER
-pkill -f 'nbd-server -C /etc/nbd-server/xgs87.conf' 2>/dev/null || true
-setsid nbd-server -C /etc/nbd-server/xgs87.conf >/var/log/xgs87-nbd.log 2>&1 &
-sleep 2
-ss -ltn 2>/dev/null | grep -q ':$PORT ' && echo listening || { echo 没起来; cat /var/log/xgs87-nbd.log; }
-CONF
-} | $SSH "admin@$NPU" "sudo -S -p '' bash -s"
-
+	pkill -f 'nbd-server -C /etc/nbd-server/xgs87.conf' 2>/dev/null || true
+	setsid nbd-server -C /etc/nbd-server/xgs87.conf >/var/log/xgs87-nbd.log 2>&1 &
+	sleep 2
+	ss -ltn 2>/dev/null | grep -q ':$PORT ' && echo listening || { echo 没起来; cat /var/log/xgs87-nbd.log; }"
 echo "== x86 这端接上"
 modprobe nbd max_part=8 2>/dev/null || true
 nbd-client -d "$NBD" 2>/dev/null || true
