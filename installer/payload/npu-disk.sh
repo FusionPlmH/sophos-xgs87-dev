@@ -76,5 +76,3 @@ echo
 echo "用完断开："
 echo "  sudo umount /mnt; sudo nbd-client -d $NBD"
 echo "  ssh admin@$NPU 'sudo pkill -f nbd-server'"
-printf '按回车返回菜单...'
-read -r _
