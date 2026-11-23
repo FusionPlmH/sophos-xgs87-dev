@@ -12,7 +12,7 @@ on:
         description: 'full (with DKMS toolchain) or base'
         default: 'full'
       size:
-        description: 'disk image size (auto = rootfs + 15% + 256 MiB + 476 MiB ESP, grown on first boot)'
+        description: 'disk image size (auto = rootfs + 5% + 256 MiB + 476 MiB ESP, grown on first boot)'
         default: 'auto'
 
 permissions:

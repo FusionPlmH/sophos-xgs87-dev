@@ -38,7 +38,7 @@ sudo ./image/build.sh --arch arm64 --variant full   # NPU（在 arm64 上跑）
 sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.img
 ```
 
-默认 `--size auto`：rootfs 实际大小 + 15% + 256 MiB，再加 476 MiB 的 ESP。**不要**再传 `--size 4G`，
+默认 `--size auto`：rootfs 实际大小 + 5% + 256 MiB，再加 476 MiB 的 ESP。**不要**再传 `--size 4G`，
 镜像大小跟着内容走，首次开机由 `xgs87-growroot.service` 把 `p2` 扩到盘尾。
 
 ## 21.4 设备树和模块

@@ -43,10 +43,11 @@ trap cleanup EXIT
 # there is no reason to ship a 4 GB image for 700 MB of data.  The ESP is part
 # of the same image, so its 476 MiB has to be added on top of the root size --
 # and ext4 needs room for its inode table, bitmaps, journal and 5% reserved
-# blocks, hence the 15% + 256 MiB on the data.
+# blocks.  Measured on the full x86 rootfs: 5% + 256 MiB leaves ~190 MiB free
+# in the root partition, fsck clean.
 if [ "$SIZE" = auto ]; then
 	BYTES=$(zstd -dc "$ROOTFS" | wc -c)
-	SIZE=$(( ((BYTES + BYTES * 15 / 100 + 256 * 1024 * 1024
+	SIZE=$(( ((BYTES + BYTES * 5 / 100 + 256 * 1024 * 1024
 		+ ESP_MIB * 1048576) / 1048576 + 1) * 1048576 ))
 fi
 
