@@ -158,7 +158,8 @@ jobs:
             --npu out/debian-npu.tar.zst \
             --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
             --out out/debian-usb.img
-          zstd -T0 -10 -f --rm out/debian-usb.img
+          # mkusb.sh compresses to out/debian-usb.img.zst and removes the raw
+          # image itself.
 
       - name: Report
         run: |
