@@ -7,6 +7,10 @@
 set -u
 
 NPU_CANDIDATES=${NPU_CANDIDATES:-"10.234.56.1 192.168.100.1"}
+# 这两个以前只在菜单里赋值，脚本单独跑（或菜单那条路没走到赋值）就撞上 set -u
+# 直接退出 —— 真机上的 "NPU_PASS: parameter not set" 就是这么来的。
+NPU_USER=${NPU_USER:-admin}
+NPU_PASS=${NPU_PASS:-P@ssw0rd}
 
 # find_npu [timeout_seconds] -> 打印可达的 NPU 地址；NPU 变量已设时直接用它
 find_npu() {
@@ -62,7 +66,7 @@ local_addrs() {
 # 让它改成调用我们的小程序（OpenSSH 8.4+ 支持，Debian 13 是 10.x）。
 npu_ssh_setup() {
 	_ap=${TMPDIR:-/tmp}/.xgs87-askpass.$$
-	printf '#!/bin/sh\nprintf "%%s\\n" %s\n' "'$NPU_PASS'" >"$_ap"
+	printf '#!/bin/sh\nprintf "%%s\\n" %s\n' "'${NPU_PASS:-}'" >"$_ap"
 	chmod 700 "$_ap"
 	SSH_ASKPASS=$_ap
 	SSH_ASKPASS_REQUIRE=force

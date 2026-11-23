@@ -108,6 +108,14 @@ stream_install() {
 	return 0
 }
 
+# 连 tar/zstd 都没有时的退路：x86 这边造一个等大的 ext4 镜像，ssh + dd 整块灌进去。
+# 唯一的前提是 NPU 上有 dd —— busybox 自带，原厂系统也有。
+sshdd_install() {
+	echo "== ssh + dd 整块写 $PART（NPU 上只要 dd）"
+	NPU=$NPU NPU_USER=${NPU_USER:-root} NPU_PASS=${NPU_PASS:-} PART=$PART \
+		sh "$PAYLOAD/npu-sshdd.sh"
+}
+
 cleanup_nbd() {
 	nbd-client -d "$NBD" 2>/dev/null || true
 }
@@ -193,8 +201,10 @@ echo "== NPU 在线（$NPU），目标分区 $PART"
 
 # 顺序按"前提最容易满足"排：ssh + tar 只要 NPU 上有 tar/zstd（哪个镜像都有），
 # NBD 还得多一个 nbd-server。所以先试 ssh，成不了再谈 nbd。
+# `timeout` 只能执行外部命令，npu_ssh 是 shell 函数 —— 写成 `timeout 60 npu_ssh …`
+# 会直接 "No such file or directory"。ssh 自己带 ConnectTimeout，够了。
 echo "== 1/6 看 NPU 上能不能直接解包（tar + zstd）"
-if timeout 60 npu_ssh 'command -v tar && command -v zstd' >/dev/null 2>&1; then
+if npu_ssh 'command -v tar && command -v zstd' >/dev/null 2>&1; then
 	echo "   能 —— 直接用 ssh 解包，不需要 nbd-server"
 	if stream_install; then
 		echo
@@ -203,16 +213,26 @@ if timeout 60 npu_ssh 'command -v tar && command -v zstd' >/dev/null 2>&1; then
 		read -r _
 		exit 0
 	fi
-	echo "== ssh+tar 没成，退到 NBD"
+	echo "== ssh+tar 没成，退到 ssh+dd"
 else
-	echo "   NPU 上没有 tar/zstd（它不是我们的镜像？）—— 退到 NBD"
+	echo "   NPU 上没有 tar/zstd（它不是我们的镜像？）—— 退到 ssh+dd"
 fi
+
+echo "== 1/6 试 ssh + dd（整块 ext4 镜像；NPU 上只要 busybox 的 dd）"
+if sshdd_install; then
+	echo
+	echo "NPU 写完了（ssh+dd 路径），重启它。"
+	printf '按回车返回菜单...'
+	read -r _
+	exit 0
+fi
+echo "== ssh+dd 也没成，退到 NBD"
 
 echo "== 1/6 确认 NPU 上有 nbd-server"
 echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
-if ! timeout 60 npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then
+if ! npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then
 	echo "   没有，试着装一下"
-	timeout 180 npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' || {
+	npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' || {
 		echo
 		echo "   没有 nbd-server，也装不上（NPU 没外网？）—— 改用 ssh 直接解包，"
 		echo "   这条路只要 NPU 上有 tar 和 zstd，不需要 nbd。"
