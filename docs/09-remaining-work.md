@@ -98,6 +98,11 @@ ip -br a                      # br-wan 拿到 DHCP，br-lan 10.234.56.1/24
 ip -br link | grep -E '^(p1|p2|sfp|end0)'   # MAC 必须是 VPD 的 7 地址方案（[06](06-switch-and-ports.md) §6.6）
 ```
 
+> ℹ️ p2 的 ext4 超级块上还留着 2026-11-24 那次事故的 **`errors` 标记**（`dumpe2fs -h` 显示
+> `clean with errors`，每次挂载会打一行 `mounting fs with errors`）。它不影响读写，只是提醒该
+> 做一次 e2fsck；真要清掉得**离线**跑 `e2fsck -fy /dev/mmcblk0p2`（p3 自带的是 e2fsprogs 1.44，
+> 太老不认 `metadata_csum_seed`，要用 p2 自己那套 1.47 或在 PC 上做）。
+
 **UART 通道**：x86 的 `/dev/ttyS2` 与 PC 的 USB 串口都是**双向**的；`mrvl-uart.py` 的 XMODEM-128
 4 KiB 载荷 + EOT 实测成功，`npu-uboot.py` 能在 U-Boot `=>` 上敲命令（一行一条，别粘贴多行）。
 BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能替代正常 U-Boot 控制台。
