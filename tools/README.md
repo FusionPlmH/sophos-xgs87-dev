@@ -17,7 +17,9 @@ tools/on-pc/    在 Windows PC 上跑（串口工具）
 | `build-dtb.sh` | PC / WSL / CI | `out/cn9130-sophos-xgs87w-sfp10g.dtb` —— 先 `cpp` 预处理再 `dtc`；首次会稀疏 clone 一份 Linux 源码取 Marvell 的 `.dtsi` |
 | `build-npu-vntb.sh` | PC / WSL（`chroot /srv/npu`，qemu user-mode） | 6 个 vNTB 模块 → **NPU** |
 | `build-x86-vntb.sh` | PC / WSL（amd64 原生） | `ntb*.ko` 四个 → **x86** |
-| `build-npu-kernel.sh` | PC / WSL（交叉编译） | **NPU 的 `Image`** —— 只有"必须编进 vmlinux"的选项才需要它（这次是为了 `CONFIG_PSTORE_CONSOLE`） |
+| `build-npu-kernel.sh` | PC / WSL（交叉编译） | **NPU 的 `Image`**。只有"必须编进 vmlinux"的选项才需要它；`PSTORE_CONSOLE` 那次用过，但 `ramoops` 已被证伪（每次复位都重跑 DDR scrub，[docs/20](../docs/20-lan-over-vntb.md) §20.8），现在排障走 netconsole，别再为它重编内核 |
+| `build-rescue.sh` | PC / WSL / CI | `xgs87-rescue.tar.zst`（`Image.gz` + `initramfs.gz` + DTB，约 15 MB）→ **NPU 的 U-Boot 内存**，见 [docs/07](../docs/07-storage.md) §7.4 |
+| `build-rescue-kernel.sh` | PC / WSL（交叉编译） | 裁剪版急救内核；产物交给 `build-rescue.sh --kernel`。**默认不用**：现在的急救包直接用 Debian 的 `Image`，这一条只在想再压 10 MB 时才需要 |
 
 ```sh
 # NPU 的网络模块（交叉编译，走完整源码树，不用 qemu）
