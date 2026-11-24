@@ -184,6 +184,17 @@ else
 	echo "   ⚠️ eth0 还是没有；下面的网络办法会失败，会走串口/急救"
 fi
 
+# 维护盘是另一个系统（U 盘上的 root），它的 networkd 不一定给 eth0.200 配上
+# LAN 地址；没有地址 find_npu 就 ping 不到 NPU 的 10.234.56.1。10.234.56.2/24
+# 是文档里 x86 的固定 LAN 地址，这里幂等补上，让"网络"这条路自己就能走通。
+for _vlan in eth0.200; do
+	[ -e "/sys/class/net/$_vlan" ] || continue
+	ip -4 addr show dev "$_vlan" 2>/dev/null | grep -q 'inet ' && continue
+	ip link set "$_vlan" up 2>/dev/null || true
+	ip addr add 10.234.56.2/24 dev "$_vlan" 2>/dev/null &&
+		echo "   补上 $_vlan = 10.234.56.2/24（原本没有地址）"
+done
+
 # ---- 目标分区在 NPU 上，所以等找到 NPU 之后再问（见下面）----
 # 以前这里先问、还用本机的 `lsblk` 显示大小：在维护盘上那会显示 x86 自己的
 # 内置盘（/dev/mmcblk0p2 597M），看起来像要写本机，2026-11-25 实际吓到过人。
