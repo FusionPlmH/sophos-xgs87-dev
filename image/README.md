@@ -106,7 +106,12 @@ mkfs.ext4 -L xgsroot /dev/mmcblk0pX
 mount /dev/mmcblk0pX /mnt
 zstd -dc debian-npu.tar.zst | tar -xpf - -C /mnt
 # fstab、/boot/Image、DTB 见 docs/07 与 docs/03
+# tar 解包不会跑内核 postinst，必须补 /boot/Image 和 /boot/initrd.img；
+# installer/payload/*.sh 会自动做，手工装就自己 ln -f 或 cp。
 ```
+
+首次开机的 `xgs87-growroot` 只在 root 是**最后一个分区**时才扩；本机 p2 后面还有
+p3/p4，所以会跳过，不会碰原厂回滚槽和 VPD。
 
 ⚠️ 根分区 1.5 GB 装不下 `full`（root 解开 ~900 MB）。用 `--variant lean`（解开 525 MiB，
 工具链编完就删，占用约一半），或者把根分区做到 ≥3 GB。`base` 也行，但要自己再跑一次

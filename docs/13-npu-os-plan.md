@@ -56,11 +56,11 @@ mvpp2 eth0 ──10G KR/R──> 88E6193X port 0 ──> port 1..4 (RJ45, 内置
 | | Debian 13（**已选**） | OpenWrt（未采用） |
 |---|---|---|
 | 内核 | 13 (6.12) 没有这板 DT，需要自己出；**已完成** | 6.18/7.x + 参考项目补丁，现成 |
-| 交换机/10G | 自编 `mv88e6xxx`（含两个 TCAM 修复）+ `mvpp2` | `kmod-dsa-mv88e6xxx` 直接可用 |
+| 交换机/10G | 发行版 `mv88e6xxx` + `mvpp2`；TCAM/ring 补丁可选 | `kmod-dsa-mv88e6xxx` 直接可用 |
 | 体积/内存 | 需要裁剪，但 2 GB 够（实测常驻 ~200 MB） | 小，2 GB 很宽裕 |
 | 软件生态 | apt 全量，适合当通用服务器和路由 | opkg，装通用软件麻烦 |
 | 与 x86 统一 | 两边同一套 apt / systemd / 内核维护 | 两套系统两套维护 |
-| 当前状态 | **已经在跑，9 个口 + 10G 全部实测通过** | 从未安装 |
+| 当时状态（2026-11-23） | **已经在跑，9 个 netdev（面板 4 口 + SFP）+ 10G 实测通过**（p2 在 2026-11-24 待重刷） | 从未安装 |
 
 代价（自备 DTB、自编模块）**已经付完了**，没有回头换 OpenWrt 的理由。
 完整取舍见 [09 §9.0](09-remaining-work.md)。
@@ -91,7 +91,7 @@ port@9 {
 };
 ```
 
-改完由 `phylink` + `mv88e6393x_port_set_cmode()` 负责：
+`managed = "in-band-status"` 加上后，由 `phylink` + `mv88e6393x_port_set_cmode()` 负责：
 
 1. 写 `PORT_STATUS.CMODE = 0xD`（10GBASE-R）
 2. `mv88e6393x_serdes_get_lane()` → lane 9 上电/复位
@@ -101,8 +101,9 @@ port@9 {
 **这四步缺一不可**——早期我们手写第 1 步（+ 一个通用 PCS 复位）的结果是：
 链路 `0x0F4D`（10 Gbps UP）但整机不转发（见 [12.11](12-measurements.md#1211)）。
 
-> **现在改成了自适应**（2026-11-23 实测）：端口只保留 **`1000base-x` 基线** + `sfp = <&sfp>`，
-> 由 phylink 按插入的模块切换接口模式。10G 模块实测被自动提到 `10gbase-r`：
+> **最终采用自适应**（2026-11-23 实测）：端口保留 **`1000base-x` 基线** +
+> `managed = "in-band-status"` + `sfp = <&sfp>`，由 phylink 按插入的模块切换接口模式。
+> 10G 模块实测被自动提到 `10gbase-r`：
 >
 > ```
 > mv88e6085 ...: configuring for inband/10gbase-r link mode
@@ -114,8 +115,9 @@ port@9 {
 > 报 `validation of gmii ... failed: -EINVAL` → `failed to connect to PHY`，端口直接死。
 > 1G / 2.5G 模块没实测（手上只有 10G 模块），但走的是同一条 phylink 路径。
 
-> 也可以更"标准"：把 `phy-mode`/`managed` 都删掉，只留 `sfp = <&sfp>`，
-> 让 phylink 完全按模块能力协商。我们用的是显式 `10gbase-r`，因为只用 10G 模块。
+> **不要**把 `phy-mode`/`managed` 都删掉：`managed` 是避免 DSA 回退到假 PHY 的关键；
+> `phy-mode` 删掉会退化成 `gmii` 校验失败。现在用的是 `1000base-x` 基线 + `managed`，
+> 10G/1G 模块都由 phylink 自适应。
 
 ## 13.5 我们实际怎么装的（Debian 落地记录）
 
@@ -155,7 +157,7 @@ port@9 {
 
    ```
    setenv bootargs_deb 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw'
-   setenv bootcmd_deb 'ext4load mmc 0:2 ${kernel_addr_r} /boot/Image; ext4load mmc 0:2 ${fdt_addr_r} /boot/cn9130-sophos-xgs87w-sfp10g.dtb; ext4load mmc 0:2 ${ramdisk_addr_r} /boot/initrd.img-6.12.117+deb13-arm64; setenv bootargs ${bootargs_deb}; booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}'
+   setenv bootcmd_deb 'ext4load mmc 0:2 ${kernel_addr_r} /boot/Image; ext4load mmc 0:2 ${fdt_addr_r} /boot/cn9130-sophos-xgs87w-sfp10g.dtb; ext4load mmc 0:2 ${ramdisk_addr_r} /boot/initrd.img; setenv bootargs ${bootargs_deb}; booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}'
    setenv bootcmd_deb10g 'mvswitch 2 write 9 0 0xd; mvswitch 2 dev_write 9 4 f002 0x804d; mvswitch 2 dev_write 9 4 2000 0x9140; run bootcmd_deb'
    setenv bootcmd 'run bootcmd_deb10g'
    saveenv

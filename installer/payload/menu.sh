@@ -55,7 +55,7 @@ sub_peek() {
 			"1" "看状态：磁盘、vNTB 链路、NPU 在线、SSH" \
 			"2" "备份 x86 内置盘 → 备份区" \
 			"3" "备份 NPU 分区 → 备份区" \
-			"4" "把 NPU 的 p2 挂成本机 /dev/nbd0（只读，可 fsck/mount/dd）" \
+			"4" "NBD 挂 NPU 的 p2（已禁用；需自行装回 nbd-client/server）" \
 			"0" "返回") || return 0
 		case "$c" in
 		1) "$PAYLOAD/status.sh"; pause ;;
@@ -75,7 +75,7 @@ $(store_state)
 
 选一个：" 20 78 6 \
 		"1" "装 x86（写本机内置盘，会先问要不要备份）" \
-		"2" "装 NPU（ssh → U-Boot → NBD → 急救，自动逐级尝试）" \
+		"2" "装 NPU（ssh+tar → ssh+dd → U-Boot → 急救，自动逐级尝试）" \
 		"3" "看状态 / 备份 / 挂 NPU 硬盘" \
 		"4" "NPU 串口控制台（含进 U-Boot）" \
 		"5" "shell" \

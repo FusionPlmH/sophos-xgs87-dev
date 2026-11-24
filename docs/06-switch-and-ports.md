@@ -2,7 +2,8 @@
 
 > 🏷 **状态（2026-11-23 复核）**：✅ **大部分实测**（9 口 + SFP 10G + DSA 已在现机复核）；⚠️ **LED 极性未逐一验证** —— `gpio:3:x` 的编号沿用原厂记录。
 >
-> ⚠️ **本文所有命令都在 NPU 上执行**（`ssh root@192.168.0.66`）。x86 没有交换机、看不到 `p1…p8`。
+> ⚠️ **本文所有命令都在 NPU 上执行**（`image/` 系统：`ssh admin@10.234.56.1`；p3 原厂：`root@…`）。
+> x86 没有交换机、看不到 `p1…p8`。
 
 ## 6.1 芯片
 
@@ -39,22 +40,26 @@ mdio@12a200 {
 };
 ```
 
-> **内核里没有 mv88e6xxx 驱动**（`kallsyms` 无符号、`/lib/modules` 无模块、
-> config 里也没有 `CONFIG_MV88E6XXX`）。所以这个节点只是个"占位"，
+> **原厂 4.14 内核里没有 mv88e6xxx 驱动**（`kallsyms` 无符号、`/lib/modules` 无模块、
+> config 里也没有 `CONFIG_MV88E6XXX`）。在原厂系统里这个节点只是"占位"，
 > 交换机实际由 U-Boot `mvswitch` + 用户态 CPSS 控制。
+>
+> **现在的 Debian 13 不一样**：`mv88e6xxx` + DSA 是正常加载的（发行版模块；自编 TCAM 补丁可选），
+> 内核会重新配置端口；U-Boot 的 `mvswitch` 只负责让 SFP 在 boot 早期先 link。
+> 本文的 `mvswitch` 记录仍然有效，但它描述的是**原厂/U-Boot 阶段**。
 
 ## 6.2 端口映射
 
 来自 `/opt/sophos/plt/AMDA0200-0001R00.txt`（原厂机型定义，实测一致）：
 
-| 面板 | 交换机口 | 类型 | Linux 网卡（原厂） | init_speed | PHY LED ctl |
-|---|---|---|---|---|---|
-| 1 / LAN | 1 | RJ45 内置 PHY | eth0 | 1G | 0xe3 |
-| 2 / WAN | 2 | RJ45 | eth1 | 1G | 0xe3 |
-| 3 / DMZ | 3 | RJ45 | eth2 | 1G | 0xe3 |
-| 4 | 4 | RJ45 | eth3 | 1G | 0xe3 |
-| F1 | 9 | SFP (SFF-8431) | eth4 | 1G | 0xe1 |
-| CPU | 0 | 10GBase-KR | bp0 port0 | 10G | — |
+| 面板 | 交换机口 | 类型 | 原厂网卡 | 现在 DSA | init_speed | PHY LED ctl |
+|---|---|---|---|---|---|---|
+| 1 / LAN | 1 | RJ45 内置 PHY | eth0 | p1 | 1G | 0xe3 |
+| 2 / WAN | 2 | RJ45 | eth1 | p2 | 1G | 0xe3 |
+| 3 / DMZ | 3 | RJ45 | eth2 | p3 | 1G | 0xe3 |
+| 4 | 4 | RJ45 | eth3 | p4 | 1G | 0xe3 |
+| F1 | 9 | SFP (SFF-8431) | eth4 | sfp | 1G（模块可 10G） | 0xe1 |
+| CPU | 0 | 10GBase-KR | bp0 port0 | end0 | 10G | — |
 
 背板定义：`npu0.bp0.port0=0:0`（CN9130）、`npu0.bp0.port1=1:0`（交换机 port 0）。
 
@@ -193,7 +198,8 @@ mvswitch 2 link 1     → Link: UP, Duplex: FULL, Speed: 1000 Mbps
 
 ### Linux 侧等价做法（原厂 `xgs-mdio`，无需 U-Boot）
 
-原厂 Buildroot 里有 Sophos 自己的工具 `xgs-mdio`（现在的 Debian 用标准 mdio-tools），支持 Amethyst Clause-45：
+原厂 Buildroot 里有 Sophos 自己的工具 `xgs-mdio`（现在的 Debian 可以装标准 `mdio-tools`，
+镜像默认没带；调试时 `apt install mdio-tools` 即可），支持 Amethyst Clause-45：
 
 ```sh
 xgs-mdio -a 0 2 <port>.<reg>            # 交换机端口寄存器（读）
@@ -218,8 +224,8 @@ xgs-mdio -a 0 2 9.0        # → 0xf4d（LINK=1, 10 Gbps, CMODE=0xD）
 ### A. 内核 DSA（推荐，**现在用的就是这个**）
 
 - 需要 `CONFIG_NET_DSA` + `CONFIG_MV88E6XXX`，DT 改写成标准 DSA 结构（`ports { port@N { reg=…; phy-handle=…; } }`）。
-- 本机已实测可用：9 个 netdev（`p1`–`p8` + `sfp`），`mv88e6xxx` 是自编模块（含两个 TCAM 修复），
-  见 [14](14-npu-debian-hardware.md) 与 [20 §20.9](20-lan-over-vntb.md)。
+- 本机已实测可用：9 个 netdev（`p1`–`p8` + `sfp`），`mv88e6xxx` 用发行版模块；
+  两个 TCAM 修复是可选补丁（[net/patches/](../net/patches/)），见 [19](19-module-vs-kernel-rebuild.md)。
 - 好处：每个口一个 netdev，可以用 DSA 的 VLAN、bridge、`tc mirred` 镜像。
 
 ### B. U-Boot 配好 + Linux 只当"一个网口"
@@ -239,15 +245,23 @@ xgs-mdio -a 0 2 9.0        # → 0xf4d（LINK=1, 10 Gbps, CMODE=0xD）
 |---|---|
 | VPD 基址 | `7C:5A:1C:XX:XX:XX`（`eth.macs=7` → 连续 7 个） |
 | U-Boot `ethaddr` | VPD 基址 + 5（实测值已脱敏） |
-| `eth1addr…eth4addr` | `00:51:82:11:22:01…04`（Marvell 默认占位，未改） |
-| `mvmgmt0` | 另一段地址（原厂生成） |
+| `eth1addr…eth4addr` | `00:51:82:11:22:01…04`（Marvell 默认占位，未改；**不要当真**） |
+| `mvmgmt0` | 原厂把 eth0 的地址复用到管理口，不是另一段 |
 
-> 刷机规划：面板口建议按 `基址+N` 分配，管理口单独一段，别把 `00:51:82:11:22:0x` 当真。
+本机实际分配（`systemd/npu/xgs-ports-init.sh`）：
+
+```
+p1  = 基址+0    p2 = 基址+1    p3 = 基址+2    p4 = 基址+3
+sfp = 基址+4    end0 / ethaddr = 基址+5    基址+6 留空
+```
+
+> 旧版本脚本按"19 个连续地址、end0=label+9"推，和 VPD 的 `eth.macs=7` 对不上，
+> 会把 p1–p4 推到基址以下。已改成上面的 7 地址方案；`PANEL_PORTS` 可覆盖以适配 XGS 107。
 
 ## 6.7 未验证 / 待确认
 
-- [ ] **SFP 是否支持 2.5G/10G**：当前实测是 1000BASE-X（PORT_STATUS CMODE=0x9）；
-      需要插对应速率的模块才能确认上限
+- [x] **SFP 是否支持 2.5G/10G**：10GBASE-SR 模块实测 **10Gbps UP**（[12.11](12-measurements.md#1211)）；
+      2.5G/5G 模块没测，但 phylink 走同一条自适应路径
 - [ ] LED 到底接在哪（本机实测：与 PCA9555 无关，跟随 PHY link）
 - [ ] `dev_write … 4 f002/2000` 这两个寄存器在 PCS 里的具体含义（已知是 SerDes 块，
       写 0x804D/0x9140 分别是 reset+AN，字段级定义需要 datasheet）

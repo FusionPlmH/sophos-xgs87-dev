@@ -94,3 +94,80 @@ npu_ssh_stream() {
 	# shellcheck disable=SC2086
 	ssh $NPU_SSH_OPTS "admin@$NPU" "SUDO_ASKPASS=/tmp/.xgs87-ap sudo -A bash -c \"$_cmd\""
 }
+
+# ------------------------------------------------ 块设备安全检查（必读）---
+# 2026-11-24 那台砖机的成因：p2.img 是 mkfs 出来的**裸文件系统**（没有分区表），
+# 被 dd 到 /dev/mmcblk0（整盘），LBA 0 的 MBR 被 ext4 超级块覆盖，U-Boot 从此
+# 报 "No partition table - mmc 0"，一个分区都找不到。
+#
+# 所以：裸文件系统镜像只能写**分区**；整盘镜像只能写**整盘**。两条都必须过检查。
+_xgs87_die() { echo "$*" >&2; exit 1; }
+
+is_partition() {
+	case "${1:-}" in
+	# 注意每个模式都必须含"尾部数字"，否则 /dev/mmcblk0 这种整盘会被误判成分区
+	/dev/mmcblk[0-9]*p[0-9]* | /dev/nvme[0-9]*n[0-9]*p[0-9]* | \
+	/dev/sd[a-z]*[0-9]* | /dev/vd[a-z]*[0-9]* | /dev/xvd[a-z]*[0-9]* | \
+	/dev/loop[0-9]*p[0-9]*) return 0 ;;
+	esac
+	return 1
+}
+
+is_whole_disk() {
+	is_partition "${1:-}" && return 1
+	case "${1:-}" in
+	# eMMC boot 硬件分区（mmcblk0boot0 之类）既不是整盘也不是普通分区，两个函数都拒绝
+	/dev/mmcblk*boot[0-9]*) return 1 ;;
+	/dev/mmcblk[0-9]* | /dev/nvme[0-9]*n[0-9]* | /dev/sd[a-z]* | \
+	/dev/vd[a-z]* | /dev/xvd[a-z]* | /dev/loop[0-9]*) return 0 ;;
+	esac
+	return 1
+}
+
+# require_partition <dev> [说明]：写裸文件系统镜像之前必须调用
+require_partition() {
+	_dev=${1:-}
+	_what=${2:-目标}
+	[ -n "$_dev" ] || _xgs87_die "$_what 为空"
+	is_partition "$_dev" && return 0
+	is_whole_disk "$_dev" && _xgs87_die \
+"$_what \`$_dev\` 是整块盘，不是分区。
+裸文件系统镜像写到整盘会把分区表覆盖掉 —— 2026-11-24 那台 NPU 就是这么砖的
+（U-Boot 报 No partition table - mmc 0）。要写 ...p2 这种分区。"
+	_xgs87_die "$_what \`$_dev\` 既不是分区也不是整盘，认不出来，拒绝继续。"
+}
+
+# require_whole_disk <dev> [说明]：写整盘镜像（带分区表）之前必须调用
+require_whole_disk() {
+	_dev=${1:-}
+	_what=${2:-目标}
+	[ -n "$_dev" ] || _xgs87_die "$_what 为空"
+	is_partition "$_dev" && _xgs87_die \
+"$_what \`$_dev\` 是分区，但这里要写的是**带分区表的整盘镜像**。
+写到分区上只会得到一个坏掉的文件系统，整盘反而没变。"
+	is_whole_disk "$_dev" || _xgs87_die \
+"$_what \`$_dev\` 既不是分区也不是整盘，认不出来，拒绝继续。"
+	return 0
+}
+
+# materialize_boot_names <rootfs-mount>
+# U-Boot's bootcmd loads /boot/Image and /boot/initrd.img by fixed name.  The
+# kernel postinst hooks create them on a running system, but unpacking a tar
+# does not run those hooks.  Make them here (hardlink when possible, because a
+# second 36 MB Image does not fit comfortably in a 1.5 GB p2).
+materialize_boot_names() {
+	_mnt=${1:-}
+	[ -n "$_mnt" ] && [ -d "$_mnt" ] || return 1
+	_kver=$(ls "$_mnt"/lib/modules 2>/dev/null | sort -V | tail -1)
+	[ -n "$_kver" ] || return 1
+	mkdir -p "$_mnt/boot"
+	if [ ! -e "$_mnt/boot/Image" ] && [ -f "$_mnt/boot/vmlinuz-$_kver" ]; then
+		ln -f "$_mnt/boot/vmlinuz-$_kver" "$_mnt/boot/Image" 2>/dev/null ||
+			cp -f "$_mnt/boot/vmlinuz-$_kver" "$_mnt/boot/Image"
+	fi
+	if [ ! -e "$_mnt/boot/initrd.img" ] && [ -f "$_mnt/boot/initrd.img-$_kver" ]; then
+		ln -f "$_mnt/boot/initrd.img-$_kver" "$_mnt/boot/initrd.img" 2>/dev/null ||
+			cp -f "$_mnt/boot/initrd.img-$_kver" "$_mnt/boot/initrd.img"
+	fi
+	return 0
+}

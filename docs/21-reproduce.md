@@ -54,6 +54,10 @@ sudo ./kernel/npu/install.sh                   # NPU 上重装 vNTB / spi-orion 
 DTB 是 NPU 启动必需：U-Boot 的 `bootcmd` 从 root 分区 `ext4load` 它，名字必须与
 `reference/uboot-env.txt` 里的一致（`cn9130-sophos-xgs87w-sfp10g.dtb`）。
 
+> `reference/uboot-env.txt` 是**26 键的精简参考**，不是芯片上完整原厂 env 的权威副本；
+> 真正的 35 键版本在设备上/整片 dump 里。做写 env 的操作时以 `mcp2210-nor.py` 的 dump
+> 为准，不要拿这个文本直接刷。
+
 ## 21.5 仓库里的占位符（把真值放回去）
 
 仓库不保存这台机器的身份信息，下面这些值在源码里是占位符：
@@ -91,7 +95,7 @@ zlib.crc32(buf[4:]))` → 用 `gzip.GzipFile(..., mtime=0)` 写回。
 ```
 
 它只放行仓库自己分配的地址（见脚本头部注释），其余一律报错。CI 的
-`.github/workflows/image-*.yml` 只负责构建，不跑这个检查——它是提交前在本地跑的。
+`.github/workflows/image.yml` 只负责构建，不跑这个检查——它是提交前在本地跑的。
 
 构建结果抽查：
 

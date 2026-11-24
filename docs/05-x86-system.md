@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 |---|---|
-| 发行版 | Debian GNU/Linux 13 (trixie)，内核 6.12.94+deb13-amd64 |
+| 发行版 | Debian GNU/Linux 13 (trixie)，内核 **6.12.118+deb13-amd64**（从 6.12.94 升级，DKMS 自动重编） |
 | 固件 | AMI UEFI BIOS 1906，**UEFI + GPT**（shim + grub） |
 | CPU | AMD RX-216TD，2 核 |
 | 内存 | 2×2 GB DDR4-1600（可见 3.8 GiB） |
@@ -85,16 +85,21 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 
 - 挂在内部 4 口 hub 上（`usb1-1.3`），12 Mbps HID。
 - 原厂用途：从 x86 直接读写 NPU 的 SPI NOR（U-Boot / env），用于固件更新和救砖。
-- 目前 Debian 只绑了 `hid-generic`，没有驱动；需要自己写（MCP2210 有公开的 HID 命令集：
-  0x10 get GPIO settings、0x20 SPI transfer settings、0x40 SPI transfer 等）。
-- 这是**没有开盖时的最后救命通道**，值得写成工具。
+- 正确的命令集（**DS22288A**，实测）：`0x10` 状态、`0x11` 取消、`0x20/0x21` GPIO 设置、
+  `0x30/0x31` GPIO 值、`0x32/0x33` 方向、`0x40/0x41` SPI 设置、`0x42` SPI 传输、`0x80` 释放。
+  （早先这里写的 “0x10 GPIO / 0x20 SPI / 0x30 cancel / 0x40 transfer” 少了一组，已更正。）
+- **救砖工具**：[tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)，
+  详见 [23-mcp2210-spi-nor.md](23-mcp2210-spi-nor.md)。实测：GP0 = flash CS；
+  GP0/GP3/GP5 = NPU hold/release（AMDA0200：hold `0xFFD7`、release `0xFFFF`）。
+- 这是**没有开盖时的最后救命通道**；日常只写 64 KiB env，mtd0 只有
+  `mtd0-restore --unsafe-mtd0 --commit` 才会碰（只重写有差异的 64 KiB 块）。
 
 ### 串口
 
 | 设备 | 用途 |
 |---|---|
 | `/dev/ttyS0` | x86 自己的控制台（COM5） |
-| `/dev/ttyS2` | **NPU 控制台**（0x3E8, irq 5）；host 侧 `stty` 要设 **57600**（线上 115200，见 08） |
+| `/dev/ttyS2` | **NPU 控制台**（0x3E8, irq 5）；当前 Debian 上 host 侧设 **115200** 即线上 115200（只有老 `image/` 内核才要 57600，见 08 §8.3） |
 
 `/dev/ttyS1` 和 `/dev/ttyS3` 是 AMD FCH 的 MMIO UART（`FEDC6000/FEDC8000`），
 线路上没接东西，`rx:0`。
@@ -128,7 +133,9 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 ## 5.6 还能做什么
 
 这一块统一记在 [09-remaining-work.md](09-remaining-work.md)，不在本文重复。
-其中最相关的两条：
+其中最相关的一条：
 
-- MCP2210 的 SPI NOR 读写工具（救砖用，目前没驱动）。
+- MCP2210 的 SPI NOR 读写工具（救砖用）**已完成**：
+  [tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)，见
+  [23-mcp2210-spi-nor.md](23-mcp2210-spi-nor.md)。
 - `.ko` 之外的 x86 侧就没有别的欠账了 —— 剩下的都是 NPU 那边的。

@@ -69,7 +69,7 @@ isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
 
 `isolcpus=1-3` / `nohz_full=1-3` —— 原厂把 3 个核隔离出来专给转发，只有 CPU0 跑控制面。
 
-**现在（Debian，实测 `/proc/cmdline`）**：
+**Debian 正常时（实测 `/proc/cmdline`；当前 p2 待重刷，芯片上暂时从 p3 启动）**：
 
 ```
 console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw
@@ -110,16 +110,23 @@ sw_init_p3=for i in '1 2 3 4 5 6 7 8' ; do mvswitch 2 phy_write $i 0 0 9140 ; do
 sw_init_2=run sw_init_p0; run sw_init_p1; run sw_init_p2; run sw_init_p3
 ```
 
-### 现在（Debian，实测 `fw_printenv`）
+### 现在（Debian 时代的变量，`fw_printenv` 实测）
+
+Debian 槽正常时，`bootcmd` 指向 `bootcmd_deb10g`：
 
 ```
 bootcmd=run bootcmd_deb10g
 bootcmd_deb10g=mvswitch 2 write 9 0 0xd; mvswitch 2 dev_write 9 4 f002 0x804d; mvswitch 2 dev_write 9 4 2000 0x9140; run bootcmd_deb
-bootcmd_deb=ext4load mmc 0:2 ${kernel_addr_r} /boot/Image; ext4load mmc 0:2 ${fdt_addr_r} /boot/cn9130-sophos-xgs87w-sfp10g.dtb; ext4load mmc 0:2 ${ramdisk_addr_r} /boot/initrd.img-6.12.117+deb13-arm64; setenv bootargs ${bootargs_deb}; booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}
+bootcmd_deb=ext4load mmc 0:2 ${kernel_addr_r} /boot/Image; ext4load mmc 0:2 ${fdt_addr_r} /boot/cn9130-sophos-xgs87w-sfp10g.dtb; ext4load mmc 0:2 ${ramdisk_addr_r} /boot/initrd.img; setenv bootargs ${bootargs_deb}; booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}
 bootargs_deb=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw
 bootdelay=3
 partno=AMDA0200-0001
 ```
+
+> 2026-11-25 救砖后，芯片上的 `bootcmd` 暂时是 `run mbrfix; run bootcmd_emmc3`
+> （从完好的 p3 原厂槽启动）。等 p2 重刷完成，再改回 `run bootcmd_deb10g`。
+> `/boot/Image` 和 `/boot/initrd.img` 是固定文件名；安装 tar 时必须补齐这两个
+> （见 [07](07-storage.md) §7.4）。
 
 - 原厂的 `bootcmd_emmc1/2/3`、`sw_init_*`、`fdt_set_partno` **都还在**，只是不再被 `bootcmd` 引用。
   回原厂：`setenv bootcmd 'run bootcmd_emmc3'; saveenv`。
@@ -149,11 +156,14 @@ partno=AMDA0200-0001
 
 ## 3.4 中断进 U-Boot 的方法
 
+> 2026-11-24 凌晨曾经到不了 `Autoboot in 3 seconds`，根因是 x86 侧的 remove/rescan
+> 风暴（见 §3.6），不是 U-Boot 本身。停掉之后 U-Boot 正常。
+
 - 上电后 `Autoboot in 3 seconds - press SPACE to stop...`，3 秒内敲任意键（空格即可）。
 - 从 Linux 里：`reboot`，然后立刻在串口上连续发空格（每 150 ms 一个，坚持 8-10 秒）。
-  可直接用 `debian-usb` 菜单的 **`u`**（`installer/payload/npu-uboot.sh`），它自己发
-  `sudo -S systemctl reboot` + 密码，然后连敲 20 秒空格再交给 picocom；手工的话就是
-  `npu-console.sh` 里按住空格。
+  可直接用维护盘的 **菜单 4（NPU 串口）**，或
+  [installer/payload/npu-uboot.sh](../installer/payload/npu-uboot.sh)；它自己发
+  `sudo -S systemctl reboot` + 密码，然后连敲 20 秒空格再交给 picocom。
 
 > ⚠️ 停在 U-Boot 意味着 NPU 的 Linux 不在跑 —— **vNTB 也就断了**，x86 那两条 VLAN
 > （`eth0.100`/`eth0.200`）随之消失。要用 U-Boot 从 x86 传数据，必须插一块 USB 网卡、
@@ -162,7 +172,7 @@ partno=AMDA0200-0001
 ## 3.5 x86 启动
 
 ```
-AMI UEFI (BIOS 1906) → Boot0000 shimx64.efi → grub → Debian (6.12.94+deb13-amd64)
+AMI UEFI (BIOS 1906) → Boot0000 shimx64.efi → grub → Debian (6.12.118+deb13-amd64)
 ```
 
 `efibootmgr -v`：
@@ -177,3 +187,65 @@ Boot0002* debian  HD(1,GPT,…)/File(\EFI\DEBIAN\GRUBX64.EFI)
 
 - 走 **UEFI + GPT**（参考机型的 XGS 107 是 MBR/SATA，装系统的方式不一样，注意别照抄）。
 - Secure Boot 处于未启用状态（shim 存在但内核未签名也能起）。
+
+## 3.6 2026-11-24/25 砖机事件：真实根因与恢复
+
+> 这一节**取代** 2026-11-24 深夜到 11-25 凌晨的几条中间结论。那些结论（"BL31→BL33 复位"、
+> "CP0 MSS 起不来"、"SPI/UART 通道坏了"、"3.2 s 硬件定时复位"）都是在 x86 侧
+> remove/rescan 风暴里观察到的**表象**，不是 NPU 的硬件故障。
+
+### 真实时间线
+
+1. **p2 的 MBR 被覆盖**：`p2.img` 是 `mkfs.ext4` 出来的裸文件系统（没有分区表），却被
+   `dd if=p2.img of=/dev/mmcblk0`（整盘）写进去。LBA 0 变成 ext4 超级块，U-Boot 报
+   `** No partition table - mmc 0 **`，所有 `ext4load` 失败。
+2. **env 被反复 `saveenv` 写坏**：U-Boot 的 env 区没有先擦后写，连续多次 `saveenv`
+   留下半截默认 `bootcmd=bootp …`，串口上表现为无限 `BOOTP broadcast`。
+   用 [mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py) 的 `flash-write --offset 0x3F0000`
+   整块重写 64 KiB env 后，CRC 恢复。
+3. **x86 自己制造了复位循环**：原版 `xgs-ntb-up.sh` 每 2 s 做一次
+   `remove` + `rescan`。每次 rescan 都会重新拉 PERST#，NPU 刚启动到一半就被打断，
+   于是表现为约 3.2 s 一轮的"自复位"。`l` 不是 U-Boot 的第一个字节，而是下一条
+   `NOTICE` 的首字符被 UART 重配吃掉；停掉 rescan 后 U-Boot 能正常走到 `Marvell>>`。
+4. **MBR 已修回**：U-Boot 执行 env 里的 `mbrfix`，把原厂 512 字节 MBR
+   （4 个分区、磁盘签名 `0xFAE598E3`）写回 LBA 0；从芯片读回
+   `step=12`（`part start mmc 0 2` 成功）、`pstart=0xFA800`（= 1026048，与原厂 MBR
+   里 p2 的起始 LBA 一致）。
+   ⚠️ **确认 `step=12` 后要把 `bootcmd` 改回 `run bootcmd_emmc3`（或 `run bootcmd_deb10g`）**，
+   不要把 `mbrfix` 留在每次启动的路径里：它每步都 `saveenv`，连续写会再次把 env 写坏。
+5. **flash 侧全部是好的**：`mtd0` 与参考逐字节一致（SHA-256
+   `fe13a2a3…`），env CRC 正常，MCP2210 读到 SR=0。**不要再刷 SPI NOR。**
+
+### 当前状态（2026-11-25）
+
+- U-Boot 2019.10 能正常跑到 `Marvell>>`；env 里的 `bootcmd` 已恢复为原厂
+  `run bootcmd_emmc3`（从 p3 启动）。
+- p2 的分区表项已经回来，但 p2 **自己的 ext4 超级块不在原位**（当初那句 dd 把
+  p2.img 的前 1023 MiB 写到了 LBA 0）。恢复方法是把 `p2.img` 重刷到
+  **`/dev/mmcblk0p2`（分区节点）**，不是整盘；命令见 [09](09-remaining-work.md) §9.2。
+- p3 原厂系统完好，可作为回滚/对照。
+- x86 的 `xgs-ntb-up.sh` 默认只等待 vNTB 设备、**不 remove/rescan**；watcher 默认也
+  不自动重置。NPU 起来后要手动 `sudo xgs-ntb-up.sh --force-rescan`，或把
+  `/etc/default/xgs-ntb-watch` 里的 `AUTO_RECOVER=1` 打开（5 分钟后只试一次）。
+
+### 被推翻的中间结论（保留作教训）
+
+| 当时的结论 | 为什么错 |
+|---|---|
+| "复位发生在 BL31→BL33 交接，U-Boot 起不来" | 停掉 x86 的 remove/rescan 后 U-Boot 正常到 `Marvell>>`；`l` 是下一条 NOTICE 的首字符 |
+| "CP0 MSS CPU 从来没被启动，是 CP 硬件/固件故障" | 同一轮 reset 风暴里 MSS 的打印被打断；没有独立证据表明 MSS 本身坏了 |
+| "3.2 s 周期复位是 NPU 自己的看门狗" | 周期与 x86 `xgs-ntb-up.sh` 的 2 s rescan 对齐；停掉后消失 |
+| "UART/XMODEM 通道在最后一块被复位，通道不可用" | 4 KiB 载荷的 XMODEM + EOT 实测成功；4 MiB 中断与同一轮 rescan 风暴重叠，不能归因于通道 |
+| "ramoops 能留下上一次的 panic" | 每次复位都重跑 `mv_ddr` 训练 + 全内存 scrub，保留区在 Linux 起来前就被清空（[20](20-lan-over-vntb.md) §20.8） |
+
+### 操作红线
+
+- **不要把裸文件系统镜像写到整盘**；`require_partition` / `require_whole_disk` 已经在
+  [installer/payload/lib.sh](../installer/payload/lib.sh) 里强制这一点。
+- **不要频繁 `saveenv`**；env 区没有先擦后写，连续写很容易留下半截内容。
+- **不要在 NPU 启动窗口里 remove/rescan**。判存在性用
+  `[ -e /sys/bus/pci/devices/0000:03:00.0 ]`，不要用 `lspci`；端点抖动时读 config space
+  会把 x86 直接搞重启（2026-11-25 实测 4~5 次）。
+- 救砖工具与安全模型见 [23](23-mcp2210-spi-nor.md)；U-Boot 控制脚本见
+  [tools/on-x86/npu-uboot.py](../tools/on-x86/npu-uboot.py) 和
+  [tools/on-pc/npu-uboot-run.py](../tools/on-pc/npu-uboot-run.py)。

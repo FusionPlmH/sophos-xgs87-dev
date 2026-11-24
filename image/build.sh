@@ -54,6 +54,10 @@ full|lean|base) ;;
 esac
 
 OUT=${OUT:-$REPO/out/xgs87-$SIDE-$VARIANT.tar.zst}
+case "$OUT" in
+*.zst) ;;
+*) OUT=$OUT.zst ;;   # 后面固定做 zstd，不带扩展名会让 TAR 和 OUT 撞成同一个文件
+esac
 mkdir -p "$(dirname "$OUT")"
 [ "$(id -u)" = 0 ] || { echo "run as root (mmdebstrap)" >&2; exit 1; }
 

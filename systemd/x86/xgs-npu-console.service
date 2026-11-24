@@ -7,7 +7,7 @@ ConditionPathExists=/dev/ttyS2
 
 [Service]
 Type=simple
-ExecStartPre=/bin/stty -F /dev/ttyS2 57600 raw -echo -crtscts
+ExecStartPre=/bin/stty -F /dev/ttyS2 115200 raw -echo -crtscts
 ExecStart=/bin/sh -c "exec cat /dev/ttyS2 >> /var/log/npu-console.log"
 Restart=always
 RestartSec=2

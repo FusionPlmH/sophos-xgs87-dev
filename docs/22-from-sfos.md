@@ -52,8 +52,8 @@ lsblk; sfdisk -d /dev/mmcblk0
 2. U 盘插前面板 USB，开机按 **F11** 选 U 盘启动。
 3. 串口 115200 上出菜单：
    - `1` 重装 x86 —— 把 `debian-x86.img` 整盘写进内置 eMMC；
-   - `2` 重装 NPU —— NPU 上用 `nbd-server` 导出 `p2`，x86 接成 `/dev/nbd0` 之后本地 `mkfs` + 解包；
-     网络到不了就先走 `ttyS2` 串口（菜单 `7` 也能直接开）。
+   - `2` 重装 NPU —— 自动按 **ssh+tar → ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试
+     （NBD 目前禁用；网络到不了就先走 `ttyS2` 串口，菜单 `4` 能直接开）。
 4. 写 NPU 时默认目标是 `/dev/mmcblk0p2`。**想保留原厂回滚就留在 p2**；
    U-Boot 的 `bootcmd` 指向 p3，改过 `bootcmd` 的机器要确认它指向你装的那个分区。
 5. 装完重启，x86 首次开机自动扩分区，NPU 由 U-Boot 拉起。
@@ -63,8 +63,9 @@ lsblk; sfdisk -d /dev/mmcblk0
 BIOS 不认 U 盘（或者手头没有 U 盘）时，只能先换 NPU，x86 留在 SFOS：
 
 - NPU：在 SFOS 高级 shell 里起 `python3 -m http.server`，然后从 NPU 控制台
-  （x86 的 `/dev/ttyS2`，57600）用 `wget` 拉 `debian-npu.tar.zst`，`mkfs.ext4` + `tar -xpf`
-  到一个空闲分区，再改 U-Boot 的 `bootcmd` 指过去。命令模板在
+  （x86 的 `/dev/ttyS2`，**115200**；老 image 内核用 57600）用 `wget` 拉
+  `debian-npu.tar.zst`，`mkfs.ext4` + `tar -xpf` 到一个空闲分区，再改 U-Boot 的
+  `bootcmd` 指过去。命令模板在
   [installer/payload/install-npu.sh](../installer/payload/install-npu.sh) 的“不可达”分支里。
 - x86：需要另一次从外部介质启动（USB 或网络 PXE）。SFOS 的 swap 分区方案（参考项目那样）
   只适合"把 rootfs 塞进 swap + 加 GRUB 项"，不适合我们这套带 ESP 的整盘镜像。

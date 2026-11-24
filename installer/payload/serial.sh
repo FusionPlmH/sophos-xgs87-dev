@@ -1,5 +1,8 @@
 #!/bin/sh
-# 通过 XGS 87 内部的串口（x86 的 /dev/ttyS2，57600 8N1）和 NPU 说话。
+# 通过 XGS 87 内部的串口（x86 的 /dev/ttyS2，115200 8N1）和 NPU 说话。
+#
+# 老 image 内核的 16550 是 2x 分频（host 57600 = 线上 115200）；当前 Debian
+# 用 115200 即可，要兼容老系统就 `BAUD=57600 serial.sh`。
 #
 # 维护盘用它当"控制通道"：一条命令一条命令地敲，把 NPU 的回显收回来。
 # 数据不走这里（115200 的线跑 190 MB 要几个小时），数据走网线/vNTB。
@@ -12,7 +15,7 @@
 set -u
 
 TTY=${TTY:-/dev/ttyS2}
-BAUD=${BAUD:-57600}
+BAUD=${BAUD:-115200}
 NPU_USER=${NPU_USER:-admin}
 NPU_PASS=${NPU_PASS:-P@ssw0rd}
 

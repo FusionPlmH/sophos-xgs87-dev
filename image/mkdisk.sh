@@ -106,4 +106,8 @@ echo "== done"
 ls -lh "$OUT"
 echo
 echo "Write it with:  dd if=$OUT of=/dev/sdX bs=4M conv=fsync status=progress"
+echo "  ^ whole DISK (/dev/sdX), never a partition (/dev/sdX1) - and this artifact IS"
+echo "    a full-disk image (it has a partition table), so writing it to a partition"
+echo "    destroys that partition while leaving the old table in place."
+echo "  ^ after writing: sfdisk -d /dev/sdX   (the table must read back)"
 echo "The XGS 87 BIOS boots \\EFI\\BOOT\\BOOTX64.EFI from the ESP, so --removable matters."

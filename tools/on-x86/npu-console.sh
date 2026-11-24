@@ -1,19 +1,20 @@
 #!/bin/bash
 # Run one command on the NPU console from the x86 host.
 #
-# The NPU's console is wired to the x86's second 16550, and it only decodes
-# when the *host* side is asked for 57600: this UART's divisor basis is twice
-# the nominal clock, so 57600 here is 115200 on the wire.  Only one process
-# may read /dev/ttyS2 at a time; two readers split the byte stream into
+# The NPU's console is wired to the x86's second 16550.  On the current Debian
+# kernel the host rate is 115200 and that is also the wire rate.  The old
+# hand-installed image kernel reported a 2x divisor base (host 57600 = wire
+# 115200); if you are still running that kernel, set BAUD=57600.  Only one
+# process may read /dev/ttyS2 at a time; two readers split the byte stream into
 # garbage, which is the single easiest way to waste an afternoon here.
 #
-#   sudo npu-console login          # log in (root / openwrt123)
+#   sudo npu-console login          # log in (root / openwrt123 on p3)
 #   sudo npu-console 'uname -r'     # run a command on an already logged shell
 #   WAIT=8 sudo npu-console 'dmesg | tail'
 set -u
 
 DEV=${DEV:-/dev/ttyS2}
-BAUD=${BAUD:-57600}
+BAUD=${BAUD:-115200}
 WAIT=${WAIT:-5}
 USER_NAME=${USER_NAME:-root}
 PASSWORD=${PASSWORD:-openwrt123}

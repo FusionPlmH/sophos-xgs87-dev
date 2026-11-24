@@ -10,6 +10,9 @@
 set -u
 
 systemctl stop xgs-ntb-watch.service 2>/dev/null
+# Type=simple and possibly still waiting for the NPU; do not let it create
+# VLANs after the shutdown sequence has started.
+systemctl stop xgs-ntb.service 2>/dev/null
 
 ip link set eth0.200 down 2>/dev/null
 ip link set eth0.100 down 2>/dev/null

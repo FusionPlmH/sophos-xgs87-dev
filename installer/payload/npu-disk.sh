@@ -22,7 +22,7 @@ PAYLOAD=${PAYLOAD:-$HERE}
 # 这一项现在跑不起来 —— 直接说清楚，别让它走一半再报 Permission denied。
 if ! command -v nbd-client >/dev/null 2>&1; then
 	echo "NBD 已禁用：这个镜像没有 nbd-client，NPU 镜像也没有 nbd-server。"
-	echo "要用这一项，两个镜像都要把 NBD 装回来（详见图纸里的 NBD 一节）。"
+	echo "要用这一项，两个镜像都要把 nbd-client/nbd-server 装回来（见 image/packages-*.list）。"
 	exit 1
 fi
 
@@ -39,6 +39,8 @@ for a in "$@"; do
 	esac
 done
 [ -n "$PART" ] || PART=/dev/mmcblk0p2
+# 导出的是"一个分区"：给整盘名会得到一个整盘的读写句柄，等于把分区表也交出去
+require_partition "$PART" "导出的设备"
 
 NPU=$(find_npu 10) || {
 	echo "NPU 不可达（试过：$NPU_CANDIDATES）。先修链路，或者菜单选 2 / 7。" >&2

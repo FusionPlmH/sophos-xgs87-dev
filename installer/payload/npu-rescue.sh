@@ -38,6 +38,7 @@ if [ ! -f "$IMG" ]; then
 	zstd -dc "$TAR" | tar -xpf - -C /tmp/xgs87-rescuemnt || { umount /tmp/xgs87-rescuemnt; return 1; }
 	d=$(ls "$WORK"/cn9130-*.dtb 2>/dev/null | head -1)
 	[ -n "$d" ] && { mkdir -p /tmp/xgs87-rescuemnt/boot; cp "$d" /tmp/xgs87-rescuemnt/boot/cn9130-sophos-xgs87w-sfp10g.dtb; }
+	materialize_boot_names /tmp/xgs87-rescuemnt || true
 	sync; umount /tmp/xgs87-rescuemnt
 fi
 echo "   $(du -h "$IMG" | cut -f1)"

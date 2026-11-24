@@ -1,6 +1,6 @@
 # 02 · 架构设计
 
-> 🏷 **状态（2026-11-23 复核）**：✅ **架构已复核**。已推翻两条旧结论：①NTB 不需要换内核（外挂模块即可）②交换芯片**有** mainline 驱动（DSA 已跑起 9 个口）。SFP 实测 10G。
+> 🏷 **状态（2026-11-23 复核）**：✅ **架构已复核**。已推翻两条旧结论：①NTB 不需要换内核（外挂模块即可）②交换芯片**有** mainline 驱动（DSA 已跑起 9 个 netdev，本机面板只用 p1–p4 + sfp）。SFP 实测 10G。
 
 ## 2.1 为什么是两颗芯片
 
@@ -65,7 +65,8 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
 
 ## 2.4 通路三：串口（永远可用）
 
-x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 57600，见 [08](08-console-access.md)）。
+x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1。当前 Debian 的 host 侧也设 115200；
+只有老 `image/` 内核是 2x 分频，才需要 host 57600（见 [08](08-console-access.md) §8.3）。
 
 - 用途：救砖、看 boot log、进 U-Boot、在 NPU 没网时下命令。
 - 带宽：~11.5 KB/s，只适合控制，不适合传数据。
@@ -96,6 +97,7 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 5760
           ├─ U-Boot 2019.10（SPI NOR）
           │    └─ 读 env，autoboot 3 s
           └─ bootcmd: ext4load mmc 0:2 /boot/Image + dtb + initrd → booti
+               （p2 正常时；当前 p2 待重刷，芯片上暂时从 p3 启动）
                └─ 原厂：Linux 4.14.207 → /etc/init.d/S91xgsstartup
                   现在：Debian 13 / 6.12.117 → systemd（xgs-ports-up → xgs-vntb → …）
 ```
@@ -108,14 +110,15 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1（host 侧软件要设 5760
 ## 2.7 电源与散热
 
 - 单路 DC 输入（整机一颗电源，**x86 和 NPU 共用**，所以断电两台一起下）。
-- 空闲温度：x86 `k10temp` 约 40-50 ℃，NPU 6 个 thermal zone 52-55 ℃。
+- 空闲温度：x86 `k10temp` 约 40-50 ℃，NPU 6 个 thermal zone 约 49-55 ℃（不同时段/负载）。
 - 满负载（4 核 A72 + 交换）预计 60-70 ℃，可接受。
 
 ## 2.8 关键设计约束（做方案时先看这里）
 
 1. **x86 没有网口**，要联网必须经过 NPU —— 要么 NTB/PCIe 隧道，要么把 NPU 当网关。
 2. **面板口只能由 NPU 驱动**，x86 无法直接收发包（除非 NTB 转发）。
-3. ~~交换芯片没有 mainline 驱动~~ **已解决**：Debian 自带 `mv88e6xxx` + DSA，9 个口（p1–p8 + sfp）
-   全部作为普通 netdev 出现，面板口之间由硬件转发。TCAM 越权补丁要自己编，见 [20](20-lan-over-vntb.md) §20.9。
+3. ~~交换芯片没有 mainline 驱动~~ **已解决**：Debian 自带 `mv88e6xxx` + DSA，9 个 netdev（p1–p8 + sfp）
+   全部出现；本机面板只引出了 p1–p4 + sfp，面板口之间由硬件转发。TCAM 越权补丁要自己编，
+   见 [20](20-lan-over-vntb.md) §20.9。
 4. **x86 只有 2 核 4 GB**，适合轻量服务，不适合重计算。
 5. **串口是唯一可靠的带外通道**，设计升级/回滚流程时一定要留着它。

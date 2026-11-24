@@ -1,10 +1,13 @@
 [Unit]
-Description=Watch the vNTB link to the NPU and re-enumerate when it dies
+Description=Watch the vNTB link to the NPU (local plumbing only by default)
 After=xgs-ntb.service
 Wants=xgs-ntb.service
 
 [Service]
 Type=simple
+# xgs-ntb.service is Type=simple and may still be waiting for the NPU; give it
+# half a minute before the watcher starts touching the same VLANs.
+ExecStartPre=/bin/sleep 30
 ExecStart=/usr/local/sbin/xgs-ntb-watch.sh
 Restart=always
 RestartSec=5

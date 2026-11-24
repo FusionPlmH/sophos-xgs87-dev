@@ -14,7 +14,11 @@ pciutils,usbutils,dmidecode
 iperf3,tcpdump
 # the maintenance USB built by installer/mkusb.sh runs on this side
 whiptail,python3-minimal
-# picocom: the NPU console lives on this machine's /dev/ttyS2 (57600 8N1).
+# cpio: npu-rescue.sh inspects the rescue initramfs to decide whether the NPU's
+# existing /boot/Image can be reused (saves pushing 13.7 MB over the serial).
+cpio
+# picocom: the NPU console lives on this machine's /dev/ttyS2 (115200 8N1;
+# the old hand-installed image kernel needed host 57600).
 # Without it the fallback relay drops Ctrl-C handling and echo.
 picocom
 # the USB stick's backup partition is exfat, and it gets cut on first boot

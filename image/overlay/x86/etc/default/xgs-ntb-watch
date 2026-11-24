@@ -1,0 +1,10 @@
+# xgs-ntb-watch.sh sources this file if it exists.
+#
+# Default 0: the watcher only rebuilds the local VLANs/addresses and logs.
+# Set to 1 to allow ONE automatic `xgs-ntb-up.sh --force-rescan` after the link
+# has been unhealthy for LIMIT*INTERVAL (5 min); it then cools down for 10 min.
+#
+# A remove/rescan re-asserts PERST# and will interrupt an NPU that is still
+# booting, so keep this off unless you know the NPU is already up.
+AUTO_RECOVER=0
+MAX_RECOVER=1

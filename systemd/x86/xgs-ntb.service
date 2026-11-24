@@ -3,9 +3,11 @@ Description=NTB link to the NPU (eth0.100 WAN + eth0.200 LAN)
 After=network-pre.target sys-kernel-config.mount
 Wants=network-pre.target
 
+# Type=simple: xgs-ntb-up.sh may legitimately wait up to WAIT (180 s) for the
+# NPU, and a oneshot here would hold multi-user.target hostage for that long.
+# The script keeps running in the background; xgs-ntb-watch starts right after.
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+Type=simple
 ExecStart=/usr/local/sbin/xgs-ntb-up.sh
 
 [Install]

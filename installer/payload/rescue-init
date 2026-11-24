@@ -43,14 +43,22 @@ while [ ! -d "/sys/class/pci_epc/$EPC" ] && [ "$i" -lt 30 ]; do
 done
 if [ -d "/sys/class/pci_epc/$EPC" ]; then
 	C=/sys/kernel/config/pci_ep
-	mkdir -p "$C/functions/vntb.0" 2>/dev/null
-	echo 0x1957 >"$C/functions/vntb.0/vendorid" 2>/dev/null
-	echo 0x0809 >"$C/functions/vntb.0/deviceid" 2>/dev/null
-	echo 1 >"$C/functions/vntb.0/msi_interrupts" 2>/dev/null
-	ln -sf "$C/functions/vntb.0" "$C/controllers/$EPC/vntb.0" 2>/dev/null
+	F=$C/functions/pci_epf_vntb/func1
+	N=$F/pci_epf_vntb.0
+	mkdir -p "$C/functions/pci_epf_vntb" 2>/dev/null || true
+	[ -d "$F" ] || mkdir "$F" 2>/dev/null
+	echo 0x1957 >"$F/vendorid" 2>/dev/null
+	echo 0x0809 >"$F/deviceid" 2>/dev/null
+	echo 16 >"$F/msi_interrupts" 2>/dev/null
+	echo 4 >"$N/db_count" 2>/dev/null
+	echo 128 >"$N/spad_count" 2>/dev/null
+	echo 1 >"$N/num_mws" 2>/dev/null
+	echo 0x100000 >"$N/mw1" 2>/dev/null
+	ln -sf "$F" "$C/controllers/$EPC/func1" 2>/dev/null
 	echo 1 >"$C/controllers/$EPC/start" 2>/dev/null
 fi
-for m in ntb_hw_epf ntb_transport ntb_netdev; do
+# ntb_hw_epf is the *host* side driver and does not belong on the NPU.
+for m in ntb_core ntb_transport ntb_netdev; do
 	modprobe "$m" 2>/dev/null || echo "rescue: modprobe $m 失败"
 done
 

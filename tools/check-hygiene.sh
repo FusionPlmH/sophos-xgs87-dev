@@ -3,7 +3,7 @@
 #
 # Everything this repository assigns itself is allowed:
 #   00:51:82:11:22:01..04   stock U-Boot defaults
-#   02:58:47:53:00:11/.31   VLAN MACs set by systemd/x86/xgs-ntb-up.sh
+#   02:58:47:53:00:11/.21   VLAN MACs set by systemd/x86/xgs-ntb-up.sh
 #   02:00:00:00:00:01       documented netconsole listener
 # Anything else -- a real NIC, a real serial, a home-LAN address, a Windows
 # user path -- is a regression: put it in a file outside the tree instead.

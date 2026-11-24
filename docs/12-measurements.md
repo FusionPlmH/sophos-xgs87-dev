@@ -18,9 +18,9 @@
 | CPU 口速率 | 交换机 port 0 ↔ NPU Comphy-4 SFI0，**10 Gbps UP** | ✅ 实测 |
 | 原厂交换机初始化序列 | 从 U-Boot env 的 `sw_init_p0..p3` 完整挖出并复现 | ✅ 实测（见 12.12） |
 | x86 能否复位 NPU | 反向确认：**x86 重启会复位 NPU 与交换机** | ✅ 实测 |
-| NTB: 1 MiB BAR 对齐 / dma-coherent | 需要驱动才能验证 | ⛔ 需移植内核 |
-| NTB: MSI vs MSI-X | 设备同时提供 MSI 和 MSI-X（16 向量） | ✅ 能力实测 |
-| 端口 5-8 是否引出 | PHY 存在但无链路；面板只有 4 个座 | ⚠️ 部分 |
+| NTB: 1 MiB BAR 对齐 / dma-coherent | 已由 vNTB 实机跑通：1 MiB 对齐必需，`dma-coherent` 必须去掉 | ✅ 见 docs/17 |
+| NTB: MSI vs MSI-X | 设备同时提供 MSI 和 MSI-X（16 向量），实际必须用 MSI | ✅ 见 docs/17 §17.6 |
+| 端口 5-8 是否引出 | PHY 存在但面板只有 4 个座；p5–p8 是 XGS 107 才有 | ✅ 用户确认 |
 
 ---
 
@@ -60,7 +60,8 @@ EP 头：`0x000 = 0x708011AB`（VID 11AB / DID 7080）、`0x004 = 0x00100006`（
 > 具体字段布局随 DWC 版本不同而不同，**没有该版本手册就不硬解**。
 > 可以确定的是：存在一个已使能的入站窗口，目标是 `0x6BA00000`（与内核日志
 > `BAR0 address @ ffff80006ba00000` 一致）。
-> "1 MiB 对齐"和"dma-coherent"两条**必须等移植内核实测**，这里不下结论。
+> "1 MiB 对齐"和"dma-coherent"两条后来由 vNTB 实机验证（见 [17](17-x86-npu-shared-mgmt.md) §17.6）；
+> 这一段保留的是原厂 EP 状态下的原始读数。
 
 ## 12.3 交换机 ID 与寻址（U-Boot）
 

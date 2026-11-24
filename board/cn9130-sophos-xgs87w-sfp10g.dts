@@ -6,10 +6,12 @@
  *   arch/arm64/boot/dts/marvell/cn9130-sophos-xgs107w.dts
  * (commit 0f72e965, "arm64: dts: marvell: Add Sophos XGS 107w NPU board").
  *
- * Local change: switch port 9 (front-panel SFP+ cage "F1") carries no
- * phy-mode / managed property, so phylink derives the interface from the
- * inserted module.  Upstream pins it to 1000base-x, which limits the cage to
- * 1 Gbps; with this DT a 10GBASE-SR module negotiates 10GBASE-R.
+ * Local change: switch port 9 (front-panel SFP+ cage "F1") keeps
+ * phy-mode = "1000base-x" as a baseline, plus managed = "in-band-status" and
+ * the sfp phandle.  phylink then switches to whatever the inserted module
+ * asks for (2.5gbase-x / 5gbase-r / 10gbase-r); a 10GBASE-SR module has been
+ * measured at 10Gbps.  Dropping phy-mode entirely breaks validation
+ * (PHY_INTERFACE_MODE_NA falls back to gmii and fails with -EINVAL).
  */
 
 /dts-v1/;

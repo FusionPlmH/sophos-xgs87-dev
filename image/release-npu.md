@@ -22,7 +22,8 @@ cp cn9130-sophos-xgs87w-sfp10g.dtb /mnt/boot/
 
 - 写到 **root 分区**：原厂布局是 `p2`（1.5 GB），`p1`/`p3` 留着回滚原厂 SFOS
 - `/boot/Image`、`/boot/initrd.img` 由内核 postinst 钩子维护，升级内核不用改 U-Boot env
-- 首次开机会把 root 分区扩到盘尾
+- 首次开机会尝试把 root 分区扩到盘尾；**如果它后面还有分区（本机 p3/p4）就跳过**，
+  不会碰原厂回滚槽和 VPD
 - 登录 **`admin` / `P@ssw0rd`**（`sudo`），**没有 root 账户**，SSH 拒绝 root 登录
 
 ## 网络（面板口怎么分）
@@ -54,7 +55,7 @@ sudo ./image/build.sh --arch arm64 --variant lean     # 必须在 arm64 上跑
 ## 出问题
 
 维护 U 盘 [`debian-usb`](https://github.com/FusionPlmH/sophos-xgs87-dev/releases/tag/debian-usb)
-菜单选 `2`：NPU 上用 `nbd-server` 把 `p2` 导出来，x86 接成 `/dev/nbd0`，`mkfs.ext4` +
-解包 + 放 DTB **都在 x86 这边做**（NPU 不需要 tar/zstd/wget）。网络到不了 NPU 时，选项 `2`
-会自己走 `ttyS2` 串口登录、问出它的 `br-lan` 地址和 VLAN、在 x86 上镜像同样的 VLAN 再重试；
-两条都不通时它会打印在 NPU 控制台上手动起 `nbd-server` 的几行命令（菜单 `7` 就是那个串口）。
+菜单选 `2`：自动按 **ssh+tar → ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试
+（NBD 目前禁用）。网络到不了 NPU 时，选项 `2` 会自己走 `ttyS2` 串口登录、问出它的
+`br-lan` 地址和 VLAN、在 x86 上镜像同样的 VLAN 再重试；两条都不通时它会提示走急救包
+（串口是菜单 `4`）。

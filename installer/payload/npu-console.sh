@@ -1,14 +1,15 @@
 #!/bin/sh
-# 打开 NPU 的串口控制台：x86 上的 /dev/ttyS2，57600 8N1。
+# 打开 NPU 的串口控制台：x86 上的 /dev/ttyS2，115200 8N1。
 #
-# 这条线是主板内部走的（16550 的基准是标称值的两倍，所以"线上 115200、软件
-# 57600"），NPU 起不来、SSH 不通的时候它是唯一能进去说话的地方。
+# 当前 Debian 内核的 host 侧 115200 就是线上 115200。只有老 image 内核的
+# 16550 基准是标称值的两倍（host 57600 = 线上 115200），那种系统请设 BAUD=57600。
+# NPU 起不来、SSH 不通的时候它是唯一能进去说话的地方。
 #
 # 不需要 chroot 到内置盘的系统里：ttyS2 属于 x86 这块板子，U 盘系统自己就能开。
 set -u
 
 TTY=${TTY:-/dev/ttyS2}
-BAUD=${BAUD:-57600}
+BAUD=${BAUD:-115200}
 
 if [ ! -e "$TTY" ]; then
 	echo "找不到 $TTY —— 这台机器上没有那路串口？" >&2
@@ -18,7 +19,7 @@ fi
 echo
 echo "== NPU 控制台：$TTY @ $BAUD"
 echo "   有 picocom 的话退出是 Ctrl-A 再 Ctrl-X；没有的话按 Ctrl-D 回来。"
-echo "   提示符是 xgs87-npu login:（账号 admin / P@ssw0rd）。"
+echo "   提示符是 login:（新镜像 admin / P@ssw0rd；p3 原厂 root / openwrt123）。"
 echo
 
 # picocom 会自己管 tty 的 raw/回显/信号，比手搓中继靠谱得多。

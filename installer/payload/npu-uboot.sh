@@ -14,7 +14,7 @@
 set -u
 
 TTY=${TTY:-/dev/ttyS2}
-BAUD=${BAUD:-57600}
+BAUD=${BAUD:-115200}
 NPU_PASS=${NPU_PASS:-P@ssw0rd}
 SPAM_SECS=${SPAM_SECS:-20}
 INTERACTIVE=${INTERACTIVE:-1}
@@ -24,9 +24,9 @@ INTERACTIVE=${INTERACTIVE:-1}
 echo
 echo "== 让 NPU 重启并停在 U-Boot（$TTY @ $BAUD）"
 
-# 关键：先把 x86 这边的 NTB 那套停掉。xgs-ntb-watch 每 15 秒会 rmmod + rescan
-# PCIe，那一 rescan 就给 NPU 一个 PERST# —— 正好把刚停住的 U-Boot 打飞。
-# 这也是"停到 => 不可靠"的主要原因。
+# 关键：先把 x86 这边的 NTB 那套停掉。xgs-ntb-watch 现在默认不碰 PCIe，
+# 但 xgs-ntb.service 仍可能在开机时等待/重枚举端点；一次 rescan 就给 NPU 一个
+# PERST#，正好把刚停住的 U-Boot 打飞。停掉它们再操作。
 STOPPED=
 if systemctl is-active --quiet xgs-ntb-watch.service 2>/dev/null; then
 	systemctl stop xgs-ntb-watch.service 2>/dev/null && STOPPED="$STOPPED xgs-ntb-watch"

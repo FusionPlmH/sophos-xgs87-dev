@@ -1,8 +1,10 @@
 # 20 — 一条 PCIe 链路同时跑 WAN 和 LAN
 
-> 🏷 **状态（2026-11-24 复核）**：✅ 线路上实测过：VLAN 双网、NPU 串口 57600、hrtimer 提性能、模块替换、**netconsole 崩溃取证**；
-> ⚠️ WAN/LAN 拆分（§20.2）只做过 netns + QEMU 验证，还没上真机。
-> ⚠️ `ramoops` 已证伪（每次复位都 DDR scrub），硬锁死 vs `PERST#` 仍待一次复现定案（§20.8）。
+> 🏷 **状态（2026-11-25 复核）**：✅ 线路上实测过：VLAN 双网、NPU 串口 115200（老内核 57600）、
+> hrtimer 提性能、模块替换、**netconsole 崩溃取证**；WAN/LAN 拆分（§20.2）已在现机配置并验证
+> DHCP/NAT，未做严格吞吐复测。
+> ⚠️ `ramoops` 已证伪（每次复位都 DDR scrub）；硬锁死 vs `PERST#` 仍待一次复现定案（§20.8）。
+> ⚠️ `xgs-ntb-watch` 现在**默认不自动 remove/rescan**（那会把启动中的 NPU 打断），见 §20.10。
 
 > 目标：x86 和 NPU 之间只有一条 PCIe 链路，却要同时装下**上游 WAN**（面板 `2/WAN`，自己
 > DHCP 拿地址，管理也走这条路）和**下游 LAN**（面板 `1/LAN`，本机静态 `10.234.56.1/24`，
@@ -105,23 +107,24 @@ VLAN 设备的 carrier 来自父设备，**父设备没有地址也必须 up**�
 **NPU 不是没有控制台** —— 它就在 x86 的 `/dev/ttyS2` 上（`I/O 0x3e8, irq 5`，标准 COM2）。
 这条线是主板内部走的，外面看不到，所以之前一直以为 NPU 是瞎的。
 
-### 波特率是 57600，不是 115200
+### 波特率：当前 Debian 是 115200；老 image 才是 57600
 
-NPU 侧 `bootargs` 写的是 `console=ttyS0,115200n8`，但**从 x86 这头必须设 57600**：
+NPU 侧 `bootargs` 写的是 `console=ttyS0,115200n8`。当前 Debian 13 的 host 侧
+**115200 就是线上 115200**：
 
+```sh
+stty -F /dev/ttyS2 115200 raw -echo -crtscts
 ```
-$ stty -F /dev/ttyS2 115200 ...   → 0~2 字节乱码
-$ stty -F /dev/ttyS2 57600  ...   → 干净的 "xgs87-npu login:"
-```
 
-原因：x86 的 16550 时钟分频基准被报成 `base_baud = 115200`，而这块板子实际晶振是它的
-两倍，所以内核下发的 divisor 让线路速率翻倍。软件写 57600 = 线上 115200。
+早期那套 `image/` 内核把这颗 16550 报成 2x 分频，所以那套系统里 host 写 57600 才等于
+线上 115200（写 115200 只会读到乱码）。这个 2x 现象**不适用于当前 Debian**。
+详见 [08 §8.3](08-console-access.md)。
 
 ### 用法
 
 ```sh
-# x86 上：登录
-stty -F /dev/ttyS2 57600 raw -echo -crtscts
+# x86 上：登录（p3 原厂系统）
+stty -F /dev/ttyS2 115200 raw -echo -crtscts
 printf 'root\r' > /dev/ttyS2        # 等 Password:
 printf 'openwrt123\r' > /dev/ttyS2
 
@@ -129,7 +132,7 @@ printf 'openwrt123\r' > /dev/ttyS2
 cat /dev/ttyS2
 ```
 
-> 账号 `root` / `openwrt123`（见 [docs/04](04-npu-system.md)）。
+> 账号：p3 原厂 `root` / `openwrt123`；`image/` 产出的是 `admin` / `P@ssw0rd`。
 > **同一时刻只能有一个进程读 `/dev/ttyS2`**，两个 `cat` 会把数据流切成乱码 —— 这一个坑
 > 让排查多花了半小时。
 
@@ -187,10 +190,10 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 
 | 机制 | 位置 | 作用 |
 |---|---|---|
-| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `10.234.56.1`；任一异常持续约 60 s 就做**完整重置**（见 §20.10），然后重建 VLAN 和地址 |
+| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `10.234.56.1`；异常时**只重建本地 VLAN/地址**，默认不碰 PCIe。要自动重枚举就在 `/etc/default/xgs-ntb-watch` 里设 `AUTO_RECOVER=1`，它会在连续 5 分钟异常后跑一次 `xgs-ntb-up.sh --force-rescan`，然后冷却 10 分钟 |
 | `/etc/sysctl.d/90-xgs-panic.conf` | 两边 | `kernel.panic=30`、`panic_on_oops=1`、`hardlockup_panic=1` |
 
-实测（2026-11-23）：**只重启 NPU，x86 不重启**，约 90 秒后链路自己回来：
+2026-11-23 的旧版本会自动做完整重置，当时的记录是：
 
 ```
 18:57:46 xgs-ntb-watch: link unhealthy, full reset
@@ -200,6 +203,9 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 ```
 
 x86 的 uptime 全程连续（没有 panic、没有重启），NPU 侧 `eth0` 也随之变 UP。
+**但这个"自动"在 NPU 还在启动时是有害的**：remove/rescan 会拉 PERST#，把 NPU
+按在启动里，正是 2026-11-25 的 3.2 s 复位循环。所以现在默认关闭，改由人确认 NPU
+已经起来后再执行 `sudo /usr/local/sbin/xgs-ntb-up.sh --force-rescan`。
 
 ## 20.8 重启的真实代价（一次完整实测）
 
@@ -227,7 +233,11 @@ NPU 的 Linux 只要 **10.8 s**（kernel 3.8 + userspace 7.0），
 | 关掉 `panic_on_oops` / `hardlockup_panic` | 日志里连 panic 都没有，说明不是软件 panic |
 | 看门狗状态 | `/sys/class/watchdog/watchdog0/state=inactive`，不是它 |
 
-#### 用 ramoops + console 后端取证：这条路走不通（已实测）
+#### 用 ramoops + console 后端取证：这条路走不通（已实测；自编内核已退役）
+
+> 这一小节记录的是 2026-11-23 那版自编内核（带 `CONFIG_PSTORE_CONSOLE`）。
+> 结论是 ramoops 在这块板子上没用，所以后来 NPU 又切回了发行版内核；下面的过程
+> 只作为"为什么不用 ramoops"的证据。
 
 给 NPU 的 DTB 加了 `ramoops`（DRAM 最后 1 MiB，`ramoops@7ff00000`），
 并在 [board/](../board/) 的 DTS 里补了 `console-size = 0x80000` / `pmsg-size = 0x20000`，
@@ -287,12 +297,15 @@ pstore: 0 records         ← console 后端明明在跑，却一条都没留下
 **实际影响**：x86 重启 → NPU 跟着重启 → 40 秒后两者都自己回来，链路、VLAN、DHCP 全部自动重建。
 不需要人碰机器，但 NPU 的 uptime 会归零。
 
-## 20.9 模块替换：两个都上了
+## 20.9 模块替换（历史；现在镜像用发行版原版）
 
 | 模块 | 改动 | 结果 |
 |---|---|---|
-| `mvpp2` | `MVPP2_AGGR_TXQ_SIZE` 256 → **512** | ✅ 交叉编译，已上线 |
-| `mv88e6xxx` | 两个 TCAM 越权补丁（`e3624f5eeac4` + `242ebf4c5114`） | ✅ 交叉编译，已上线，9 个口正常 |
+| `mvpp2` | `MVPP2_AGGR_TXQ_SIZE` 256 → **512** | ✅ 曾交叉编译并上线；现在镜像用发行版原版，512 版是可选优化 |
+| `mv88e6xxx` | 两个 TCAM 越权补丁（`e3624f5eeac4` + `242ebf4c5114`） | ✅ 曾交叉编译并上线，9 个 netdev 正常；现在镜像用发行版原版，补丁留在 [net/patches/](../net/patches/) 备用 |
+
+> 为什么又改回发行版：两个改动都只是加固/调优，不是功能必需；用发行版原版可以让
+> `apt upgrade` + DKMS 的维护面最小。见 [19](19-module-vs-kernel-rebuild.md) §19.2。
 
 ### 交叉编译（不要再走 qemu 模拟）
 
@@ -337,14 +350,15 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
 
 ```sh
 D=/lib/modules/6.12.117+deb13-arm64/kernel/drivers/net/dsa/mv88e6xxx
-cp -a $D/mv88e6xxx.ko.xz.orig $D/mv88e6xxx.ko.xz
+# 模块不压缩（xz -9 的 64 MiB 字典会被内核解码器拒绝）
+cp -a $D/mv88e6xxx.ko.orig $D/mv88e6xxx.ko
 depmod -a && reboot
 ```
 
 交换机一死，NPU 就只能从 console 进（面板口全没了），所以动 `mv88e6xxx` 之前必须确认
 `/dev/ttyS2` 这条路是通的。
 
-## 20.10 自愈：两个叠在一起的漏洞（都已修，实测通过）
+## 20.10 自愈与手动恢复（历史漏洞 + 现在的安全策略）
 
 ### 漏洞一：watcher 只看 `carrier`
 
@@ -380,7 +394,7 @@ Kernel panic - not syncing: Fatal exception
 ### 漏洞三（顺带）：只 `remove`+`rescan` 不够
 
 NPU 重启后它自己重新编程了 BAR 尺寸寄存器和 inbound iATU，旧的 BAR 地址全指向空气。
-所以恢复必须是**完整重置**，顺序不能改：
+所以"完整恢复"要按下面这个顺序，**而且只能在确认 NPU 已经起来、不在启动窗口时做**：
 
 ```
 down eth0.200 / eth0.100 / eth0
@@ -390,10 +404,13 @@ echo 1 > /sys/bus/pci/rescan                       （让主机重新读 BAR 尺
 xgs-ntb-up.sh                                      （握手、重建 VLAN、补地址）
 ```
 
-这段现在内联在 `xgs-ntb-watch.sh` 的 `recover()` 里，失败后还有 30 s 冷却。
+现在**不再自动执行这段**。可用的入口只有两个：
+
+- `xgs-ntb-up.sh --force-rescan`：只做一次 remove/rescan，不 rmmod；NPU 已经起来时够用；
+- 上面的完整重置：手动做，失败就断电重启 x86/NPU，不要把 rmmod 写成循环或自动服务。
 
 > 教训：**别在 x86 上手工 `rmmod ntb_hw_epf`** —— 在端点已经失联时，那一步会把整机带崩。
-> 交给 watcher 做（它按正确顺序来），或者关机钩子做。
+> 关机钩子（`xgs-ntb-stop.service`）里的顺序是安全的。
 
 ## 20.11 当前网络
 
@@ -407,9 +424,10 @@ xgs-ntb-up.sh                                      （握手、重建 VLAN、补
 ## 20.12 还是开着的问题
 
 1. `ntb_transport` 的 link-cleanup 在掉链时会把 NPU 卡住（两条 `qp 0: Link Cleanup` 之后静默），
-   随后被复位。要根治得能在掉链瞬间抓到栈 —— 这颗芯片没有 pstore/ramoops，netconsole 又挂在
-   `br-lan` 上（掉链时桥端口全 down，发不出包；直接挂 `p1` 也不行，DSA 端口不支持 netpoll）。
-   下一步：给 DTB 加 `ramoops` 节点，让 panic/lockup 落盘。
+   随后被复位。要根治得能在掉链瞬间抓到栈 —— `ramoops` 已加到 DTB 并被证伪（DDR scrub），
+   netconsole 又挂在 `br-lan`（掉链时桥端口全 down，发不出包；直接挂 `p1` 也不行，
+   DSA 端口不支持 netpoll）。现在只能靠 netconsole 在复位前把最后几行送出去。
 2. x86 上手工 `rmmod ntb_hw_epf` 仍会把它自己搞崩（`panic_on_oops` 之后 30 秒自重启）。
    关机流程（`xgs-ntb-stop.service`）是安全的，手工拆要小心。
-3. PC 那块 USB 网卡（Windows 里的 `Ethernet 2`）已从系统里消失，`192.168.1.1` 这条路暂时不通。
+3. 2026-11-23 那台 PC 的 USB 网卡（Windows 的 `Ethernet 2`）曾经消失，`192.168.1.1` 那条
+   旁路暂时不通；维护 U 盘的 U-Boot 路径需要一块可用的 USB 网卡。

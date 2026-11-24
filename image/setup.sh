@@ -96,6 +96,31 @@ if [ "$VARIANT" = full ] || [ "$VARIANT" = lean ]; then
 	fi
 fi
 
+# --- fixed boot filenames ---------------------------------------------------
+# U-Boot's bootcmd_deb loads /boot/Image and /boot/initrd.img by fixed name.
+# The kernel postinst hooks create them, but a rootfs tar is unpacked by the
+# installer without running those hooks, so materialize them here first.  A
+# hardlink keeps the image from carrying a second 36 MB kernel or 34 MB initrd;
+# the tar preserves hardlinks.  The postinst hooks still update them later.
+if [ "$SIDE" = npu ]; then
+	KVER=${KVER:-$(ls /lib/modules 2>/dev/null | sort -V | tail -1)}
+	mkdir -p /boot
+	# Some mmdebstrap hooks do not run update-initramfs; make sure the versioned
+	# file exists before hardlinking it to the fixed name.
+	if [ -n "$KVER" ] && [ ! -f "/boot/initrd.img-$KVER" ]; then
+		update-initramfs -c -k "$KVER" ||
+			echo "== warning: update-initramfs failed for $KVER" >&2
+	fi
+	if [ -n "$KVER" ] && [ -f "/boot/vmlinuz-$KVER" ] && [ ! -e /boot/Image ]; then
+		ln -f "/boot/vmlinuz-$KVER" /boot/Image 2>/dev/null ||
+			cp -f "/boot/vmlinuz-$KVER" /boot/Image
+	fi
+	if [ -n "$KVER" ] && [ -f "/boot/initrd.img-$KVER" ] && [ ! -e /boot/initrd.img ]; then
+		ln -f "/boot/initrd.img-$KVER" /boot/initrd.img 2>/dev/null ||
+			cp -f "/boot/initrd.img-$KVER" /boot/initrd.img
+	fi
+fi
+
 # --- accounts ---------------------------------------------------------------
 # The only login account in the image.  There is deliberately no usable root
 # account: root stays uid 0 for the system, but it has no password and cannot
@@ -189,7 +214,7 @@ fi
 # image/overlay comes from a Windows checkout, so everything in it arrives
 # mode 0777 -- systemd warns about world-writable drop-ins and keeps going.
 # net.conf is *sourced* by root, so it must not be writable by anyone else.
-for d in /etc/systemd/system/ssh.service.d /etc/xgs87 /etc/sysctl.d; do
+for d in /etc/systemd/system/ssh.service.d /etc/xgs87 /etc/sysctl.d /etc/default; do
 	[ -d "$d" ] || continue
 	find "$d" -type d -exec chmod 755 {} + 2>/dev/null || true
 	find "$d" -type f -exec chmod 644 {} + 2>/dev/null || true

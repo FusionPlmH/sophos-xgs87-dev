@@ -42,7 +42,7 @@ sudo systemctl enable xgs87-growroot
 
 | unit | 脚本 | 干什么 |
 |---|---|---|
-| `xgs-ports-up.service` | `xgs-ports-init.sh` | 等 DSA 把 `p1–p8`/`sfp` 建出来 → 按 U-Boot env 的 `ethaddr` 推 9 个 MAC → 全部 `up` 让 PHY 协商 |
+| `xgs-ports-up.service` | `xgs-ports-init.sh` | 等 DSA 把面板口建出来 → 按 U-Boot env 的 `ethaddr` 推 MAC（p1–p4 = base+0..3，sfp = base+4，end0 = base+5）→ `up` 让 PHY 协商。XGS 87 的 p5–p8 未接线，不配 |
 | `xgs-vntb.service` | `xgs-vntb.sh` | configfs 建 `pci_epf_vntb`（VID `1957:0809`）、`start` EPC、再装 `ntb_transport` + `ntb_netdev` |
 | `xgs-net-up.service` | `xgs-net-up.sh` | 按 **`/etc/xgs87/net.conf`** 把面板口分成两个桥：`br-wan`（`p2` = 面板 `2/WAN`）+ `eth0.100`，`br-lan`（`p1` = 面板 `1/LAN`）+ `eth0.200`。两个桥各用一条 VLAN（100/200），谁都不用默认 VLAN 1 |
 | `xgs-dhcp.service` | `xgs-dhcp.sh` | 在 `net.conf` 里选 `dhcp` 的桥上跑**一个** `dhcpcd`。默认只有 `br-wan` 是 `dhcp`；`br-lan` 默认 `static`（`10.234.56.1/24`，**不跑 DHCP 服务**）。也可以 `none` |
@@ -89,8 +89,8 @@ WAN / LAN 怎么分全在这个文件里（镜像里由 `image/overlay/npu` 带�
 
 | unit | 脚本 | 干什么 |
 |---|---|---|
-| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`，等 `03:00.0` 枚举出来（必要时 remove/rescan），建 `eth0.100`（WAN）/`eth0.200`（LAN）并**把 MAC 钉死** |
-| `xgs-ntb-watch.service` | `xgs-ntb-watch.sh` | 每 15 s 查 `carrier` + `ping 10.234.56.1`（NPU 的 `br-lan`，不依赖上游），连续 1 min 不正常就重跑 `xgs-ntb-up.sh` |
+| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`，等 `03:00.0` 出现；**默认只等待、不 remove/rescan**。建 `eth0.100`（WAN）/`eth0.200`（LAN）并**把 MAC 钉死**。NPU 起来后需要重枚举时手动 `xgs-ntb-up.sh --force-rescan` |
+| `xgs-ntb-watch.service` | `xgs-ntb-watch.sh` | 每 15 s 查 `carrier` + `ping 10.234.56.1`（NPU 的 `br-lan`）；异常时只重建本地 VLAN/地址，**默认不碰 PCIe**。`/etc/default/xgs-ntb-watch` 里 `AUTO_RECOVER=1` 才在 5 分钟后自动试一次 `--force-rescan` |
 | `xgs-ntb-stop.service` | `xgs-ntb-stop.sh` | 关机前把 `ntb_hw_epf` 卸掉 → 它往端点控制区写 `COMMAND_LINK_DOWN`，NPU 才不会拿着悬空指针 |
 | `xgs-npu-console.service` | —（`cat /dev/ttyS2`） | **可选**：把 NPU 控制台连续录到 `/var/log/npu-console.log`。它会**独占** ttyS2，交互式调试前要先停 |
 | `100-wan.network` | — | 装到 `/etc/systemd/network/`，`eth0.100` 上跑 DHCP —— 上游给的租约，x86 的默认路由也从这里来 |
@@ -108,6 +108,8 @@ sudo systemctl enable --now xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole sy
 前置条件：`ntb.ko`/`ntb_hw_epf.ko`/`ntb_transport.ko`/`ntb_netdev.ko`
 （`tools/build/build-x86-vntb.sh` 产出，Debian 不自带 NTB 栈）。
 
+⚠️ **不要在 NPU 还在启动时跑 `xgs-ntb-up.sh --force-rescan`**：一次 remove/rescan 就会
+拉 PERST#，把 NPU 按在启动里。等它起来后再手动执行。
 ⚠️ **不要手工 `rmmod ntb_hw_epf`**：x86 自己在用这条链路，卸它会把整机带崩。
 要卸就交给 `xgs-ntb-stop.service` 在关机时做。
 

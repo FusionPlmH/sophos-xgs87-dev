@@ -5,7 +5,7 @@
 #
 # 这一包是给最坏情况用的：NPU 的 Debian 起不来、也没有 USB 网卡做物理旁路。
 # 它只有十几 MB，可以走串口推进 U-Boot 的内存，起来之后把 vNTB 拉通，
-# 再让 x86 用 HTTP/NBD 把整份 rootfs 送过来。
+# 再让 x86 用 HTTP 把整份 rootfs 送过来。
 #
 # 为什么能这么小：
 #   * 用户态只有一个静态 busybox（wget/dd/ip/mount/modprobe 全在里面）

@@ -25,6 +25,15 @@ if [ ! -b "$DISK" ]; then
 	exit 0
 fi
 
+# 备份分区只切"维护 U 盘"。这个单元跟着镜像装进了内置盘，如果没有这道检查，
+# 装好之后的系统每次开机都会在自己的 eMMC 尾部硬切一块出来当备份区 ——
+# 空间白白丢掉，而且备份会写进自己盘里（2026-11 审查时发现）。
+REMOVABLE=$(cat "/sys/block/$(basename "$DISK")/removable" 2>/dev/null || echo 0)
+if [ "$REMOVABLE" != 1 ] && [ "${ALLOW_FIXED:-0}" != 1 ]; then
+	echo "xgs87-usbstore: $DISK 不是可移动盘，跳过（备份分区只切 U 盘）" >&2
+	exit 0
+fi
+
 case "$DISK" in
 /dev/*[0-9]) PART="${DISK}p3" ;;
 *)           PART="${DISK}3" ;;

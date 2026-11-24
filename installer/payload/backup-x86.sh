@@ -20,18 +20,36 @@ STORE=$(ensure_store) || {
 
 if [ -z "$SRC" ]; then
 	ROOTSRC=$(findmnt -n -o SOURCE /)
-	ROOTDISK=/dev/$(lsblk -no pkname "$ROOTSRC" | head -1)
+	_rootdev=$(lsblk -no pkname "$ROOTSRC" 2>/dev/null | head -1)
+	case "${_rootdev:-}" in
+	"") ROOTDISK="" ;;
+	/dev/*) ROOTDISK=$_rootdev ;;
+	*) ROOTDISK=/dev/$_rootdev ;;
+	esac
+	_cands=""
 	for d in /dev/sd? /dev/mmcblk? /dev/nvme?n?; do
 		[ -e "$d" ] || continue
-		[ "$d" = "$ROOTDISK" ] && continue
-		SRC=$d
+		[ -n "$ROOTDISK" ] && [ "$d" = "$ROOTDISK" ] && continue
+		_cands="$_cands $d"
 	done
+	# shellcheck disable=SC2086
+	set -- $_cands
+	if [ $# -eq 0 ]; then
+		echo "找不到内置盘" >&2; exit 1
+	elif [ $# -gt 1 ]; then
+		echo "有多块候选盘，请显式指定：$0 /dev/sdX" >&2
+		for d in "$@"; do echo "  $d  ($(lsblk -dno SIZE,MODEL "$d" | tr -s ' '))" >&2; done
+		exit 1
+	fi
+	SRC=$1
 fi
 [ -n "$SRC" ] || { echo "找不到内置盘" >&2; exit 1; }
 case "$SRC" in
 /dev/*) ;;
 *) echo "盘要写 /dev/... 的绝对路径" >&2; exit 1 ;;
 esac
+# 这是整盘备份：给分区名会把单个分区当成整盘备份，还原时对不上
+require_whole_disk "$SRC" "备份源"
 
 SZ=$(blockdev --getsize64 "$SRC")
 AVAIL=$(df --output=avail -B1 "$STORE" | tail -1)

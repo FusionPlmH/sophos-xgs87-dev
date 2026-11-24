@@ -86,7 +86,8 @@ sudo /usr/local/sbin/npu-console.sh login       # root / openwrt123
 sudo /usr/local/sbin/npu-console.sh 'lsmod | grep mv88e'
 ```
 
-（host 侧波特率必须是 **57600**；细节见 [08](08-console-access.md)。）
+（当前 Debian 的 host 侧用 **115200**；只有老 `image/` 内核才要 57600，细节见
+[08](08-console-access.md) §8.3。）
 
 ## 19.4 不需要串口、随时能做的
 

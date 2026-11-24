@@ -40,7 +40,7 @@ if [ -z "${NIC:-}" ]; then
 	echo "没有可用的物理网口 —— U-Boot 那条路走不了。"
 	echo "  NPU 停在 U-Boot 时 vNTB 是断的，x86 只能靠 USB 网卡插面板口才有网。"
 	echo "  现在的接口：$(ls /sys/class/net | tr '\n' ' ')"
-	echo "  插好 USB 网卡（面板口 1/2/3/4 任意一个）再重试；或者直接走 NBD。"
+	echo "  插好 USB 网卡（面板口 1/2/3/4 任意一个）再重试；否则只能走急救 initramfs。"
 	return 1
 fi
 x86_ip=$NET_PREFIX.1
@@ -58,11 +58,11 @@ TTY=$TTY INTERACTIVE=0 sh "$PAYLOAD/npu-uboot.sh" || return 1
 echo "== 2/6 连上串口，等 '=> '"
 TTY=$TTY . "$PAYLOAD/serial.sh" || return 1
 if ! serial_read_until "=> " 10; then
-	echo "   没看到 U-Boot 提示符（NPU 已经启动进系统了？那就走 NBD）"
+	echo "   没看到 U-Boot 提示符（NPU 已经启动进系统了？先回到 ssh 那条路）"
 	return 1
 fi
 
-# 停在 U-Boot 上失败时要让它自己启动回去：NBD 那条路需要 NPU 跑到用户态。
+# 停在 U-Boot 上失败时要让它自己启动回去：ssh/急救那条路需要 NPU 跑到用户态。
 leave_uboot() {
 	serial_run 'reset' 10 >/dev/null 2>&1 || true
 }
@@ -72,7 +72,7 @@ help_out=$(serial_run 'help' 30) || { leave_uboot; return 1; }
 case "$help_out" in
 *'tftpboot'*) ;;
 *)
-	echo "   这个 U-Boot 里没有 tftpboot —— 只能走 NBD。"
+	echo "   这个 U-Boot 里没有 tftpboot —— 只能走急救 initramfs。"
 	leave_uboot
 	return 1
 	;;
@@ -104,6 +104,7 @@ else
 	fi
 	mkdir -p /tmp/xgs87-imgmnt/boot
 	cp "$DTB" /tmp/xgs87-imgmnt/boot/cn9130-sophos-xgs87w-sfp10g.dtb
+	materialize_boot_names /tmp/xgs87-imgmnt || true
 	sync
 	echo "   rootfs $(du -sh /tmp/xgs87-imgmnt | cut -f1) / 影像 $((p2_size / 2048)) MiB"
 	umount /tmp/xgs87-imgmnt
@@ -150,9 +151,9 @@ fi
 kill "$tftp_pid" 2>/dev/null
 tail -3 /var/log/xgs87-tftp.log 2>/dev/null | sed 's/^/   /'
 if [ "$rc" != 0 ]; then
-	echo "   让 NPU 正常启动回去（NBD 需要它跑到用户态）"
+	echo "   让 NPU 正常启动回去"
 	leave_uboot
-	echo "   U-Boot 这条路没成功，转 NBD"
+	echo "   U-Boot 这条路没成功，转急救 initramfs"
 	return 1
 fi
 return 0

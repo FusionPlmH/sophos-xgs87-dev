@@ -58,14 +58,11 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 选项 | 做什么 | 风险 |
 |---|---|---|
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + tar**（NPU 有 tar/zstd）→ **ssh + dd**（NPU 只有 busybox `dd`，原厂系统就是这种）→ **U-Boot + tftp**（前两条都不行，需要 USB 网卡）→ **NBD**（NPU 上有 `nbd-server`）→ **急救 initramfs** | 目标分区被整个重写；前两条路装完会回读校验 |
-| `3` 查看状态 | 磁盘、vNTB 链路、NPU 是否可达、SSH 通不通 | 只读 |
-| `4` 备份 x86 | 把内置盘整盘读成 `.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 内置盘 |
-| `6` 备份 NPU | 把 NPU 的分区（默认 `p2`）经 ssh 流式读成 `npu-p2-<时间>.img.gz` 写到 `/media/xgs87-bak` | 需要备份区 ≥ 分区；p2 正在使用时镜像像"断电"那样需 fsck |
+| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + tar**（NPU 有 tar/zstd）→ **ssh + dd**（NPU 只有 busybox `dd`，原厂系统就是这种）→ **U-Boot + tftp**（前两条都不行，需要 USB 网卡）→ **急救 initramfs**。NBD 那一级目前禁用 | 目标分区被整个重写；前两条路装完会回读校验 |
+| `3` 查看状态 / 备份 / 挂 NPU 硬盘 | 子菜单：`1` 看状态，`2` 备份 x86 内置盘，`3` 备份 NPU 分区，`4` NBD 挂载（**已禁用**） | 备份只读；NBD 要自己把 nbd-client/server 装回 |
+| `4` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，**115200**；老 image 内核 57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
 | `5` shell | 直接进 root shell（U 盘系统） | — |
-| `7` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
-| `8` NPU 硬盘 | 让 NPU 用 `nbd-server` 导出它的 `p2`，在 x86 上变成 `/dev/nbd0`，可以 `mount` / `fsck -n` / `dd` | **默认只读**；`--rw` 要确认 NPU 没在使用该分区 |
-| `u` U-Boot | 让 NPU 重启并停在它自己的 `=> ` 提示符（连敲 20 s 空格），然后串口交给你 | 只是"进得去"；它读不到 x86 的 U 盘，写不了整份 rootfs |
+| `9` / `0` | 关机 / 重启 | — |
 
 ## 写 NPU 的几种办法，哪种该用在哪
 
@@ -74,15 +71,17 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | **ssh + tar**（菜单 `2` 第 1 步） | vNTB，TCP | 还要 sshd、host key、tar/zstd | 1–2 分钟 | ✅ **首选**：NPU 跑着我们自己的镜像时最省事 |
 | **ssh + dd**（菜单 `2` 第 2 步） | vNTB，TCP | 只要 sshd + busybox `dd` | 1–2 分钟 | ✅ **原厂系统就走这条**（实测它没有 tar/zstd，也装不上 nbd-server） |
 | **U-Boot `tftpboot` + `mmc write`**（菜单 `2` 第 3 步） | 网线（x86 的 USB 网卡 → 面板口，交换机在 U-Boot 里默认转发） | 停在 `=> ` 即可，**不依赖任何用户态** | 1 Gbit/s 下 ~1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，但要插 USB 网卡 |
-| **NBD**（菜单 `2` 第 4 步 / `8`） | vNTB，块级 TCP | 能跑到用户态、能起 `nbd-server` | **1–2 分钟**，接近 1 Gbit/s | 备份、fsck、只读挂载用它 |
+| **NBD**（菜单 `2` 的 NBD 级 / 子菜单 `3`→`4`） | vNTB，块级 TCP | 能跑到用户态、能起 `nbd-server` | 1–2 分钟 | ⛔ **镜像里禁用**（没带 nbd-client/server）；要备份/fsck 先用 `ssh+dd` 或自己把 NBD 装回 |
 | U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
 | U-Boot `tftpboot` | 网口（end0→交换机，或 `mvswitch` 拉起 SFP port9） | 同上 | 10G 时很快 | ⚠️ 得先有 SFP 模块 + TFTP 服务，交换机在 U-Boot 里没初始化 |
 | U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
-| 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、起 `nbd-server` |
+| 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、手动 `wget`/`dd` |
 
 **结论**：先试 **ssh + tar / ssh + dd**（都不动 NPU、不需要插网卡，`dd` 那条对原厂系统也成立）；
-两条都失败才轮到 **U-Boot（tftpboot + mmc write，需要插 USB 网卡做物理旁路）**，最后是 **NBD** 和**急救包**。
-U-Boot 还能做 NBD 做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
+两条都失败才轮到 **U-Boot（tftpboot + mmc write，需要插 USB 网卡做物理旁路）**，最后是**急救包**。
+NBD 目前禁用，别把它当默认退路。
+U-Boot 还能做 ssh 路径做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、
+修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
 
 > ⚠️ **NPU 停在 U-Boot 时 vNTB 是断的**。x86 自己没有网口，那两条 VLAN（`eth0.100`/`eth0.200`）
 > 全在 NPU 的 Linux 里 —— NPU 一进 U-Boot，x86 立刻没网、没默认路由。
@@ -90,9 +89,11 @@ U-Boot 还能做 NBD 做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; save
 > （交换机在 U-Boot 里是默认转发状态，够用）。脚本因此**先确认有载波网口才去停 NPU**，
 > 没网卡就直接退出，免得把机器停在"NPU 在 U-Boot、x86 又没网"的死角里。
 > 串口（`/dev/ttyS2`）全程不受影响 —— 它不经过 PCIe。
-| `9` / `0` | 关机 / 重启 | — |
 
-`2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑和 `6` 完全相同的备份流程；**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成"起 HTTP 服务"，然后按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，57600）里手动 `wget` + `tar` 安装——如果 x86 那边连 IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
+`2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑子菜单 `3`→`2`/`3` 的备份流程；
+**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成急救 initramfs，
+按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，**115200**）里操作；如果 x86 那边连
+IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
 
 ## 急救包（NPU 起不来、也没有 USB 网卡时）
 
@@ -114,8 +115,8 @@ TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 �
 而且 HTTP 比 TFTP 好传大文件（能续、能看到进度）。
 
 串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。
-把 `baudrate` 调高只要在 U-Boot 里 `setenv baudrate 460800; saveenv`（这颗 16550 的分频是
-标称值的两倍，所以软件 460800 = 线上 921600）。
+要提速就在 U-Boot 里 `setenv baudrate 460800; saveenv`，x86 侧相应把 `BAUD=460800`。
+（U-Boot 自己配置这个速率；老 image 内核的 2x 分频问题不适用于 U-Boot。）
 
 ## 备份区（`/media/xgs87-bak`）
 

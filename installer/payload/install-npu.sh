@@ -1,7 +1,8 @@
 #!/bin/sh
 # 把 debian-npu.tar.zst 装到 NPU 的 root 分区。
 #
-# 五级阶梯，按"前提最容易满足 + 破坏性从小到大"排，任一级失败自动往下一级走：
+# 四级阶梯（NBD 目前禁用），按"前提最容易满足 + 破坏性从小到大"排，任一级失败
+# 自动往下一级走：
 #
 #   1. ssh + tar：NPU 能 ssh 且有 tar/zstd（我们自己的镜像）→ x86 这边 mkfs，
 #      190 MB 直接流进 NPU 的 tar（npu_ssh_stream 用 sudo -A，stdin 留给数据）
@@ -10,8 +11,10 @@
 #   2. U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
 #      旁路（NPU 一进 U-Boot，vNTB 就断了）。会先停掉 xgs-ntb-watch，免得它
 #      的 PCIe rescan 把刚停住的 U-Boot 打飞
-#   3. NBD：NPU 上有 nbd-server（或能装上）→ 块设备，x86 本地 mkfs/解包/fsck
-#   4. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
+#   3. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
+#
+# NBD 这一级目前禁用（两个镜像都不带 nbd-client/nbd-server，也从未实测通过），
+# 代码保留在 SKIP_NBD=0 后面，等它真的跑通再启用。
 #
 # 网不到 NPU 时先走串口（ttyS2）登录一遍：问出 br-lan 地址和 VLAN、在 x86 上
 # 镜像同样的 VLAN、顺手把 sshd 的 host key 修好，再回到第 1 级。
@@ -106,6 +109,13 @@ stream_install() {
 	zstd -dc "$TAR" | npu_ssh_stream 'tar -xpf - -C /mnt' || return 1
 	cat "$DTB" | npu_ssh_stream \
 		'mkdir -p /mnt/boot && tee /mnt/boot/cn9130-sophos-xgs87w-sfp10g.dtb >/dev/null' || return 1
+	# bootcmd_deb loads these two fixed names; tar unpacking does not run the
+	# kernel postinst hooks that normally create them.
+	npu_ssh 'kver=$(ls /mnt/lib/modules 2>/dev/null | sort -V | tail -1)
+		if [ -n "$kver" ]; then
+			[ -e /mnt/boot/Image ] || ln -f "/mnt/boot/vmlinuz-$kver" /mnt/boot/Image 2>/dev/null || cp -f "/mnt/boot/vmlinuz-$kver" /mnt/boot/Image
+			[ -e /mnt/boot/initrd.img ] || ln -f "/mnt/boot/initrd.img-$kver" /mnt/boot/initrd.img 2>/dev/null || cp -f "/mnt/boot/initrd.img-$kver" /mnt/boot/initrd.img
+		fi' || return 1
 	npu_ssh "sync; umount /mnt; echo done" || return 1
 	echo "== 写完了，让它重启"
 	npu_ssh "pkill -f 'nbd-server' 2>/dev/null || true; (sleep 1; reboot) >/dev/null 2>&1 &" || true
@@ -124,10 +134,11 @@ cleanup_nbd() {
 	nbd-client -d "$NBD" 2>/dev/null || true
 }
 
-echo "== 先把 vNTB 链路拉起来"
-systemctl start xgs-ntb xgs-ntb-watch 2>/dev/null || true
+echo "== 先把 vNTB 链路拉起来（watcher 默认不碰 PCIe，安装期间也别让它插手）"
+systemctl stop xgs-ntb-watch 2>/dev/null || true
+systemctl start xgs-ntb 2>/dev/null || true
 
-# ---- 破坏性操作的确认：只问一次，三个层级（U-Boot / NBD / 急救）共用 ----
+# ---- 破坏性操作的确认：只问一次，所有层级（U-Boot / NBD(禁用) / 急救）共用 ----
 printf '目标分区 [/dev/mmcblk0p2]: '
 read -r PART
 PART=${PART:-/dev/mmcblk0p2}
@@ -135,6 +146,10 @@ case "$PART" in
 /dev/*) ;;
 *) echo "分区要写 /dev/... 的绝对路径"; exit 1 ;;
 esac
+# 裸文件系统镜像只能写分区：写成整盘会把 MBR/GPT 覆盖掉（2026-11-24 的砖机就是这么来的）
+. "$PAYLOAD/lib.sh"
+require_partition "$PART" "目标分区"
+echo "   目标：$PART  $(lsblk -dno SIZE,MODEL "$PART" 2>/dev/null | tr -s ' ')"
 echo "⚠️  接下来会把 $PART 整个重写（mmc write / mkfs / dd），NPU 上原有的东西会没。"
 printf '输入 YES 继续：'
 read -r ok
@@ -182,18 +197,15 @@ fi
 
 if [ -z "$NPU" ]; then
 	cat <<EOM
-== NPU 完全不可达（试过：$NPU_CANDIDATES），NBD 也就没处可连。
+== NPU 完全不可达（试过：$NPU_CANDIDATES）。NBD 那一级已禁用，自动流程只剩急救包。
 
-   先在 NPU 上把导出开起来（菜单选 7，在它的控制台上敲）：
-     sudo apt-get install -y nbd-server        # 老镜像没带的话
-     sudo mkdir -p /etc/nbd-server
-     printf '[generic]\n[xgs87]\nexportname = /dev/mmcblk0p2\nreadonly = false\nport = $PORT\n' |
-       sudo tee /etc/nbd-server/xgs87.conf
-     sudo nbd-server -C /etc/nbd-server/xgs87.conf
-   然后回来重新选本项。
+   先确认串口还能看到它（菜单 4 → NPU 串口）：能停在 U-Boot 就还有 U-Boot+tftp
+   这条路（需要 x86 插 USB 网卡）；连 U-Boot 都进不去就只能走急救 initramfs。
+   如果 NPU 其实起来了、只是网络不对，先用菜单 4 登录，把 br-lan/VLAN 修好，
+   再回来重新选本项。
 EOM
 	trap - INT QUIT
-	printf '按回车返回菜单...'
+	printf '按回车继续尝试急救包...'
 	read -r _
 	try_rescue
 	exit 1
@@ -240,7 +252,7 @@ if try_uboot; then
 	read -r _
 	exit 0
 fi
-echo "== U-Boot 那条路没走通，改用 NBD"
+echo "== U-Boot 那条路没走通，看 NBD（默认禁用）"
 
 if [ "${SKIP_NBD:-1}" = 1 ]; then
 	echo "== NBD 已禁用（SKIP_NBD=1），跳过这一级"
@@ -320,6 +332,7 @@ mount "$NBD" "$MNT"
 zstd -dc "$TAR" | tar -xpf - -C "$MNT"
 mkdir -p "$MNT/boot"
 cp "$DTB" "$MNT/boot/cn9130-sophos-xgs87w-sfp10g.dtb"
+materialize_boot_names "$MNT" || true
 sync
 echo "   rootfs: $(du -sh "$MNT" 2>/dev/null | cut -f1)"
 umount "$MNT"

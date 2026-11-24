@@ -14,7 +14,7 @@
 | 主板序列 | `SEAAMDA0200-…`（已脱敏） | DMI type 2 |
 | BIOS | AMI 1906，2021-09-06，8 MB SPI ROM，UEFI | DMI type 0 |
 | 机箱类型 | Desktop，**单路电源输入**（一条电源线同时喂 x86 和 NPU，断电两台一起下） | DMI type 3 + 实测 |
-| NPU VPD | partno `AMDA0200-0001`, revision `07`, vendor `SEA`, 7 个 MAC | `/persistent/xgsdt1-vpd.txt` |
+| NPU VPD | partno `AMDA0200-0001`, revision `07`, vendor `SEA`, 7 个连续 MAC（p1–p4、sfp、end0，另 1 个备用） | `/persistent/xgsdt1-vpd.txt` |
 
 VPD 原文（脱敏后）：
 
@@ -27,7 +27,9 @@ eth.mac=7C:5A:1C:XX:XX:XX
 eth.macs=7
 ```
 
-> `eth.macs=7` 表示这是 7 个连续 MAC 的基址（NPU eth0 / 4 个面板口 / SFP / 管理口）。
+> `eth.macs=7` 表示这是 7 个连续 MAC 的基址。本机的实际用法：
+> p1–p4 = 基址+0..3，SFP = 基址+4，end0 / U-Boot `ethaddr` = 基址+5，
+> 基址+6 留空（详见 [06](06-switch-and-ports.md) §6.6）。
 
 ## 1.2 x86 模块
 
@@ -68,9 +70,10 @@ Bus 003  xHCI 4 ports (USB 3.0)
 | ttyS2 | 16550A | **I/O 0x3E8** | 5 | **NPU 控制台** |
 | ttyS3 | 16550A | MMIO 0xFEDC8000 | 11 | AMD FCH UART（未接） |
 
-> 注意 `base_baud` 被内核报成 115200（1.8432 MHz 时钟），但这块板的实际晶振是它的**两倍**：
-> 软件里设 57600，线上才是 115200。所以从 x86 用 `/dev/ttyS2` 打开 NPU 控制台时必须写
-> `stty -F /dev/ttyS2 57600`，写 115200 只会读到 0~2 字节乱码。详见 [08](08-console-access.md)。
+> 当前 Debian 13 内核把这颗 16550 的速率配成 **host 115200 = 线上 115200**。
+> 早期那套 `image/` 内核把它报成 2x 分频（host 57600 = 线上 115200），所以旧笔记里
+> 写的 57600 只适用于那套内核；现在用 `stty -F /dev/ttyS2 115200`。详见
+> [08](08-console-access.md) §8.3。
 
 ### I²C
 

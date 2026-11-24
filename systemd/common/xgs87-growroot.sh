@@ -22,6 +22,16 @@ esac
 DISK=/dev/$(lsblk -no pkname "$ROOT")
 PART=$(cat "/sys/class/block/$(basename "$ROOT")/partition")
 
+# Only grow the last partition.  On the NPU, p2 is followed by p3 (factory
+# rollback) and p4 (VPD); growing p2 to the end of the disk would try to eat
+# them.  growpart normally refuses, but do not even ask.
+LAST=$(lsblk -ln -o PARTN "$DISK" 2>/dev/null | sed '/^$/d' | sort -n | tail -1)
+if [ -n "$LAST" ] && [ "$PART" != "$LAST" ]; then
+	echo "xgs87-growroot: $ROOT is partition $PART of $DISK, not the last ($LAST); not growing"
+	mkdir -p /var/lib/xgs87; : > "$MARKER"
+	exit 0
+fi
+
 echo "xgs87-growroot: growing $DISK partition $PART ($ROOT)"
 # growpart rewrites the partition entry and nudges the kernel; the kernel
 # refuses a full table re-read for a mounted disk, which growpart knows about.

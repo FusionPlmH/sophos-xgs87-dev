@@ -5,7 +5,8 @@
 > 本文记录把 NPU（Marvell CN9130）从原厂 Buildroot 换成 **Debian 13 (trixie, kernel 6.12.117+deb13-arm64)**
 > 之后，逐个子系统把驱动/固件补齐的全过程。所有结论均来自实机验证。
 >
-> 目标是让这颗 NPU 成为一台可用的路由/交换节点：**8×1G + 1×SFP+ 10G 全部工作**。
+> 目标是让这颗 NPU 成为一台可用的路由/交换节点：**4×1G（面板）+ 1×SFP+ 10G 全部工作**
+> （交换芯片另有 p5–p8，但 XGS 87 的面板没有引出它们）。
 
 ---
 
@@ -13,7 +14,7 @@
 
 | 子系统 | 状态 | 说明 |
 |---|---|---|
-| 交换芯片 88E6193X | ✅ | mainline `mv88e6xxx` DSA，p1–p8 + sfp 全部生成 |
+| 交换芯片 88E6193X | ✅ | mainline `mv88e6xxx` DSA，p1–p8 + sfp 全部生成；本机面板只用 p1–p4 + sfp |
 | CPU 口 10G（mvpp2 ↔ port0） | ✅ | `end0`，10Gbps/Full inband |
 | **SFP+ 10G（port 9）** | ✅ | **10000baseSR/Full，实链路，DHCP + WAN 通** |
 | 8× RJ45 1G | ✅ | 每口独立 PHY（`mv88e6xxx-0:01..08`）|
@@ -68,20 +69,22 @@ error -22 setting up PHY for tree 0, switch 0, port 9
    对比真 PHY（地址 8）：`phy_id=0x002b0b9b`，驱动 `Marvell 88E6393 Family`。
 5. 假 PHY 没有 abilities → `supported` 掩码为空 → 10GBASE-R 校验 `-EINVAL`。
 
-### 修复：一行 DTS
+### 修复：`managed` 才是关键，速率交给模块
 
 ```dts
 port@9 {
 	reg = <9>;
 	label = "sfp";
-	phy-mode = "10gbase-r";
+	phy-mode = "1000base-x";      /* 基线；模块插入后 phylink 会切到 10gbase-r */
 	managed = "in-band-status";   /* ← 关键：让 phylink 走 inband，不去找 PHY */
 	sfp = <&sfp>;
 };
 ```
 
-> 上游 `cn9130-sophos-xgs107w.dts` 本来就有这一行（port@9 = `1000base-x` + `managed`）。
-> 本地改写 DTS 时漏掉了，是这次踩坑的唯一原因。
+> 上游 `cn9130-sophos-xgs107w.dts` 本来就是 `1000base-x` + `managed`。
+> 本地改写 DTS 时漏掉了 `managed`，是这次踩坑的唯一原因；一开始把 `phy-mode` 写成
+> `10gbase-r` 也能跑 10G，但会失去 1G/2.5G 模块的自适应，最终采用上面的基线写法。
+> 不要删掉 `phy-mode`：`PHY_INTERFACE_MODE_NA` 会退化成 `gmii`，校验 `-EINVAL`，端口直接死。
 
 ### 验证
 
@@ -286,7 +289,7 @@ openssl speed -evp aes-128-gcm
 | `0c0750ebbe4d` | `net: mvpp2: Add override_percpu_pools module parameter` —— MUSDK 模式下强制共享 BM pool |
 
 **但要注意**：MUSDK/VPP 只能看到 **PP2 的一个 10G CPU 口（`end0`）**，看不到
-8 个 RJ45 和 SFP —— 那些在 88E6193X 后面。所以 VPP 方案要把交换机当哑交换机、
+面板 RJ45 和 SFP —— 那些在 88E6193X 后面。所以 VPP 方案要把交换机当哑交换机、
 所有流量挤进 10G 单链路、全部在软件里转发，**反而不如现在的硬件 DSA 交换**。
 
 ### 结论
@@ -473,7 +476,8 @@ done
 ```
 
 重启后验证：`systemctl is-active xgs-ports-up.service` = **active**，
-p1–p8 与 sfp 全部拿到独立 MAC 并 up。
+本机面板的 p1–p4 与 sfp 拿到独立 MAC 并 up（p5–p8 在 XGS 87 上没有引出，不配置 MAC；
+XGS 107 可用 `PANEL_PORTS` 覆盖）。
 
 ---
 
