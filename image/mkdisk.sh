@@ -5,7 +5,7 @@
 #   sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst \
 #                          --out out/xgs87-x86.img [--size 8G]
 #
-# Writes ESP (476 MiB, FAT32) + root (ext4, rest), installs GRUB EFI and
+# Writes ESP (64 MiB, FAT32) + root (ext4, rest), installs GRUB EFI and
 # shortens the boot menu the same way the running machine has it (a failed
 # boot otherwise waits 30 s on recordfail).
 set -eu
@@ -13,7 +13,7 @@ set -eu
 ROOTFS=
 OUT=out/xgs87-x86.img
 SIZE=auto
-ESP_MIB=476
+ESP_MIB=64
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -41,13 +41,13 @@ trap cleanup EXIT
 # Smallest image that still holds the root filesystem plus a little slack; the
 # first boot grows the partition to fill whatever disk it was written to, so
 # there is no reason to ship a 4 GB image for 700 MB of data.  The ESP is part
-# of the same image, so its 476 MiB has to be added on top of the root size --
+# of the same image, so its size has to be added on top of the root size --
 # and ext4 needs room for its inode table, bitmaps, journal and 5% reserved
-# blocks.  Measured on the full x86 rootfs: 5% + 256 MiB leaves ~190 MiB free
-# in the root partition, fsck clean.
+# blocks.  The ESP only carries shim/grub (a few MiB), so 64 MiB is plenty;
+# it used to be 476 MiB, which alone was 40% of the download.
 if [ "$SIZE" = auto ]; then
 	BYTES=$(zstd -dc "$ROOTFS" | wc -c)
-	SIZE=$(( ((BYTES + BYTES * 5 / 100 + 256 * 1024 * 1024
+	SIZE=$(( ((BYTES + BYTES * 5 / 100 + 192 * 1024 * 1024
 		+ ESP_MIB * 1048576) / 1048576 + 1) * 1048576 ))
 fi
 
@@ -98,6 +98,13 @@ EOF
 chroot "$TMP/root" grub-install --target=x86_64-efi --efi-directory=/boot/efi \
 	--bootloader-id=debian --removable --no-nvram
 chroot "$TMP/root" update-grub
+
+# 64 MiB is far more than shim+grub need, but prove it in the build log instead
+# of finding out on a machine that will not boot.
+df -h "$TMP/esp" | sed -n '1,2p'
+ESP_USE=$(df --output=pcent "$TMP/esp" | tail -1 | tr -dc '0-9')
+[ "${ESP_USE:-0}" -lt 80 ] ||
+	echo "== warning: ESP is ${ESP_USE}% full; raise ESP_MIB in $0" >&2
 
 for d in dev proc sys; do umount "$TMP/root/$d"; done
 umount "$TMP/root/boot/efi"

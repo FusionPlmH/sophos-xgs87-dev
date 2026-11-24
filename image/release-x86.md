@@ -4,7 +4,23 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(476 MiB FAT32) + ext4 root + GRUB EFI | 解开约 1.2 GB（`lean`，2026-11-24 实测 1,194,328,064 B）；`full` 更大 |
+| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(64 MiB FAT32) + ext4 root + GRUB EFI | 解开约 700 MB（`lean`；ESP 从 476 MiB 缩到 64 MiB 后小了 400 MB 左右，见 docs/07 §7.3） |
+
+## 为什么这个镜像比 `debian-npu` 大好几倍
+
+两个 release 不是同一种东西，直接比会被误导：
+
+| | `debian-npu` | `debian-x86`（这个） |
+|---|---|---|
+| 资产形态 | 根文件系统 **tar.zst**（压缩） | **整盘镜像** `.img`（GPT + ESP + ext4，压缩前就是完整磁盘布局） |
+| 真正的根文件系统 | ~387 MiB 解开 / 199 MB 压缩 | **同样 ~387 MiB**（`lean`，包基本一样） |
+| 额外占的空间 | 无 | ESP 64 MiB + ext4 日志/元数据 + 192 MiB 余量 + GPT 对齐 |
+| 发布体积 | 199 MB | 约 700 MB（2026-11-25 之前是 1.19 GB） |
+
+**两边装的东西一样大**，差的是"压缩的 tar"vs"未压缩的整盘"。之前 1.19 GB 的大头是 ESP 476 MiB
+（里面只放 shim + grub，实际用了不到 20 MiB）和 256 MiB 的 ext4 余量；现在 ESP 64 MiB、余量 192 MiB，
+镜像小了约 40%（`mkdisk.sh` 会在构建日志里打印 ESP 占用率，超过 80% 会告警）。
+首次开机 `xgs87-growroot` 会把 root 扩到盘尾，所以"镜像小"不影响装到 16 GB eMMC 上。
 
 ## 刷入
 

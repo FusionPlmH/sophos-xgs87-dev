@@ -222,3 +222,21 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 | `ifconfig eth0 192.168.1.1/24 up` | 验证数据面（未持久化） |
 
 > p3 分区原厂挂载是 ro，改完重启就恢复；密码和 authorized_keys 是写到 p3 的，会保留。
+---
+## 4.13 原厂有、我们这边是什么情况（2026-11-25 逐项核对）
+
+从 p3 原厂 rootfs 里把所有模块、固件、守护进程列了一遍，逐条对照现在的 Debian：
+
+| 原厂能力 | 我们 | 说明 |
+|---|---|---|
+| MUSDK / CPSS 用户态数据面（`mv_pp_uio`、`mv_neta_uio`、`mvmdio_uio`、`usfp`、`NetAgent`、DPDK） | 没有，也不需要 | 只在 4.14 BSP 上；主线用 DSA，转发 2–4 Gbps 已经超过整机瓶颈（docs/20） |
+| `mvpp2x.ko`（多口驱动） | 没有 | 同上，被 `mvpp2` + `mv88e6xxx` 取代 |
+| EIP197 硬件加密（原厂走 MUSDK SAM + `ifpp.bin`） | 明确不用 | 固件不在镜像里，`crypto_safexcel` 已 blacklist；单核 AES-256-GCM 8.5 Gbps（docs/14 §14.4） |
+| 硬件看门狗（`S15watchdog` 跑 `watchdog -t 5 /dev/watchdog`） | **已补** | 新增 `xgs-watchdog.service` 喂 `/dev/watchdog0`。实测：没人喂狗时整机约 10–20 s 真复位 |
+| PPPoE（内核有 `pppoe.ko`，但原厂也没有 `pppd`） | 一样缺 userspace | 要拨号 WAN 得装 Debian 的 `pppoe` 包；原厂同样没有，不算丢功能 |
+| Wi-Fi（`wl18xx` / `wlcore` / `cfg80211`） | 无硬件 | 本机（XGS 87 非无线版）没有无线模块，`87w` 才有 |
+| USB 网卡驱动（`r8152`、`rtl8150`、`pegasus`） | 用不上 | NPU 没有 USB host；x86 侧有 USB 但不拿它上网 |
+| LED 控制（`xgs_dt1_startup.sh` 里的 gpioset / PHY LED） | 未实现 | 现在 LED 跟 PHY 走（docs/06 §6.7） |
+| SFP+ 口只当 1G（原厂 `npu0.eth4.init_speed=1G`） | 更强 | DTS 改成 `10gbase-r`，实测 10G |
+| 日志转发（`xgs_log_fwd`） | 不需要 | 用 journald + netconsole 双目标 |
+| NBD | 禁用 | 这一级从未实测通过，代码保留在 `SKIP_NBD=0` 后面 |

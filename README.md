@@ -45,6 +45,7 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | LAN 能真的上网（转发 + NAT） | ✅ | `xgs-nat.service`：`ip_forward=1` + `inet xgs87` 表里 `br-lan → br-wan` masquerade（docs/20 §20.2.1） |
 | 维护 U 盘不用预留 payload 分区 | ✅ | 安装包放 root 的 `/opt/xgs87/payload`；U 盘剩余空间第一次开机自动切成 exfat（`XGS87BAK`，挂 `/media/xgs87-bak`）放备份 |
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
+| 硬件看门狗 | ✅ | `xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`；实测不喂狗约 10–20 s 整机复位（docs/04 §4.13） |
 | NPU 单独重启 → x86 恢复 | ⚠️ | **默认不自动碰 PCIe**（remove/rescan 会复位正在启动的 NPU）。NPU 起来后手动 `sudo xgs-ntb-up.sh --force-rescan`；`AUTO_RECOVER=1` 可在 5 分钟后自动试一次（docs/20 §20.10） |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
 | **内核/系统可以随便升级** | ✅ | 两台都用**发行版内核 + DKMS**：x86 实测 6.12.94 → **6.12.118** 自动重编，NPU 用发行版内核（`kernel/npu`），自编内核已退役。想做小镜像可以用 `--variant lean`（工具链编完就删，内核需 hold） |

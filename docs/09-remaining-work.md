@@ -55,6 +55,7 @@ NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑�
 | MCP2210 SPI NOR 救砖工具（GP0 CS、NPU hold/release、整片双遍 dump、只写 env、失败回滚） | [23](23-mcp2210-spi-nor.md) |
 | 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
 | **主机名**：x86 = `xgs-debian-x86`，NPU = `xgs-debian-npu`（2026-11-25 起，`image/setup.sh`） | [image/setup.sh](../image/setup.sh) |
+| **硬件看门狗**：`xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`，实测不喂狗 10–20 s 整机复位 | [04](04-npu-system.md) §4.13 |
 | **NPU 的 DNS / NTP**：purge 掉 `systemd-resolved`，让 dhcpcd 直接写 `/etc/resolv.conf`；实测 DHCP 下发 `nameserver` 后 `getent hosts` 与 `timedatectl` 都正常 | [14](14-npu-debian-hardware.md) §14.13 |
 | **NPU 的开机 fsck**：initramfs 现在带 `e2fsck`（自建 hook），p2 的 ext4 已用它修到 `clean` | [14](14-npu-debian-hardware.md) §14.13 |
 

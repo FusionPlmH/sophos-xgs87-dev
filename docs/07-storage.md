@@ -78,7 +78,7 @@ mmcblk0p4  100M ext4  /persistent    UUID=d5d1be41-…
 
 ```
 mmcblk0      14.7 GiB
-├─p1   476 MiB  vfat  /boot/efi   (GPT, ESP)
+├─p1    64 MiB  vfat  /boot/efi   (GPT, ESP)
 └─p2  14.2 GiB  ext4  /
 ```
 
@@ -95,7 +95,7 @@ mmcblk0      14.7 GiB
 | NPU env (mtd1) | 64 KiB | `dd` + gzip | `reference/mtd/npu-mtd1-env.bin.gz` |
 | **NPU 整盘 eMMC** | **7.28 GiB** | `dd` 全盘 | 本地 `npu/backup/mmcblk0-full.img`（SHA256 记录在 [12](12-measurements.md)）**不可再生** |
 | **NPU p2 根分区（救砖镜像）** | **1 524 MiB** | `dd` 到 `/dev/mmcblk0p2` | 本地 `p2.img`（仓库不放二进制），SHA256 `383cb3aee23d325a25340e8e045f81c7b667252a3a0cbf3ae203708afeafb6e4`（2026-11-24 修补后） |
-| x86 ESP | 476 MB | `dd` 或 `rsync` | 未备份（重装即可再生） |
+| x86 ESP | 64 MiB | `dd` 或 `rsync` | 未备份（重装即可再生） |
 
 ### 救砖镜像 `p2.img` 的实测要点（2026-11-24）
 

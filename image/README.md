@@ -44,9 +44,9 @@ sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架，不带模�
 sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.img
 ```
 
-`--size` 默认 `auto`（rootfs 实际大小 + 5% + 256 MiB，再加上 476 MiB 的 ESP），
+`--size` 默认 `auto`（rootfs 实际大小 + 5% + 192 MiB，再加上 64 MiB 的 ESP），
 首次开机由 `xgs87-growroot.service` 把 `p2` 扩到盘尾，所以不用再写死 4G/8G。
-GPT + 476 MiB ESP(FAT32) + ext4 root，
+GPT + 64 MiB ESP(FAT32) + ext4 root，
 `grub-install --removable`（这块 BIOS 只认 `\EFI\BOOT\BOOTX64.EFI`），并把 GRUB
 超时压到 2 秒（否则 `recordfail` 会白等 30 秒）。
 

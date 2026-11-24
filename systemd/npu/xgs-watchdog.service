@@ -1,0 +1,16 @@
+[Unit]
+Description=XGS 87: feed the SBSA hardware watchdog
+# sbsa_gwdt is a module; the script waits up to 10 s for udev to create the
+# device, and Restart= keeps retrying if it shows up even later.
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/xgs-watchdog.sh
+Restart=always
+RestartSec=1
+# Stopping the unit closes the device, which disables the timer again; that is
+# the intended way to take the watchdog out of the picture on purpose.
+
+[Install]
+WantedBy=multi-user.target
