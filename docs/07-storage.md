@@ -78,17 +78,22 @@ mmcblk0p4  100M ext4  /persistent    UUID=d5d1be41-…
 
 ```
 mmcblk0      14.7 GiB
-├─p1    64 MiB  vfat  /boot/efi   (GPT, ESP)
+├─p1   300 MiB  vfat  /boot/efi   (GPT, ESP)
 └─p2  14.2 GiB  ext4  /
 ```
 
 - 根分区 14.2 GB，当前 Debian 只用了很小一部分。
-- **发布镜像只有 663 MiB**（`debian-x86.img`，2026-11-25 实测 695,205,888 B）：ESP 64 MiB +
-  ext4 root（~387 MiB 内容 + 192 MiB 余量 + 元数据）。首次开机 `xgs87-growroot` 把 p2 扩到盘尾，
-  所以"镜像小"不影响 16 GB eMMC 上的可用空间。
-- ⚠️ 压缩后体积几乎没变（`.zst` 216 MB → 207 MB）：砍掉的都是**零**（空 ESP + ext4 空闲块），
-  zstd 本来就能把它们压到几乎为零。变小的是**未压缩镜像**（1.11 GiB → 663 MiB），
-  收益在 dd 时间和 U 盘空间，不在下载。
+- **ESP 定成 300 MiB**（之前是 476 MiB，一度缩到 64 MiB）：shim + grub 实测只用 **4.4 MiB**，
+  所以 64 MiB 技术上够用；但内核/固件以后要往 ESP 里塞东西时没有余量，实际装到机器上
+  300 MiB 更省心（用户 2026-11-25 的要求）。ESP 是**整盘镜像**的一部分，不能像 root 那样
+  在开机时扩（要扩得把 p2 往后搬），所以只能做在镜像里。
+- **发布镜像约 899 MiB**（未压缩）：ESP 300 MiB + ext4 root（~387 MiB 内容 + 192 MiB 余量 +
+  元数据）。首次开机 `xgs87-growroot` 把 p2 扩到盘尾（实测 597 MiB → 14.6 GB），
+  所以"镜像小"不影响 eMMC 上的可用空间。
+- ⚠️ **下载体积几乎不受 ESP 大小影响**（`.zst` ≈ 208 MB，ESP 64 MiB 时是 207 MB）：
+  ESP 里绝大部分是零，zstd 本来就能压掉。变化的是**未压缩镜像**（663 MiB ↔ 899 MiB），
+  影响 dd 时间和 U 盘占用。想让镜像更小就 `--size` 里改小 `ESP_MIB`，但**已装好的机器
+  不会自己变大**。
 - `/etc/fstab` 用 UUID 挂载。
 - 参考机型的 XGS 107 是 **64 GB SATA + MBR**，本机是 **16 GB eMMC + GPT/EFI**，
   两者装系统的方式完全不同。
@@ -101,7 +106,7 @@ mmcblk0      14.7 GiB
 | NPU env (mtd1) | 64 KiB | `dd` + gzip | `reference/mtd/npu-mtd1-env.bin.gz` |
 | **NPU 整盘 eMMC** | **7.28 GiB** | `dd` 全盘 | 本地 `npu/backup/mmcblk0-full.img`（SHA256 记录在 [12](12-measurements.md)）**不可再生** |
 | **NPU p2 根分区（救砖镜像）** | **1 524 MiB** | `dd` 到 `/dev/mmcblk0p2` | 本地 `p2.img`（仓库不放二进制），SHA256 `383cb3aee23d325a25340e8e045f81c7b667252a3a0cbf3ae203708afeafb6e4`（2026-11-24 修补后） |
-| x86 ESP | 64 MiB | `dd` 或 `rsync` | 未备份（重装即可再生） |
+| x86 ESP | 300 MiB | `dd` 或 `rsync` | 未备份（重装即可再生） |
 
 ### 救砖镜像 `p2.img` 的实测要点（2026-11-24）
 

@@ -29,7 +29,7 @@ serial_read_until() {
 	_SERIAL_BUF=
 	_end=$(( $(date +%s) + _to ))
 	while [ "$(date +%s)" -le "$_end" ]; do
-		_chunk=$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')
+		_chunk=$(timeout 1 dd bs=1 count=4096 <&3 2>/dev/null | tr -d '\r')
 		_SERIAL_BUF="$_SERIAL_BUF$_chunk"
 		case "$_SERIAL_BUF" in
 		*"$_pat"*) return 0 ;;
@@ -44,18 +44,28 @@ serial_drain() {
 	_SERIAL_BUF=
 	_end=$(( $(date +%s) + _to ))
 	while [ "$(date +%s)" -lt "$_end" ]; do
-		_SERIAL_BUF="$_SERIAL_BUF$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')"
+		_SERIAL_BUF="$_SERIAL_BUF$(timeout 1 dd bs=1 count=4096 <&3 2>/dev/null | tr -d '\r')"
 	done
 }
 
 serial_send() {
-	printf '%s\r' "$*" >"$TTY"
+	printf '%s\r' "$*" >&3
 }
 
+# 一个 RDWR 的 fd 撑住整个会话。
+#
+# 以前每次读写都各自 open 一次 /dev/ttyS2（`printf > $TTY`、`dd < $TTY`），
+# 端口上还留着 hupcl：关掉 fd 就掉一次 DTR，再打开时 UART 的 FIFO 里那段已经
+# 丢了。实测（2026-11-25，机器刚装好）：NPU 明明停在 `xgs-debian-npu login:`，
+# serial_login 连发 5 次回车都读不到它，安装器的串口兜底因此直接判"NPU 没起来"。
+# 改成一直开着同一个 fd，读写都走它，并在 stty 里加 -hupcl。
 serial_open() {
 	[ -e "$TTY" ] || { echo "serial: 没有 $TTY" >&2; return 1; }
-	stty -F "$TTY" "$BAUD" raw -echo -crtscts 2>/dev/null || true
-	_serial_open=1
+	if [ "$_serial_open" != 1 ]; then
+		stty -F "$TTY" "$BAUD" raw -echo -crtscts clocal -hupcl 2>/dev/null || true
+		exec 3<>"$TTY" || { echo "serial: 打不开 $TTY" >&2; return 1; }
+		_serial_open=1
+	fi
 	# 一直按回车直到看见 login:（NPU 可能已经在提示符上，也可能刚重启）
 	i=0
 	while [ $i -lt 5 ]; do
@@ -68,7 +78,10 @@ serial_open() {
 }
 
 serial_close() {
-	[ "$_serial_open" = 1 ] && _serial_open=0
+	if [ "$_serial_open" = 1 ]; then
+		exec 3<&-
+		_serial_open=0
+	fi
 	return 0
 }
 
@@ -105,7 +118,7 @@ serial_run() {
 	_answered=0
 	_end=$(( $(date +%s) + _to ))
 	while [ "$(date +%s)" -le "$_end" ]; do
-		_SERIAL_BUF="$_SERIAL_BUF$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')"
+		_SERIAL_BUF="$_SERIAL_BUF$(timeout 1 dd bs=1 count=4096 <&3 2>/dev/null | tr -d '\r')"
 		case "$_SERIAL_BUF" in
 		*"$_mark"*) break ;;
 		esac

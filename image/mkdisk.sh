@@ -13,7 +13,7 @@ set -eu
 ROOTFS=
 OUT=out/xgs87-x86.img
 SIZE=auto
-ESP_MIB=64
+ESP_MIB=300
 
 while [ $# -gt 0 ]; do
 	case "$1" in
