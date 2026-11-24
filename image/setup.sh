@@ -22,14 +22,6 @@ printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME" > /etc/hosts
 if [ "$SIDE" = npu ]; then
 	printf '/dev/mmcblk0p2\t/\text4\tdefaults,noatime,errors=remount-ro\t0 1\n' \
 		> /etc/fstab
-	# dhcpcd 10 hands DNS to systemd-resolved as soon as it finds it, but the
-	# image never wires br-wan into resolved: /etc/resolv.conf ends up pointing
-	# at the 127.0.0.53 stub with no upstream, i.e. no DNS at all (apt, NTP and
-	# anything else that resolves a name fail).  Drop resolved and let dhcpcd
-	# write /etc/resolv.conf itself -- it does that once resolved is gone.
-	apt-get purge -y systemd-resolved >/dev/null 2>&1 || true
-	rm -f /etc/resolv.conf
-	: > /etc/resolv.conf
 fi
 # There is no `locales` package in the image (nothing reads translations here),
 # but C.UTF-8 is built into glibc, so the console still copes with UTF-8 names.
@@ -237,5 +229,16 @@ for d in /etc/systemd/system/ssh.service.d /etc/xgs87 /etc/sysctl.d /etc/default
 	find "$d" -type d -exec chmod 755 {} + 2>/dev/null || true
 	find "$d" -type f -exec chmod 644 {} + 2>/dev/null || true
 done
+
+# Last, and deliberately after every apt run above: dhcpcd 10 hands DNS to
+# systemd-resolved as soon as it finds it, but nothing ever adds br-wan to
+# resolved, so /etc/resolv.conf ends up on the 127.0.0.53 stub with no upstream
+# -- no DNS at all, which also takes NTP and apt down with it.  Drop resolved
+# and leave a plain /etc/resolv.conf for dhcpcd to rewrite.
+if [ "$SIDE" = npu ]; then
+	apt-get purge -y systemd-resolved >/dev/null 2>&1 || true
+	rm -f /etc/resolv.conf
+	: > /etc/resolv.conf
+fi
 
 echo "== setup.sh done"

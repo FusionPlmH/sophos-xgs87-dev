@@ -34,7 +34,7 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | 面板 1G / SFP+ 10G | ✅ | `ethtool`：`p1/p4` 1000 Mb/s、`sfp` **10000 Mb/s** |
 | `spi_orion` + MTD | ✅ | `mtd0` u-boot 4032 KiB、`mtd1` env 64 KiB、`fw_printenv` 可读 |
 | `crypto_safexcel`（EIP197） | ⛔ | 镜像不带 `ifpp.bin` 微码，probe 直接 `-ENOENT`；已在 `/etc/modprobe.d/xgs87-blacklist.conf` 里屏蔽。即使有固件 PE 也起不来，而单核 AES-256-GCM 已有 ~8.5 Gbps（docs/14 §14.4） |
-| thermal（6 zone）+ 9 hwmon | ✅ | `ap-ic`/`ap-cpu0..3`/`cp0-ic` 49–51 ℃；`sfp` + 8 个 PHY 温度 |
+| thermal（6 zone）+ 9 hwmon | ✅ | `ap-ic`/`ap-cpu0..3`/`cp0-ic` 51–54 ℃（2026-11-25 实测，随负载浮动）；`sfp` + 8 个 PHY 温度 |
 | PWM / GPIO | ✅ | `pwmchip0-2`、3 个 `gpiochip`（base 0/32/64） |
 | **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`：DT 的 `cpu@0` 没有 `operating-points-v2`，`cpufreq-dt` 无表可读（docs/14 §14.13） |
 | 风扇 | ✅有 / ❌不可控 | 整机一颗，上电即转；无 SuperIO、无 ACPI 风扇、DT 无 `fan` 节点（docs/19 §19.6） |
