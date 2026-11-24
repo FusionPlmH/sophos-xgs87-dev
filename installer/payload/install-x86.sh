@@ -85,16 +85,30 @@ read -r ok
 [ "$ok" = YES ] || { echo "取消"; exit 1; }
 
 echo "== 解压并写入（这一步不能断电）"
-# 先确认这是"整盘镜像"：LBA 0 末尾必须有 0x55AA。裸文件系统镜像（mkfs 出来的）
-# 没有它 —— 那种镜像写到整盘会把分区表冲掉（2026-11-24 的砖机教训）。
-_xgs87_mbr=$(xgs87_image_stream | dd bs=512 count=1 2>/dev/null | tail -c 2 | od -An -tx1 | tr -d ' \n')
+echo "== 检查镜像（整盘？LBA0 要有 0x55AA）"
+# 整盘镜像的 LBA0 末尾必须是 0x55AA。裸文件系统镜像（mkfs 出来的）没有它 ——
+# 那种镜像写到整盘会把分区表冲掉（2026-11-24 的砖机教训）。
+# 只读 512 字节就停，所以生产者一定会收到 EPIPE；把它的 stderr 丢掉，否则
+# 正常的探测会打出一行 "zstd: error 70 ... Broken pipe"，看起来像安装失败
+# （2026-11-25 在维护盘上实际踩到）。
+_xgs87_mbr=$(xgs87_image_stream 2>/dev/null | dd bs=512 count=1 2>/dev/null |
+	od -An -tx1 -j 510 -N 2 | tr -d ' \n')
 [ "$_xgs87_mbr" = "55aa" ] || {
 	echo "这份镜像的 LBA 0 没有 MBR 签名（读到 '${_xgs87_mbr:-空}'）——它不是整盘镜像，拒绝写整盘" >&2
 	exit 1
 }
+echo "  OK（LBA0 有 55aa）"
 xgs87_image_stream | dd of="$TARGET" bs=4M conv=fsync status=progress
 sync
 echo
+# 写完整盘后回读 LBA0，和镜像比一下：长度对但落错盘/没落盘的极端情况能当场发现。
+_img_head=$(xgs87_image_stream 2>/dev/null | dd bs=512 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')
+_disk_head=$(dd if="$TARGET" bs=512 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')
+if [ "$_img_head" = "$_disk_head" ]; then
+	echo "== LBA0 回读一致"
+else
+	echo "⚠️  LBA0 回读和镜像不一致 —— 先别重启，检查 $TARGET" >&2
+fi
 if command -v sfdisk >/dev/null 2>&1; then
 	if sfdisk -d "$TARGET" >/dev/null 2>&1; then
 		echo "== 分区表回读正常"

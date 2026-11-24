@@ -49,6 +49,13 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 2. Rufus 选这个 `.img`，**分区类型 GPT、写入方式 DD 镜像**，开始写。
    Win32DiskImager 也行；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
 
+## 常见"看起来像失败"的输出
+
+- `zstd: error 70 : Write error : cannot write block : Broken pipe`：这是写盘前**探测 LBA0 签名**
+  时只读了 512 字节就停，压缩进程收到 EPIPE 的正常噪音。真正的写入紧跟在后面
+  （`dd ... 695205888 bytes`），只要最后看到 `分区表回读正常` 就是成功。
+  2026-11-25 之后的 payload 已经把这条噪音消掉，并在写完后加了一行 `LBA0 回读一致`。
+
 ## 启动
 
 1. U 盘插到前面板 USB（那颗是 x86 的 USB，不是 NPU 的）。
