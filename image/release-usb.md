@@ -13,7 +13,7 @@
 
 | 分区 | 内容 |
 |---|---|
-| `p1` | ESP（300 MiB FAT32 + GRUB），能不能启动全靠它 |
+| `p1` | ESP（128 MiB FAT32 + GRUB），能不能启动全靠它 |
 | `p2` | 和 `debian-x86` 一样的 Debian root，多一个开机菜单和安装用的 payload（`/opt/xgs87/payload`） |
 | `p3` | **第一次开机才切**：U 盘上剩下的全部空间，做成 `exfat`（标签 `XGS87BAK`），挂到 `/media/xgs87-bak` 存备份 |
 

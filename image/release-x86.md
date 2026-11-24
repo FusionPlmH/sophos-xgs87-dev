@@ -4,7 +4,7 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(300 MiB FAT32) + ext4 root + GRUB EFI | 解开约 700 MB（`lean`；ESP 从 476 MiB 缩到 64 MiB 后小了 400 MB 左右，见 docs/07 §7.3） |
+| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(128 MiB FAT32) + ext4 root + GRUB EFI | 解开约 700 MB（`lean`；ESP 从 476 MiB 缩到 64 MiB 后小了 400 MB 左右，见 docs/07 §7.3） |
 
 ## 为什么这个镜像比 `debian-npu` 大好几倍
 
@@ -14,16 +14,17 @@
 |---|---|---|
 | 资产形态 | 根文件系统 **tar.zst**（压缩） | **整盘镜像** `.img`（GPT + ESP + ext4，压缩前就是完整磁盘布局） |
 | 真正的根文件系统 | ~387 MiB 解开 / 199 MB 压缩 | **同样 ~387 MiB**（`lean`，包基本一样） |
-| 额外占的空间 | 无 | ESP 300 MiB + ext4 日志/元数据 + 192 MiB 余量 + GPT 对齐 |
-| 发布体积 | 190 MB | 约 208 MB（未压缩镜像约 899 MiB） |
+| 额外占的空间 | 无 | ESP 128 MiB + ext4 日志/元数据 + 192 MiB 余量 + GPT 对齐 |
+| 发布体积 | 190 MB | 约 208 MB（未压缩镜像约 727 MiB） |
 
 注意 `.zst` 只有约 208 MB（NPU 是 190 MB）——**下载体积几乎没差**，因为镜像里多出来的是零
 （ESP 和 ext4 空闲块），zstd 本来就能压掉。差的是**未压缩镜像**（约 899 MiB），影响 dd 时间。
 
-**两边装的东西一样大**，差的是"压缩的 tar"vs"未压缩的整盘"。ESP 定成 **300 MiB**：shim + grub
-实测只用 4.4 MiB，但 ESP 是整盘镜像的一部分，装好之后没法像 root 那样自动扩（要扩得把 p2 往后搬），
-所以余量只能直接做进镜像（`mkdisk.sh` 会在构建日志里打印 ESP 占用率，超过 80% 会告警）。
-首次开机 `xgs87-growroot` 会把 root 扩到盘尾（实测 597 MiB → 14.6 GB）。
+**两边装的东西一样大**，差的是"压缩的 tar"vs"未压缩的整盘"。ESP 定成 **128 MiB**：shim + grub
+实测只用 4.4 MiB（约 29 倍余量），够 shim/grub 更新和一个 fwupd capsule —— **内核不在 ESP 里**，
+所以在 root 分区上，内核升级跟 ESP 无关。ESP 是整盘镜像的第一个分区，装好之后没法像 root 那样
+自动扩（要扩得把 p2 整体往后搬），所以尺寸只能在构建时定（`mkdisk.sh` 的 `ESP_MIB`，构建日志会
+打印占用率，超过 80% 告警）。首次开机 `xgs87-growroot` 会把 root 扩到盘尾（实测 597 MiB → 14.6 GB）。
 
 ## 刷入
 

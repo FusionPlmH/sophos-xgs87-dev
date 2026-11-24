@@ -13,7 +13,7 @@ set -eu
 ROOTFS=
 OUT=out/xgs87-x86.img
 SIZE=auto
-ESP_MIB=300
+ESP_MIB=128
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -39,12 +39,17 @@ cleanup() {
 trap cleanup EXIT
 
 # Smallest image that still holds the root filesystem plus a little slack; the
-# first boot grows the partition to fill whatever disk it was written to, so
-# there is no reason to ship a 4 GB image for 700 MB of data.  The ESP is part
-# of the same image, so its size has to be added on top of the root size --
-# and ext4 needs room for its inode table, bitmaps, journal and 5% reserved
-# blocks.  The ESP only carries shim/grub (a few MiB), so 64 MiB is plenty;
-# it used to be 476 MiB, which alone was 40% of the download.
+# first boot grows the root partition to fill whatever disk it was written to,
+# so there is no reason to ship a 4 GB image for 700 MB of data.  The ESP is
+# part of the same image and CANNOT grow afterwards without moving root, so its
+# size is a permanent, build-time decision -- but ext4 needs room for its inode
+# table, bitmaps, journal and 5% reserved blocks, so the two are not symmetric.
+#
+# 128 MiB for the ESP: shim + grub use ~4.4 MiB (measured), so this is ~29x
+# headroom.  That covers shim/grub updates (they write the new files before
+# dpkg removes the old ones, and --removable keeps a second copy in /EFI/BOOT)
+# and one fwupd firmware capsule.  It used to be 476 MiB, which was 40% of the
+# uncompressed image for nothing.
 if [ "$SIZE" = auto ]; then
 	BYTES=$(zstd -dc "$ROOTFS" | wc -c)
 	SIZE=$(( ((BYTES + BYTES * 5 / 100 + 192 * 1024 * 1024
@@ -99,8 +104,8 @@ chroot "$TMP/root" grub-install --target=x86_64-efi --efi-directory=/boot/efi \
 	--bootloader-id=debian --removable --no-nvram
 chroot "$TMP/root" update-grub
 
-# 64 MiB is far more than shim+grub need, but prove it in the build log instead
-# of finding out on a machine that will not boot.
+# Prove the ESP sizing in the build log instead of finding out on a machine that
+# will not boot: a full ESP means grub-install fails and the next update bricks it.
 df -h "$TMP/esp" | sed -n '1,2p'
 ESP_USE=$(df --output=pcent "$TMP/esp" | tail -1 | tr -dc '0-9')
 [ "${ESP_USE:-0}" -lt 80 ] ||

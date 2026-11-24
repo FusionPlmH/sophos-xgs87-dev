@@ -44,7 +44,7 @@ eth.macs=7
 | SATA | `00:11.0` FCH AHCI —— **本机没有接 SATA 盘**（参考机型是 64 GB SATA） |
 | SMBus | `00:14.0` FCH SMBus（i2c-0…i2c-4） |
 | LPC | `00:14.3`（UART、GPIO 等走这里） |
-| 固件 | AMI UEFI 1906，shim + grub，ESP 300 MiB vfat（2026-11-25 定为 300 MiB，见 docs/07 §7.3） |
+| 固件 | AMI UEFI 1906，shim + grub，ESP 128 MiB vfat（见 docs/07 §7.3） |
 
 ### USB 树（实测 `lsusb -t`）
 

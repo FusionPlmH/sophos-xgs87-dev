@@ -19,7 +19,7 @@
 ```
 NAME          SIZE TYPE FSTYPE MOUNTPOINT MODEL
 mmcblk0      14.7G disk
-├─mmcblk0p1   300M part vfat   /boot/efi   (镜像里的 ESP；装到 eMMC 后仍是 300 MiB)
+├─mmcblk0p1   128M part vfat   /boot/efi   (镜像里的 ESP；装到 eMMC 后仍是 128 MiB)
 └─mmcblk0p2  14.2G part ext4   /
 mmcblk0boot0    4M disk          (eMMC 硬件分区)
 mmcblk0boot1    4M disk
@@ -122,7 +122,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 
 ## 5.5 如果要重装/换系统
 
-1. **UEFI + GPT**：用 `x86_64` 的 EFI 镜像；ESP 300 MiB（shim + grub 实际只用 4.4 MiB，余量留给固件/内核放 ESP 的玩法）。
+1. **UEFI + GPT**：用 `x86_64` 的 EFI 镜像；ESP 128 MiB（shim + grub 实测只用 4.4 MiB，约 29 倍余量）。
 2. 建议保留一个"救援"启动项：Debian 的 shim/grub 或 systemd-boot。
 3. 参考仓库里的 `install/x86-mbr.py` 针对的是 XGS 107 的 SATA+MBR，**不能直接照抄**。
 4. 系统盘只有 16 GB，规划好空间。
