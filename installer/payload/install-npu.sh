@@ -52,9 +52,21 @@ serial_repair() {
 	echo "== 问它现在的网络"
 	info=$(serial_run 'ip -4 -br a' 25) || true
 	printf '%s\n' "$info" | sed 's/^/   /'
-	lan=$(printf '%s\n' "$info" |
-		awk '$1 ~ /^(br-lan|br0|br-wan)/ && $3 ~ /^[0-9]/ { print $3; exit }')
-	[ -n "$lan" ] || { echo "   br-lan 上没有 IPv4 地址，没得镜像"; return 1; }
+
+	# 让 NPU 自己把答案打成一个带标记的单行，再从回显里把它抠出来。
+	# 以前是解析 `ip -br a` 的第 3 列，实机（2026-11-25）上明明打出了
+	# "br-lan UP 10.234.56.1/24" 却解析出空值，于是直接判"没得镜像"、
+	# 整条串口兜底白跑一趟。带标记的单行不依赖列位置、不怕空格/回绕。
+	lan=
+	for dev in br-lan br0 br-wan; do
+		raw=$(serial_run "echo XGS87LAN=\$(ip -4 -o addr show $dev 2>/dev/null | sed -n 's/.* inet \\([^ ]*\\).*/\\1/p' | head -1)" 20) || true
+		lan=$(printf '%s\n' "$raw" | sed -n 's/.*XGS87LAN=\([0-9][0-9.]*\/[0-9][0-9]*\).*/\1/p' | head -1)
+		[ -n "$lan" ] && break
+	done
+	[ -n "$lan" ] || {
+		echo "   NPU 上没有可取用的 br-lan/br0/br-wan 地址；先看上面的输出"
+		return 1
+	}
 
 	vid=$(serial_run 'ip -d link show master br-lan' 25 2>/dev/null |
 		sed -n 's/.*vlan protocol 802.1Q id \([0-9][0-9]*\).*/\1/p' | head -1) || vid=
@@ -68,6 +80,14 @@ serial_repair() {
 	esac
 	mine=$net.200
 	[ "$mine" = "$npu_ip" ] && mine=$net.201
+
+	# eth0 是 vNTB。装 NPU 这一步最常见的失败原因就是它压根没出现（x86 开机时
+	# NPU 的端点还没枚举到），所以先把这一侧的状态摊开，别让人猜。
+	if [ ! -e /sys/class/net/eth0 ]; then
+		echo "   x86 这边没有 eth0（vNTB 没建起来）"
+		ip -br link 2>/dev/null | sed 's/^/     /'
+		return 1
+	fi
 
 	if [ "$vid" = 0 ]; then
 		target=eth0
@@ -83,6 +103,7 @@ serial_repair() {
 
 	ping -c1 -W2 "$npu_ip" >/dev/null 2>&1 || {
 		echo "   还是 ping 不通 $npu_ip（链路/桥没通）"
+		ip -br a 2>/dev/null | sed 's/^/     /'
 		return 1
 	}
 	echo "== 通了：$npu_ip"
@@ -137,12 +158,30 @@ cleanup_nbd() {
 echo "== 先把 vNTB 链路拉起来（watcher 默认不碰 PCIe，安装期间也别让它插手）"
 systemctl stop xgs-ntb-watch 2>/dev/null || true
 systemctl start xgs-ntb 2>/dev/null || true
-# NPU 的端点是在 x86 开机之后才出现的，BIOS 那时枚举不到 03:00.0。装机这一步
-# 必须自己 rescan 一次，否则下面 find_npu 一定找不到它（2026-11-25 就卡在这）。
-if [ ! -e /sys/bus/pci/devices/0000:03:00.0 ] && [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
-	echo "   03:00.0 还没出现，做一次 rescan"
-	/usr/local/sbin/xgs-ntb-up.sh --force-rescan || true
-	sleep 3
+
+# eth0 是 vNTB 的 netdev。它不在就什么网络办法都不用试了 —— 先把可能的原因
+# 排掉：端点没枚举（BIOS 早于 NPU 启动）、枚举了但驱动没绑、或者单元没跑。
+# 2026-11-25 实机：这一步之前直接进 find_npu，30 秒后报"网络到不了 NPU"，
+# 没人知道到底是哪一环。
+i=0
+while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 3 ]; do
+	i=$((i + 1))
+	if [ ! -e /sys/bus/pci/devices/0000:03:00.0 ] && [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
+		echo "   eth0 没有，03:00.0 也没枚举到，做一次 rescan（第 $i 次）"
+		/usr/local/sbin/xgs-ntb-up.sh --force-rescan || true
+	elif [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
+		echo "   eth0 没有但 03:00.0 在，重跑一次 xgs-ntb-up --force-rescan（第 $i 次）"
+		/usr/local/sbin/xgs-ntb-up.sh --force-rescan || true
+	else
+		echo "   eth0 没有，也没有 /usr/local/sbin/xgs-ntb-up.sh（不是我们的镜像？）"
+		break
+	fi
+	sleep 4
+done
+if [ -e /sys/class/net/eth0 ]; then
+	echo "   eth0 就位：$(cat /sys/class/net/eth0/operstate)"
+else
+	echo "   ⚠️ eth0 还是没有；下面的网络办法会失败，会走串口/急救"
 fi
 
 # ---- 目标分区在 NPU 上，所以等找到 NPU 之后再问（见下面）----
