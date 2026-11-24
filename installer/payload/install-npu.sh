@@ -30,6 +30,8 @@ DTB=$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)
 SERIAL=${SERIAL:-/dev/ttyS2}
 PORT=${PORT:-10809}
 NBD=${NBD:-/dev/nbd0}
+# NBD 这一级先禁用（两个镜像都不再带 nbd-client/nbd-server，也从未实测通过）
+SKIP_NBD=${SKIP_NBD:-1}
 MNT=${MNT:-/mnt}
 
 [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; exit 1; }
@@ -239,6 +241,13 @@ if try_uboot; then
 	exit 0
 fi
 echo "== U-Boot 那条路没走通，改用 NBD"
+
+if [ "${SKIP_NBD:-1}" = 1 ]; then
+	echo "== NBD 已禁用（SKIP_NBD=1），跳过这一级"
+	trap - INT QUIT
+	try_rescue
+	exit 1
+fi
 
 echo "== 1/6 确认 NPU 上有 nbd-server"
 echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
