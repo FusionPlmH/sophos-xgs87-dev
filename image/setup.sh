@@ -118,8 +118,11 @@ if [ "$SIDE" = npu ]; then
 	# repaired offline.  The kernel package built its own initramfs earlier,
 	# before the overlay was copied in.
 	if [ -n "$KVER" ]; then
-		update-initramfs -u -k "$KVER" ||
-			echo "== warning: update-initramfs failed for $KVER" >&2
+		# -v so the build log shows which hooks actually ran; the fsck hooks
+		# are the difference between "a damaged root is repairable at boot"
+		# and "it is not".
+		update-initramfs -u -k "$KVER" -v 2>&1 |
+			grep -E 'Calling hook|^W:|^E:' || true
 	fi
 	if [ -n "$KVER" ] && [ -f "/boot/vmlinuz-$KVER" ] && [ ! -e /boot/Image ]; then
 		ln -f "/boot/vmlinuz-$KVER" /boot/Image 2>/dev/null ||
@@ -128,6 +131,17 @@ if [ "$SIDE" = npu ]; then
 	if [ -n "$KVER" ] && [ -f "/boot/initrd.img-$KVER" ] && [ ! -e /boot/initrd.img ]; then
 		ln -f "/boot/initrd.img-$KVER" /boot/initrd.img 2>/dev/null ||
 			cp -f "/boot/initrd.img-$KVER" /boot/initrd.img
+	fi
+	# Verify the initramfs can actually repair the root: without e2fsck inside,
+	# `fsck.mode=force fsck.repair=yes` silently does nothing.
+	if [ -f /boot/initrd.img ] && command -v unmkinitramfs >/dev/null 2>&1; then
+		rm -rf /tmp/irdcheck
+		if unmkinitramfs /boot/initrd.img /tmp/irdcheck >/dev/null 2>&1 &&
+			! find /tmp/irdcheck -name e2fsck 2>/dev/null | grep -q .; then
+			echo "== warning: initramfs contains no e2fsck; a damaged $SIDE root" \
+				"cannot be fsck'd at boot (see image/overlay/npu/etc/initramfs-tools/hooks/xgs87-e2fsck)" >&2
+		fi
+		rm -rf /tmp/irdcheck
 	fi
 fi
 
