@@ -69,7 +69,7 @@ isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3
 
 `isolcpus=1-3` / `nohz_full=1-3` —— 原厂把 3 个核隔离出来专给转发，只有 CPU0 跑控制面。
 
-**Debian 正常时（实测 `/proc/cmdline`；当前 p2 待重刷，芯片上暂时从 p3 启动）**：
+**Debian 正常时（实测 `/proc/cmdline`，2026-11-25 p2 启动）**：
 
 ```
 console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw
@@ -123,10 +123,10 @@ bootdelay=3
 partno=AMDA0200-0001
 ```
 
-> 2026-11-25 救砖后，芯片上的 `bootcmd` 暂时是 `run mbrfix; run bootcmd_emmc3`
-> （从完好的 p3 原厂槽启动）。等 p2 重刷完成，再改回 `run bootcmd_deb10g`。
-> `/boot/Image` 和 `/boot/initrd.img` 是固定文件名；安装 tar 时必须补齐这两个
-> （见 [07](07-storage.md) §7.4）。
+> **2026-11-25 复测**：芯片上的 `bootcmd` 已是 `run bootcmd_deb10g`，p2 正常起 Debian 13.8。
+> 之前 p2 "像砖"只是因为 `/boot/initrd.img` 这个名字不存在（见 §3.6）；`/boot/Image` 和
+> `/boot/initrd.img` 都是固定文件名，安装 tar 时必须补齐（[07](07-storage.md) §7.4）。
+> 回原厂槽：`fw_setenv bootcmd 'run bootcmd_emmc3'`（用 `fw_setenv`，不要反复 `saveenv`）。
 
 - 原厂的 `bootcmd_emmc1/2/3`、`sw_init_*`、`fdt_set_partno` **都还在**，只是不再被 `bootcmd` 引用。
   回原厂：`setenv bootcmd 'run bootcmd_emmc3'; saveenv`。
@@ -188,72 +188,95 @@ Boot0002* debian  HD(1,GPT,…)/File(\EFI\DEBIAN\GRUBX64.EFI)
 - 走 **UEFI + GPT**（参考机型的 XGS 107 是 MBR/SATA，装系统的方式不一样，注意别照抄）。
 - Secure Boot 处于未启用状态（shim 存在但内核未签名也能起）。
 
-## 3.6 2026-11-24/25 砖机事件：真实根因与恢复
+## 3.6 2026-11-24/25 砖机事件：复盘与最终结论
 
-> 这一节**取代** 2026-11-24 深夜到 11-25 凌晨的几条中间结论。那些结论（"BL31→BL33 复位"、
-> "CP0 MSS 起不来"、"SPI/UART 通道坏了"、"3.2 s 硬件定时复位"）都是在 x86 侧
-> remove/rescan 风暴里观察到的**表象**，不是 NPU 的硬件故障。
+> **2026-11-25 现场复查后的结论：eMMC 上的数据从来没有丢过。** p1/p2/p3/p4 全部完好，
+> SPI NOR 也没坏。当时看到的三个现象各有别的解释 —— U-Boot 一次分区表读取失败
+> （`** No partition table - mmc 0 **`）、env 被反复 `saveenv` 写坏、x86 侧 remove/rescan
+> 造成的 3.2 s 复位风暴。真正让 p2 "起不来"的原因是 **`/boot/initrd.img` 不存在**。
 
-### 真实时间线
+### 决定性证据（2026-11-25 直接从机器上读）
 
-1. **p2 的 MBR 被覆盖**：`p2.img` 是 `mkfs.ext4` 出来的裸文件系统（没有分区表），却被
-   `dd if=p2.img of=/dev/mmcblk0`（整盘）写进去。LBA 0 变成 ext4 超级块，U-Boot 报
-   `** No partition table - mmc 0 **`，所有 `ext4load` 失败。
-2. **env 被反复 `saveenv` 写坏**：U-Boot 的 env 区没有先擦后写，连续多次 `saveenv`
-   留下半截默认 `bootcmd=bootp …`，串口上表现为无限 `BOOTP broadcast`。
-   用 [mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py) 的 `flash-write --offset 0x3F0000`
-   整块重写 64 KiB env 后，CRC 恢复。
-3. **x86 自己制造了复位循环**：原版 `xgs-ntb-up.sh` 每 2 s 做一次
-   `remove` + `rescan`。每次 rescan 都会重新拉 PERST#，NPU 刚启动到一半就被打断，
-   于是表现为约 3.2 s 一轮的"自复位"。`l` 不是 U-Boot 的第一个字节，而是下一条
-   `NOTICE` 的首字符被 UART 重配吃掉；停掉 rescan 后 U-Boot 能正常走到 `Marvell>>`。
-4. **MBR 已修回**：U-Boot 执行 env 里的 `mbrfix`，把原厂 512 字节 MBR
-   （4 个分区、磁盘签名 `0xFAE598E3`）写回 LBA 0；从芯片读回
-   `step=12`（`part start mmc 0 2` 成功）、`pstart=0xFA800`（= 1026048，与原厂 MBR
-   里 p2 的起始 LBA 一致）。
-   ⚠️ **确认 `step=12` 后要把 `bootcmd` 改回 `run bootcmd_emmc3`（或 `run bootcmd_deb10g`）**，
-   不要把 `mbrfix` 留在每次启动的路径里：它每步都 `saveenv`，连续写会再次把 env 写坏。
-5. **flash 侧全部是好的**：`mtd0` 与参考逐字节一致（SHA-256
-   `fe13a2a3…`），env CRC 正常，MCP2210 读到 SR=0。**不要再刷 SPI NOR。**
+| 检查 | 结果 |
+|---|---|
+| LBA0 偏移 `0x438` 的 ext4 magic | `0000` —— **没有** ext4 超级块。把裸 ext4 写到整盘一定会在 1024 字节处留下 magic，而 `mbrfix` 只写前 512 字节，清不掉它 |
+| LBA0 偏移 `0x1B8` / `0x1BE` | 磁盘签名 `0xFAE598E3`（原厂值）+ 4 个分区项 + `55AA` |
+| p1 挂载 | ✅ 旧 Sophos 槽（有 `linuxrc`、`persistent`），超级块完好 |
+| p2 挂载 | ✅ Debian 13.8，570 MB / 1536 MB 已用，`/etc/debian_version` = `13.8` |
+| p3 | ✅ 原厂 Buildroot 正常启动（本节的现场） |
+| p4 | ✅ VPD：`eth.mac=7C:5A:1C:XX:XX:0C`（基址，已脱敏）、`eth.macs=7` |
 
-> ⚠️ **"MBR 到底有没有坏"有两种现场记录，别拿单条日志当判决**。更早的 `REPORT.md`（同一台机器、
-> 11-24）认为 `No partition table - mmc 0` 只是瞬态、MBR 从未丢过，依据是内核日志里
-> `mmcblk0: p1 p2 p3 p4` 和 p3 正常挂载 —— 但这**不构成反证**：只要那份日志来自 `mbrfix`
-> 成功之后的某次启动，两种说法都成立。`mbrfix` 的 `step=12` / `pstart=0xfa800` 也分辨不了，
-> 把同一份 MBR 再写一遍同样会得到这两个值。唯一能分辨的是 p2 现在能不能挂上，
-> 检查命令与判断标准见 [09](09-remaining-work.md) §9.2 第 0 步；**在跑那个只读检查之前
-> 不要重刷 p2**（重刷是破坏性操作）。
+⇒ "那句 `dd if=p2.img of=/dev/mmcblk0` 把前 1.5 GiB 写到了 LBA 0" 这个说法**被证伪**：
+磁盘开头没有任何 ext4 痕迹，p1 和 p2 的内容也都还在。那次 `dd` 要么没落到这块盘上，
+要么刚写了个开头就被中断（那也足以让 U-Boot 报一次 `No partition table`）。
 
-### 当前状态（2026-11-25）
+### p2 起不来的真正原因
 
-- U-Boot 2019.10 能正常跑到 `Marvell>>`；env 里的 `bootcmd` 已恢复为原厂
-  `run bootcmd_emmc3`（从 p3 启动）。
-- p2 的分区表项已经回来，但 p2 **自己的 ext4 超级块不在原位**（当初那句 dd 把
-  p2.img 的前 1023 MiB 写到了 LBA 0）。恢复方法是把 `p2.img` 重刷到
-  **`/dev/mmcblk0p2`（分区节点）**，不是整盘；命令见 [09](09-remaining-work.md) §9.2。
-- p3 原厂系统完好，可作为回滚/对照。
-- x86 的 `xgs-ntb-up.sh` 默认只等待 vNTB 设备、**不 remove/rescan**；watcher 默认也
-  不自动重置。NPU 起来后要手动 `sudo xgs-ntb-up.sh --force-rescan`，或把
-  `/etc/default/xgs-ntb-watch` 里的 `AUTO_RECOVER=1` 打开（5 分钟后只试一次）。
+`bootcmd_deb` 按**固定文件名**加载三样东西：
+
+```
+/boot/Image                                 ← p2 里有
+/boot/cn9130-sophos-xgs87w-sfp10g.dtb       ← p2 里有
+/boot/initrd.img                            ← p2 里【没有】，只有 initrd.img-6.12.117+deb13-arm64
+```
+
+第三次 `ext4load` 失败后，`bootcmd_deb` 仍然往下执行 `booti … ${filesize}`，用的是上一次成功
+加载的长度 ⇒ 内核拿到一个无效的 initrd，表现为"卡住/像砖了"。文件系统本身一直是好的。
+
+**修复（2026-11-25 实测，一条命令级）**：
+
+```sh
+# 从 p3 或任何一个能写 p2 的系统上
+ln /boot/initrd.img-6.12.117+deb13-arm64 /boot/initrd.img   # 硬链接，不占空间
+fw_setenv bootcmd 'run bootcmd_deb10g'
+reboot
+```
+
+改完立刻进 Debian 13.8。镜像侧也已经修好：[image/setup.sh](../image/setup.sh) 构建时用硬链接
+补出 `/boot/Image` 和 `/boot/initrd.img`，新装出来的 p2 不会再缺这两个名字。
+
+### 另外两个坑（当时被误当成根因）
+
+1. **env 被反复 `saveenv` 写坏** → 半截默认 `bootcmd=bootp …`，串口上无限 `BOOTP broadcast`。
+   用 [mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py) 的 `flash-write --offset 0x3F0000` 整块重写
+   64 KiB env 后 CRC 恢复。以后改 env 用 `fw_setenv`（先擦后写），不要反复 `saveenv`。
+   ⚠️ NPU 镜像以前**没带 `/etc/fw_env.config`**，`fw_setenv` 直接报
+   `Cannot initialize environment`；现在已经带上（[image/overlay/npu/etc/fw_env.config](../image/overlay/npu/etc/fw_env.config)），
+   顺带修好了"读不到 `ethaddr` 就不设端口 MAC"的问题（[06](06-switch-and-ports.md) §6.6）。
+2. **x86 的 remove/rescan 风暴** → 每 2 s 拉一次 PERST#，NPU 刚启动就被打断，表现为约 3.2 s
+   一轮的"自复位"。停掉后 U-Boot 正常走到 `Marvell>>`。现在 `xgs-ntb-up.sh` 默认只等待。
+
+### mbrfix 的处置
+
+env 里曾经是 `bootcmd=run mbrfix; run bootcmd_emmc3`。`mbrfix` 每步 `saveenv`，本身就是 env 被
+写坏的原因之一；它写回的是**原厂那份 MBR**（签名一致），并没有修复任何被破坏的东西，但也没有坏处。
+现在 `bootcmd` 已经改成 `run bootcmd_deb10g`，**不要再把 `mbrfix` 加回启动路径**。
 
 ### 被推翻的中间结论（保留作教训）
 
 | 当时的结论 | 为什么错 |
 |---|---|
+| "p2.img 写到整盘，MBR/分区表被毁，p2 内容要重刷" | LBA0 没有 ext4 magic，p1/p2 都能正常挂载（见上面的证据表）；p2 只缺一个 `initrd.img` 文件名 |
 | "复位发生在 BL31→BL33 交接，U-Boot 起不来" | 停掉 x86 的 remove/rescan 后 U-Boot 正常到 `Marvell>>`；`l` 是下一条 NOTICE 的首字符 |
 | "CP0 MSS CPU 从来没被启动，是 CP 硬件/固件故障" | 同一轮 reset 风暴里 MSS 的打印被打断；没有独立证据表明 MSS 本身坏了 |
 | "3.2 s 周期复位是 NPU 自己的看门狗" | 周期与 x86 `xgs-ntb-up.sh` 的 2 s rescan 对齐；停掉后消失 |
 | "UART/XMODEM 通道在最后一块被复位，通道不可用" | 4 KiB 载荷的 XMODEM + EOT 实测成功；4 MiB 中断与同一轮 rescan 风暴重叠，不能归因于通道 |
 | "ramoops 能留下上一次的 panic" | 每次复位都重跑 `mv_ddr` 训练 + 全内存 scrub，保留区在 Linux 起来前就被清空（[20](20-lan-over-vntb.md) §20.8） |
+| "U-Boot 的 `help` 是假的，`mmc`/`ext4ls`/`run` 都不存在" | `bootcmd` 里这些命令一直在正常执行；那次是串口输入被复位风暴打断（[08](08-console-access.md) §8.5 第 10 条） |
 
 ### 操作红线
 
 - **不要把裸文件系统镜像写到整盘**；`require_partition` / `require_whole_disk` 已经在
   [installer/payload/lib.sh](../installer/payload/lib.sh) 里强制这一点。
-- **不要频繁 `saveenv`**；env 区没有先擦后写，连续写很容易留下半截内容。
+- **装 rootfs tar 前先确认 `/boot/Image` 和 `/boot/initrd.img` 两个名字都在**（硬链接即可）；
+  `bootcmd_deb` 用的是固定文件名，缺一个就"像砖"。
+- **不要频繁 `saveenv`**；env 区没有先擦后写，连续写很容易留下半截内容。改 env 用 `fw_setenv`。
 - **不要在 NPU 启动窗口里 remove/rescan**。判存在性用
   `[ -e /sys/bus/pci/devices/0000:03:00.0 ]`，不要用 `lspci`；端点抖动时读 config space
   会把 x86 直接搞重启（2026-11-25 实测 4~5 次）。
+- 救砖工具与安全模型见 [23](23-mcp2210-spi-nor.md)；U-Boot 控制脚本见
+  [tools/on-x86/npu-uboot.py](../tools/on-x86/npu-uboot.py) 和
+  [tools/on-pc/npu-uboot-run.py](../tools/on-pc/npu-uboot-run.py)。
 - 救砖工具与安全模型见 [23](23-mcp2210-spi-nor.md)；U-Boot 控制脚本见
   [tools/on-x86/npu-uboot.py](../tools/on-x86/npu-uboot.py) 和
   [tools/on-pc/npu-uboot-run.py](../tools/on-pc/npu-uboot-run.py)。

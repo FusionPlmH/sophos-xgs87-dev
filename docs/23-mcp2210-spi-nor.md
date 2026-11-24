@@ -225,14 +225,14 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
   `xgs-ntb-up.sh` 的 remove/rescan 循环后，U-Boot 正常跑到 `Marvell>>`；
   `l` 不是 U-Boot 的第一个字节，而是下一条 `NOTICE` 的首字符被 UART 重配吃掉。
   完整时间线见 [03](03-boot-chain.md) §3.6。
-- **flash/env 侧仍然全部是好的**：mtd0 与参考逐字节一致，env CRC 正常；但真正的问题是
-  eMMC 的 **MBR 疑似被裸 ext4 镜像覆盖**，以及 env 被反复 `saveenv` 写坏。两者都已处理：
-  前者用 `mbrfix` 写回原厂 MBR，后者用本工具的 `flash-write --offset 0x3F0000`。
-  （"MBR 是否真的坏过"存在两种现场记录，`mbrfix` 成功无法分辨；判别方法见
-  [09](09-remaining-work.md) §9.2 第 0 步。）
-- 现在的剩余动作不是“改 U-Boot”，而是**先只读验证 p2**：挂得上就只改 `bootcmd`，
-  挂不上才把 p2.img 写回 `/dev/mmcblk0p2`（见 [09](09-remaining-work.md) §9.2）。
-  p3 原厂槽已经能启动。
+- **flash/env 侧仍然全部是好的**：mtd0 与参考逐字节一致，env CRC 正常。真正的问题不是 MBR
+  被覆盖（2026-11-25 复查：LBA0 没有 ext4 magic，p1/p2 都能挂载），而是 env 被反复 `saveenv`
+  写坏，以及 p2 缺 `/boot/initrd.img` 这个名字。后者补个硬链接就好，前者用本工具的
+  `flash-write --offset 0x3F0000` 处理（改用 `fw_setenv` 后不会再复发）。证据见
+  [03](03-boot-chain.md) §3.6。
+- 现在的剩余动作是 **x86 侧做一次 `xgs-ntb-up.sh --force-rescan`**（NPU 的 vNTB 端点是在 x86
+  开机之后才出现的），然后把 p2 上的 `bootcmd=run bootcmd_deb10g` 固定下来
+  （见 [09](09-remaining-work.md) §9.2）。p3 原厂槽随时可回滚。
 
 ## 23.8 mtd0 组件表与"心跳桩"诊断
 

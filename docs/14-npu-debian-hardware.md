@@ -21,7 +21,7 @@
 | SFP 模块识别 | ✅ | `sfp` hwmon + `ethtool -m` 读 DDM |
 | eMMC | ✅ | `sdhci-xenon`，p2 = Debian |
 | **SPI NOR / MTD** | ✅ | 自建 `spi-orion.ko`，`/proc/mtd` 出现 |
-| **U-Boot 环境读写** | ✅ | `fw_printenv` / `fw_setenv` 可用 |
+| **U-Boot 环境读写** | ✅ | `fw_printenv` / `fw_setenv` 可用 —— 需要 `/etc/fw_env.config`（`/dev/mtd1 0x0000 0x10000 0x1000`）；老镜像里没这个文件，会报 `Cannot initialize environment`。现在由 [image/overlay/npu/etc/fw_env.config](../image/overlay/npu/etc/fw_env.config) 提供 |
 | RTC | ✅ | `armada38x-rtc f2284000.rtc` |
 | 温度监控 | ✅ | SFP 模块 + 8 个 PHY（`hwmon0..8`）|
 | 看门狗 | ✅ | SBSA Generic Watchdog，`/dev/watchdog` |

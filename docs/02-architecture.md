@@ -97,7 +97,7 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1。当前 Debian 的 host �
           ├─ U-Boot 2019.10（SPI NOR）
           │    └─ 读 env，autoboot 3 s
           └─ bootcmd: ext4load mmc 0:2 /boot/Image + dtb + initrd → booti
-               （p2 正常时；当前 p2 待重刷，芯片上暂时从 p3 启动）
+               （2026-11-25 实测：p2 正常启动，`bootcmd=run bootcmd_deb10g`）
                └─ 原厂：Linux 4.14.207 → /etc/init.d/S91xgsstartup
                   现在：Debian 13 / 6.12.117 → systemd（xgs-ports-up → xgs-vntb → …）
 ```

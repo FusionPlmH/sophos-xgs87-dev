@@ -3,9 +3,11 @@
 > 现场实测记录。所有数据来自一台 **Sophos XGS 87**（非无线版）实机，目标是**两边都跑 Debian 13**：
 > x86 跑通用计算，NPU 跑数据面。本仓库记录把它改造成可自由使用设备（服务节点 / 路由器 / 自研固件）的全过程。
 >
-> **2026-11-25 现场状态**：x86 的 Debian 13 正常。NPU 的 p2 Debian 根分区在 2026-11-24
-> 被误写（LBA0 的 MBR 已用 `mbrfix` 修回，分区已重新可见；**p2 的内容是否真的坏了，先用
-> docs/09 §9.2 第 0 步的只读挂载检查确认 —— 挂得上就只改 `bootcmd`，别重刷**）。
+> **2026-11-25 现场状态**：x86 的 Debian 13 正常；NPU 从 eMMC p2 启动 Debian 13.8，
+> `br-wan` 拿到 DHCP、`br-lan` 是 `10.234.56.1/24`，面板 p1/p2 都 link up。
+> 2026-11-24 那次"砖机"已经复盘：**eMMC 数据从来没有丢过**，p2 只是缺 `/boot/initrd.img`
+> 这个名字（补硬链接即可启动）；当时的 `No partition table`、env 被写坏、3.2 s 复位循环
+> 各有别的解释，证据链见 docs/03 §3.6，结论见 docs/09 §9.1。
 > p3 原厂系统完好，SPI NOR / env 已校验、`mtd0` 未损坏。不要因为"看到 U-Boot 复位"就继续刷
 > SPI NOR —— 那次复位循环真正的来源是 x86 侧的 remove/rescan 循环，已从脚本里移除。
 >
@@ -22,11 +24,11 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 `br-lan` 默认**只有 p1**，`p3`/`p4`/`p8` 不并入任何桥；LAN 段没有 DHCP 服务，下游要自己配
 `10.234.56.x/24`。`br-wan` 才跑 DHCP。想改端口归属就改 NPU 上的 `/etc/xgs87/net.conf`。
 
-**2026-11-23 逐项实测，2026-11-25 复核当前状态**，标记含义：✅ 实测通过 ｜ 📦 原厂档案 ｜ ❌ 不可用 ｜ ⚠️ 未验证 / 待重刷。
+**2026-11-23 逐项实测，2026-11-25 复核当前状态**，标记含义：✅ 实测通过 ｜ 📦 原厂档案 ｜ ❌ 不可用 ｜ ⚠️ 未验证。
 
 | 驱动 / 功能 | 状态 | 证据 |
 |---|---|---|
-| NPU Debian 13 自启（eMMC p2） | ⚠️ | p2 的分区表已修好；**根文件系统先按 docs/09 §9.2 第 0 步只读挂载确认**，挂不上才重刷。p3 原厂系统可用，见 docs/07、docs/09 §9.2 |
+| NPU Debian 13 自启（eMMC p2） | ✅ | 2026-11-25 实测：`bootcmd=run bootcmd_deb10g` → Debian 13.8，`br-wan` DHCP、`br-lan` 10.234.56.1/24（docs/03 §3.6） |
 | `mvpp2`（10G MAC，`end0`） | ✅ | 发行版模块；`AGGR_TXQ_SIZE=512` 自编译版是可选优化，镜像默认不用（docs/19） |
 | `mv88e6xxx` + DSA（9 个 netdev） | ✅ | 发行版模块；TCAM 两个上游补丁是可选加固。`p1–p8` + `sfp`，本机面板只引出 p1–p4 + sfp（docs/06、docs/19） |
 | 面板 1G / SFP+ 10G | ✅ | `ethtool`：`p1/p4` 1000 Mb/s、`sfp` **10000 Mb/s** |
@@ -91,7 +93,7 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | 目标 | 方法 |
 |---|---|
 | x86（`image/` 系统） | `ssh admin@10.234.56.2`（LAN），或 `eth0.100` 从上游拿到的 DHCP 地址；旧手工系统曾用 `192.168.0.50` |
-| NPU（`image/` 系统） | `ssh admin@10.234.56.1`（LAN）；旧手工系统曾用 `192.168.0.66`。当前 p2 待重刷，此路暂时不通 |
+| NPU（`image/` 系统） | `ssh admin@10.234.56.1`（LAN）或 `192.168.31.x`（WAN 侧 DHCP）；旧手工系统曾用 `192.168.0.66` |
 | x86 控制台 | COM5（RJ45）或 micro-USB，**115200**；`admin` / `P@ssw0rd` |
 | NPU 控制台 | **x86 的 `/dev/ttyS2`，host 侧 115200**（老 `image/` 内核是 2x 分频，才需要 host 57600） |
 
@@ -153,7 +155,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 |---|---|
 | 型号 | Sophos XGS 87，DMI `XGS 87r1`，板卡 rev 07，BIOS 1906 |
 | NPU SoC | Marvell CN9130（AP807-B0 + CP115-A0），4×A72@1.6G，2 GB DDR |
-| NPU 系统 | p2 目标 **Debian 13.6 / 6.12.117+deb13-arm64**（当前待重刷）；p3 原厂 Buildroot 4.14 完好（档案见 docs/04） |
+| NPU 系统 | p2 **Debian 13.8 / 6.12.117+deb13-arm64**（2026-11-25 实测启动）；p3 原厂 Buildroot 4.14 完好（档案见 docs/04） |
 | 交换机 | Marvell 88E6193X，MDIO addr 2，product 193，11 口（本机面板 4×RJ45 + 1×SFP） |
 | x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian 13.6；`lean` 镜像自带 **6.12.117** 且内核被 hold，`apt-mark unhold linux-image-amd64` 后可升（实机已升到 **6.12.118**，DKMS 自动重编） |
 | x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |

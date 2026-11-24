@@ -24,7 +24,7 @@
 | 目标 | 方法 | 账号 |
 |---|---|---|
 | x86（`image/` 系统） | `ssh admin@10.234.56.2`（LAN）或 WAN 的 DHCP 地址 | `admin` / `P@ssw0rd` |
-| NPU（`image/` 系统） | `ssh admin@10.234.56.1`（LAN） | `admin` / `P@ssw0rd`；p2 待重刷时此路不通 |
+| NPU（`image/` 系统） | `ssh admin@10.234.56.1`（LAN）或 WAN 侧 DHCP 地址 | `admin` / `P@ssw0rd` |
 | 旧手工系统 | `ssh root@192.168.0.50` / `.66` | 公钥 `id_xgs_ed25519`（历史） |
 | x86 控制台 | `COM5` 115200 | `admin` / `P@ssw0rd`（`image/` 产出的系统；现网旧系统用的是本地账号） |
 | NPU 控制台（TF-A） | **x86 的 `/dev/ttyS2`**，host 侧设 **115200**（当前 Debian） | — |

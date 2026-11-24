@@ -2,14 +2,18 @@
 
 > 🏷 **状态（2026-11-25）**：⚠️ 活文档 —— 每次实机验证后更新。
 > 这是**唯一**的"待办 + 缺口"清单；每条都能对应到一份带证据的文档。
-> **当前现场**：x86 Debian 正常；NPU p2 的 MBR 已修回，但根文件系统仍待重刷；p3 原厂完好。
+> **当前现场**：x86 Debian 正常（但 vNTB 仍需一次 `--force-rescan`，见 §9.2）；NPU p2 已修复并
+> 在跑 Debian 13.8（砖机复盘见 §9.1 末尾）；p3 原厂完好可回滚。
 
 ## 9.0 路线已经定了：两边都是 Debian
 
 ```
 x86   Debian 13.6 / 6.12.118   通用计算、控制面（正常）
-NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通；p2 待重刷）
+NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑通）
 ```
+
+> 2026-11-25 实测：NPU 从 p2 正常启动，`br-wan` 从上游拿到 DHCP 地址、`br-lan` 是
+> 10.234.56.1/24，面板 p1/p2 都 link up，端口 MAC 按 VPD 的 7 地址方案分配。
 
 - **OpenWrt 不装了**：NPU 上原来那个 OpenWrt 已经删掉，x86 也只装 Debian。
   早期设想（"NPU 跑 OpenWrt 当路由、x86 装 OpenWrt"）**作废**，文中如遇一律以此处为准。
@@ -35,7 +39,7 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通；p2 待重
 
 | 能力 | 证据文档 |
 |---|---|
-| x86 Debian 自启；NPU Debian 自启（p2 重刷后）；eMMC 整盘备份（7.28 GiB，SHA256 校验） | [07](07-storage.md)、[12](12-measurements.md) |
+| x86 Debian 自启；NPU Debian 自启（p2，2026-11-25 复测）；eMMC 整盘备份（7.28 GiB，SHA256 校验） | [07](07-storage.md)、[12](12-measurements.md) |
 | 88E6193X DSA 九个 netdev（`p1–p8` + `sfp`；面板只引出 p1–p4 + sfp），发行版驱动；TCAM 两个上游修复为可选补丁 | [06](06-switch-and-ports.md)、[19](19-module-vs-kernel-rebuild.md) |
 | SFP+ 实测 10000 Mb/s | [14](14-npu-debian-hardware.md) |
 | `mvpp2` 用发行版；`AGGR_TXQ_SIZE=512` 自编译版可选（[tools/build/build-npu-net.sh](../tools/build/build-npu-net.sh)） | [19](19-module-vs-kernel-rebuild.md) |
@@ -51,159 +55,58 @@ NPU   Debian 13.6 / 6.12.117   网络数据面（DSA + 10G 已跑通；p2 待重
 | MCP2210 SPI NOR 救砖工具（GP0 CS、NPU hold/release、整片双遍 dump、只写 env、失败回滚） | [23](23-mcp2210-spi-nor.md) |
 | 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
 
+### 2026-11-25 砖机复盘：已解决 —— eMMC 数据从来没丢过
+
+**结论先行**：NPU 的 p2 一直是好的，现在跑着 Debian 13.8；当年的"砖"是三个独立问题叠在一起。
+完整证据链见 [03](03-boot-chain.md) §3.6，这里只留结论和可复现的修法。
+
+| 现象 | 真因 | 处置 |
+|---|---|---|
+| `** No partition table - mmc 0 **` | U-Boot 那一次分区表读取失败（当时正处在 x86 remove/rescan 的复位风暴里） | 无需处理；LBA0 签名 `0xFAE598E3`、p1/p2 内容都在，`mbrfix` 写回的就是原厂那份 MBR |
+| 串口无限 `BOOTP broadcast` | env 被 `mbrfix` 的连续 `saveenv` 写坏（env 区不先擦除） | 用 [mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py) `flash-write --offset 0x3F0000` 整块重写；以后只用 `fw_setenv` |
+| p2 "起不来" | `bootcmd_deb` 要 `/boot/initrd.img`，而 p2 里只有 `initrd.img-6.12.117+deb13-arm64` | 补一个硬链接即可，见下 |
+| 约 3.2 s 一轮的"自复位" | x86 的 `xgs-ntb-up.sh` 每 2 s 一次 remove/rescan | 已改成默认只等待；`--force-rescan` 才动一次 |
+
+**复现修法（实测有效）**
+
+```sh
+# 在能写 p2 的系统上（p3，或 p2 自己）
+ln /boot/initrd.img-6.12.117+deb13-arm64 /boot/initrd.img
+fw_setenv bootcmd 'run bootcmd_deb10g'
+reboot
+```
+
+`fw_setenv` 需要 `/etc/fw_env.config`（`/dev/mtd1 0x0000 0x10000 0x1000`）。老镜像里没有这个文件，
+`fw_setenv` 会报 `Cannot initialize environment`，端口 MAC 也就不会被设置；现在镜像已带上
+（[image/overlay/npu/etc/fw_env.config](../image/overlay/npu/etc/fw_env.config)）。
+
+**什么时候才真的需要重刷 p2**：只有当 p2 挂不上（`bad magic` / 结构损坏）时才做。这时才用
+`p2.img`（1,598,029,824 B，SHA256 `383cb3ae…afeafb6e4`）写**分区节点**：
+
+```sh
+sudo mount -o ro /dev/sda1 /mnt/usb          # x86 上，p2.img 在 U 盘的 XGS87BAK 分区
+NPU=<npu-ip> NPU_PASS=... SRC=/mnt/usb/p2.img sh npu-sshdd.sh
+```
+
+`npu-sshdd.sh` 有 `require_partition` 挡整盘名，以及"整盘镜像（LBA0 以 `55AA` 结尾）写进分区"的守卫。
+
+**恢复后确认三件事**
+
+```sh
+uname -r                      # 6.12.117+deb13-arm64
+ip -br a                      # br-wan 拿到 DHCP，br-lan 10.234.56.1/24
+ip -br link | grep -E '^(p1|p2|sfp|end0)'   # MAC 必须是 VPD 的 7 地址方案（[06](06-switch-and-ports.md) §6.6）
+```
+
+**UART 通道**：x86 的 `/dev/ttyS2` 与 PC 的 USB 串口都是**双向**的；`mrvl-uart.py` 的 XMODEM-128
+4 KiB 载荷 + EOT 实测成功，`npu-uboot.py` 能在 U-Boot `=>` 上敲命令（一行一条，别粘贴多行）。
+BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能替代正常 U-Boot 控制台。
+
 ## 9.2 还没做完的
 
-### 砖机复盘：eMMC 分区表被覆盖（**分区表已修好，p2 待重刷**）
-
-**结论（2026-11-25 更新，推翻了"BL31 之后复位" / "CP0 MSS 起不来"的旧判断）**：U-Boot 本身是好的，
-拿到过完整启动日志并停在 `Marvell>>`。真正卡住的是：
-
-```
-** No partition table - mmc 0 **
-```
-
-eMMC 的 **MBR（LBA 0）被覆盖**了 —— `p2.img` 是裸 ext4 镜像，被 `dd` 到
-`/dev/mmcblk0`（整盘），LBA 0 变成 ext4 超级块。于是 `ext4load mmc 0:3` 全部失败，
-看起来像"砖了"，其实 p3/p4 数据完好。成因与守则写在 [07](07-storage.md) §7.6。
-
-**修复已就位**（不需要再动 SPI NOR）：env 里加了 `mbrfix`，`bootcmd=run mbrfix; run bootcmd_emmc3`。
-U-Boot 只要启动一次就会：把原厂 512 字节 MBR（4 分区、磁盘签名 `0xFAE598E3`）铺进 RAM →
-`mmc write 0x7000000 0 1` 写回 LBA 0 → `cmp.b` 回读校验 → `part start mmc 0 2` 判定，
-每步 `setenv step N; saveenv` 留痕：
-
-| `step` | 含义 |
-|---|---|
-| 0 | U-Boot 没跑过（环境变量里的值还是初值） |
-| 1 / 2 / 3 / 4 | 开始 / RAM 缓冲铺好 / `mmc write` 已发 / 回读完成 |
-| 10 / 11 | 回读与 RAM 内容一致 / 不一致 |
-| **12** | **分区 2 已可见 —— MBR 修好了** |
-| 13 | 分区仍不可见（`mmc` 或卡本身有问题） |
-
-**修复结果（2026-11-25 实测：成功）**
-
-U-Boot 跑起来之后 `mbrfix` 执行完毕，从芯片上读回的 env 提供了两个决定性证据：
-
-```
-step=12            ← part start mmc 0 2 成功
-pstart=fa800       ← 0xFA800 = 1026048 = 原厂 MBR 里 p2 的起始 LBA
-```
-
-`pstart` 与原厂 MBR 完全吻合 ⇒ **LBA 0 的分区表已经恢复**，p1..p4 重新可见。
-（`cmp.b` 回读也一致，因此 `step` 是 12 而不是 11。）
-
-⚠️ **确认 `step=12` 后必须把 `bootcmd` 改回 `run bootcmd_emmc3`（或 `run bootcmd_deb10g`）**。
-`mbrfix` 每步都 `saveenv`，留在启动路径里就是反复写 env，下一次就会再触发 §9.2 里
-那个"半截默认 bootcmd"的坑。
-
-**两个"自己坑自己"的陷阱（2026-11-25 排查出来，都已修）**
-
-1. **x86 自己的 PCIe 拆插循环把 NPU 按在启动里打**
-
-   `systemd/x86/xgs-ntb-up.sh` 原来是「每 2 秒 `remove` + `rescan` 一次，最多 30 次」，本意是
-   等 NPU 的 vNTB 功能启动后让内核重读 BAR 大小。实际后果是：remove/rescan 会重新拉 PERST#，
-   **NPU 每次刚启动到一半就被打断**；`eth0` 因此永远不出现，`xgs-ntb-watch` 判定链路已死 →
-   再调一次 `xgs-ntb-up.sh` → 闭环，机器无限打转。
-
-   追了一整晚的"每 2.1–3.3 秒硬件自复位"就是它。实测判据：停掉服务后
-   `lspci | grep -c 11ab` 连续 12 次采样恒为 1、`dmesg` 里 `11ab:7080` 的枚举计数不再增长
-   （停之前是 31 次且持续增长）。
-
-   已改成：默认先静等 180 秒**完全不碰 PCIe**；只有手动 `xgs-ntb-up.sh --force-rescan`
-   才做**一次** `remove` + `rescan`。`xgs-ntb-watch` 默认也只重建本地 VLAN，不自动重置。
-
-2. **U-Boot 的 `saveenv` 会把 env 写坏（没擦干净就写）**
-
-   `mbrfix` 里每步 `setenv step N; saveenv` 连续跑了 5 次之后，env 区变成了这样：
-
-   | 偏移 | 内容 |
-   |---|---|
-   | 0x000 | CRC + `bootcmd=bootp; setenv bootargs root=/dev/nfs … bootm` ← **生效的是这条** |
-   | 0x0CA | 双 NUL，第一份 env 结束 |
-   | 0x0CC | `le=ttyS0,…` —— 我们那份 env 的**残片** |
-   | 0x33B | `bootcmd=run mbrfix; run bootcmd_emmc3`（还在，但已不生效） |
-   | 0x4000 | 之后全 `0xFF` |
-
-   前 16 KiB 没有被擦除就覆盖写了新内容 → 生效的 `bootcmd` 变成默认的 NFS 网络启动，
-   串口上就是无限 `BOOTP broadcast`。
-
-   ⚠️ 这也意味着**不要频繁 `saveenv`**（尤其相位里带 `mbrfix` 那种每步保存的脚本），
-   一次启动写 5 次很容易踩到。
-
-   **坏到这个程度的 env，`env-write` 自己也救不了**：它要求备份里的 env 能被解析，
-   而备份正是坏的那份（先有鸡先有蛋）。所以工具里新加了 `flash-write`：
-
-   ```sh
-   sudo python3 mcp2210-nor.py flash-write --cs-pin 0 \
-        --image /tmp/env-new.bin --offset 0x3F0000 --commit --yes
-   ```
-
-   它**不做任何 env 解析**，只按显式区间擦/写/回读校验，自己的守卫是：64 KiB 对齐、
-   不越出芯片、默认不许碰 mtd0（要碰必须 `--unsafe-mtd0`）。实测把 env 区整块重写后：
-
-   ```
-   region written and verified (sha256 ab8f6773…)
-   env CRC 0x2A37867F OK, 30 keys        ← 不再有 garbage 警告
-   ```
-
-   （这是那次 `flash-write` 写进去的 30 键精简 env；后来从芯片复读到的完整 env 是
-   35 项，见 [23](23-mcp2210-spi-nor.md) §23.7。以每次 dump 的实际内容为准。）
-
-   注意 `bootcmd` 恢复成的是**原厂那条**——它就是从 **p3** 启动
-   （`ext4load mmc 0:3 … booti`），而 p3 一直完好。所以 env 一修好，NPU 应该能直接进原厂系统，
-   不必等 p2。
-
-**还没做完的**
-
-0. **先验证 p2 到底坏没坏，别急着重刷**（2026-11-25 补）。分区表回来之后，"p2 内容是否真的被
-   那次 `dd` 冲掉"有两种互斥的现场说法：更早的 `REPORT.md` 记录认为 `No partition table`
-   只是瞬态、MBR 从未丢过（依据是内核日志里 `mmcblk0: p1 p2 p3 p4` 和 p3 正常挂载）；
-   本次复盘认为是整盘 `dd` 真的盖了 LBA 0。那句内核日志**分辨不了**这两种说法（它可能来自
-   `mbrfix` 成功之后的一次启动），`mbrfix` 的 `step=12/pstart=fa800` 也分辨不了 —— 把同一份
-   MBR 再写一遍同样会得到这两个值。只有 p2 本身能分辨：
-
-   ```sh
-   # 从 p3 启动的 NPU 上（原厂 root / openwrt123）
-   mount -o remount,rw /
-   lsblk -o NAME,SIZE,FSTYPE /dev/mmcblk0            # p2 有 ext4 且大小正常？
-   mount -o ro /dev/mmcblk0p2 /mnt && cat /mnt/etc/debian_version
-   ```
-
-   - 能挂上、`/mnt/etc/debian_version` 是 `13.x` ⇒ **p2 是好的，不要重刷**，
-     只把 `bootcmd` 改成 `run bootcmd_deb10g` 再重启即可（原来那条 `dd` 应该是写到了分区节点）。
-   - `mount` 报 `bad magic number` / 结构损坏 / 挂上却是乱数据 ⇒ 才走下面第 1 步重刷 p2。
-
-1. **p2 的根文件系统可能是坏的**（若第 0 步挂不上：当初那句 `dd` 把前 1023 MiB 写到了 LBA 0）。
-   分区表修好只是让它"能被找到"，内容还得重刷。**x86 上一条命令**：
-
-   ```sh
-   # p2.img 已确认是裸 ext4（LBA0 不以 55AA 结尾），XGS87BAK 分区里那份 SHA256 已验证
-   sudo mount -o ro /dev/sda1 /mnt/usb
-   NPU=<npu-ip> NPU_PASS=... SRC=/mnt/usb/p2.img sh npu-sshdd.sh
-   ```
-
-   `npu-sshdd.sh` 走 `ssh | dd of=/dev/mmcblk0p2`，两道守卫：`require_partition` 挡整盘名，
-   `SRC=` 那条再挡"整盘镜像（LBA0 以 `55AA` 结尾）写进分区"。两种坏输入实测都被拒，
-   `p2.img` 实测被接受。
-   物料：`/mnt/usb/p2.img`，1,598,029,824 字节，
-   SHA256 `383cb3aee23d325a25340e8e045f81c7b667252a3a0cbf3ae203708afeafb6e4`。
-   刷完把 `bootcmd` 切成 `run bootcmd_deb10g`（从 p2 启动，顺带把 SFP port9 配成 10G）。
-
-**下一步（按顺序）**
-
-1. **先只读验证 p2**（上面第 0 步）。挂得上就只改 `bootcmd`；挂不上再重刷：
-   `NPU=<npu-ip> NPU_PASS=... SRC=/mnt/usb/p2.img sh npu-sshdd.sh`
-   （或者用维护盘菜单 2 的 ssh+dd 路径）。刷完把 `bootcmd` 切成 `run bootcmd_deb10g`；
-2. 如果 p2 暂时不刷：p3 原厂完好，`bootcmd=run bootcmd_emmc3` 就能用；
-3. 只有在 p2 也起不来、串口完全没输出时才往硬件方向查：量 12V/3.3V、JTAG 读 AP806
-   watchdog 与 PMIC fault。
-
-**UART 通道**：x86 的 `/dev/ttyS2` 是**双向**的；`mrvl-uart.py` 的 pattern + XMODEM-128
-4 KiB 载荷 + EOT 实测成功，`npu-uboot.sh` / `npu-uboot.py` 也能在 U-Boot `=>` 上敲命令。
-PC 侧的 CH340（COM7）只接了输出、没有回传，所以它只能看，不能发。
-BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能替代正常的 U-Boot 控制台。
-
-（救砖镜像侧已就绪：[07](07-storage.md) §7.4 —— `p2.img` 可直接 `dd` 到 **p2 分区**，
-`bootcmd_deb` 需要的 dtb / initrd 文件名已补齐，等 U-Boot 能跑起来即可写盘验证。）
+**当前唯一卡住的事**：x86 侧还没做那次 `--force-rescan`，所以 NPU 的 `eth0`（vNTB）是
+`NO-CARRIER`。在 x86 上跑一次 `/usr/local/sbin/xgs-ntb-up.sh --force-rescan` 即可
+（x86 开机时 NPU 还没有 vNTB 端点，PCI 总线没枚举到 `03:00.0`）。
 
 ### 高优先级（有明显用户价值）
 
@@ -274,6 +177,8 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
 1. **备份**：eMMC 整盘 + `mtd0`(U-Boot) + `mtd1`(env)，SHA256 存档（[07](07-storage.md)）。
 2. **改 U-Boot env**：`bootcmd` → `bootcmd_deb10g`（`ext4load` Image + dtb + initrd → `booti`），
    注意 `bootcmd_deb10g` 先用 `mvswitch` 把 port 9 配成 10G（[03](03-boot-chain.md)）。
+   在 NPU 上改就用 `fw_setenv`；确认 `/boot/Image` 和 `/boot/initrd.img` 两个名字都存在
+   （[image/setup.sh](../image/setup.sh) 会自动硬链接）。
 3. **DTB**：`board/cn9130-sophos-xgs87w-sfp10g.dts`（本仓库；节点里保留了 `ramoops`，
   但已被 DDR scrub 证伪，留着不影响启动），`tools/build/build-dtb.sh` 生成
   `out/cn9130-sophos-xgs87w-sfp10g.dtb`。

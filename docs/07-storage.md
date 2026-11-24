@@ -65,10 +65,9 @@ mmcblk0p4  100M ext4  /persistent    UUID=d5d1be41-…
 
 - **Debian 的目标槽是 p2**，正常时 `bootcmd` = `run bootcmd_deb10g` → `bootcmd_deb`（读 `mmc 0:2`）。
 - **p1 / p3 保持原厂**，随时可以用 U-Boot 回滚：`setenv bootcmd 'run bootcmd_emmc3'; saveenv`。
-- **2026-11-25 当前**：p2 的 MBR 分区项已恢复，但 p2 内容待重刷；芯片上的 `bootcmd`
-  暂时是 `run mbrfix; run bootcmd_emmc3`（从 p3 启动）。
-  ⚠️ 确认 `step=12` 后应改回 `run bootcmd_emmc3`，不要让 `mbrfix` 每次启动都 `saveenv`。
-  重刷 p2 后再切回 `run bootcmd_deb10g`。
+- **2026-11-25 当前（已修复）**：p2 一直是好的，只是缺 `/boot/initrd.img` 这个名字；补上硬链接后
+  `bootcmd=run bootcmd_deb10g` 实测能进 Debian 13.8。芯片上的 `bootcmd` 已经是 `run bootcmd_deb10g`，
+  `mbrfix` 已从启动路径移除（见 [03](03-boot-chain.md) §3.6）。
 - 没有做 A/B：p3 就是天然的"另一套"，但它跑的是 4.14 原厂系统，不是同一代 Debian。
 
 ## 7.3 x86：eMMC（16 GB）
@@ -99,10 +98,13 @@ mmcblk0      14.7 GiB
 - **裸 ext4，没有分区表**：`s_blocks_count` 390 144 × 4 KiB = 1 598 029 824 B = 文件长度，
   卷标 `root`，`e2fsck -fn` 干净 → 直接 `dd if=p2.img of=/dev/mmcblk0p2 bs=4M`。
 - `/boot` 里是 `Image`（36 MiB）、`board.dtb`、`initrd.img-6.12.117+deb13-arm64`（34 MiB）。
-- ⚠️ **`bootcmd_deb` 要的文件名原本不存在**：它 `ext4load mmc 0:2 … /boot/cn9130-sophos-xgs87w-sfp10g.dtb`
-  和 `/boot/initrd.img`，镜像里只有 `board.dtb` 和带版本号的 initrd → 已用 **hardlink** 补齐这两个名字
+- ⚠️ **`bootcmd_deb` 要的文件名原本不存在**：它 `ext4load mmc 0:2 … /boot/initrd.img`，
+  而镜像里只有带版本号的 `initrd.img-6.12.117+deb13-arm64` → 用 **hardlink** 补齐这个名字
   （同一 inode，不占额外空间，U-Boot `ext4load` 读得到）。补完用 `e2fsck -fy` 修了 debugfs 没更新的
   链接计数，再 `e2fsck -fn` 确认干净。
+  **这份 PC 上的 `p2.img` 一直没有刷回机器**；机器上的 p2 是 2026-11-25 现场补的硬链接，
+  补完即可启动（[03](03-boot-chain.md) §3.6）。新的 `debian-npu.tar` 已经由
+  [image/setup.sh](../image/setup.sh) 自动补齐这两个名字。
 - initrd 是**未压缩 cpio**（1705 项），含 `ext4.ko`、`jbd2.ko`、`sdhci-of-dwcmshc.ko`、`mvpp2.ko`、
   `dsa_core.ko`，**但没有 `mv88e6xxx.ko`**（交换机驱动只在 rootfs 的 `/lib/modules` 里）。
   所以 initramfs 阶段只有 `mvpp2` 的口能通；root 挂上、systemd 加载 rootfs 里的 `mv88e6xxx` 之后
@@ -148,27 +150,27 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 | `p2.img`、`debian-npu.tar` 解出来的 rootfs —— **裸文件系统** | ext4 超级块 | **分区** `/dev/mmcblk0p2` |
 | `debian-usb.img`、`xgs87-x86.img` —— **整盘镜像**（GPT/MBR + 分区） | `55AA` + 分区表 | **整盘** `/dev/sdX` / `/dev/mmcblk0` |
 
-**那台砖机是怎么来的**：`p2.img` 是 `mkfs.ext4` 出来的裸文件系统，被
-`dd if=p2.img of=/dev/mmcblk0`（整盘）写进去 → LBA 0 变成 ext4 超级块，原厂 MBR
-（4 个分区、磁盘签名 `0xFAE598E3`）没了。U-Boot 于是报：
+**2026-11-24 那次"砖机"到底发生了什么**：U-Boot 报过一次
 
 ```
 ** No partition table - mmc 0 **
 ```
 
-一个分区都找不到，`ext4load mmc 0:3` 全部失败，看起来像"NPU 砖了"，其实 eMMC 只是
-**分区表**没了，p3/p4 的数据完好。恢复只要把原厂 512 字节 MBR 写回 LBA 0
-（见 [03](03-boot-chain.md) §3.6 的 `mbrfix` 和 [23](23-mcp2210-spi-nor.md)），
-**不需要重刷整盘、更不需要动 SPI NOR**。
+当时被判断成"`p2.img` 被 `dd` 到了整盘、MBR 被 ext4 超级块覆盖"，于是往 env 里塞了
+`mbrfix` 去写回 MBR。**2026-11-25 现场复查把那个判断推翻了**：
 
-**2026-11-25 实测：这条恢复路径走通了。** env 里的 `mbrfix` 执行完，从芯片读回
-`step=12`（`part start mmc 0 2` 成功）且 `pstart=0xFA800`（= 1026048，与原厂 MBR 里
-p2 的起始 LBA 完全一致）⇒ 分区表回来了。
+| 检查 | 结果 |
+|---|---|
+| LBA0 偏移 `0x438` 的 ext4 magic | `0000` —— 没有 ext4 超级块（真被裸 ext4 盖过就一定会有，`mbrfix` 只写前 512 字节清不掉） |
+| LBA0 签名 / 分区项 | `0xFAE598E3`（原厂磁盘签名）+ 4 个分区项 + `55AA` |
+| p1 / p2 / p3 / p4 | 全部能挂载/启动：p1 旧 Sophos 槽、p2 Debian 13.8、p3 原厂、p4 VPD |
 
-⚠️ 但**分区表修好 ≠ p2 能用**：如果当初那句 `dd` 真的写到了整盘，它会把 p2.img 的**前 1023 MiB**
-写到 LBA 0，p2 自己的超级块就不在它该在的位置。**先按 [09](09-remaining-work.md) §9.2 第 0 步
-只读挂载验证**（挂得上就是只缺 `bootcmd`，不要重刷）；确认挂不上才把 p2.img 重刷到
-`/dev/mmcblk0p2`（**分区节点**），内容才算回来。
+⇒ **eMMC 的数据从来没有丢过**，`mbrfix` 写回的其实就是原来那份 MBR。p2 起不来的真正原因是
+`bootcmd_deb` 要的 `/boot/initrd.img` 这个名字不存在（只有 `initrd.img-6.12.117+deb13-arm64`）。
+修法和证据见 [03](03-boot-chain.md) §3.6。
+
+**这条规则本身仍然成立**（它是从那次误判里留下来的守卫，防的是真出事）：裸文件系统只能写
+**分区节点**，整盘镜像才写整盘。真写错了，p1 和 p2 开头会一起没掉，那时才需要重刷。
 
 **脚本里现有的守卫**（都在 `installer/payload/lib.sh`）：
 
