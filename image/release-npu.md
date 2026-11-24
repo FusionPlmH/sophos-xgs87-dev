@@ -10,6 +10,9 @@
 NPU 没有 ESP、没有 GRUB：U-Boot 直接从 eMMC 的一个 ext4 分区里 `ext4load` 内核和 DTB
 （bootcmd 见仓库 `docs/03-boot-chain.md`）。
 
+装出来的系统主机名是 **`xgs-debian-npu`**（x86 那半是 `xgs-debian-x86`），登录 `admin` / `P@ssw0rd`。
+镜像已带 `/etc/fw_env.config`，所以 `fw_printenv` / `fw_setenv bootcmd …` 直接可用。
+
 ## 安装
 
 ```sh

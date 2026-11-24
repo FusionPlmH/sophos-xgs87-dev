@@ -133,15 +133,16 @@ if [ "$SIDE" = npu ]; then
 			cp -f "/boot/initrd.img-$KVER" /boot/initrd.img
 	fi
 	# Verify the initramfs can actually repair the root: without e2fsck inside,
-	# `fsck.mode=force fsck.repair=yes` silently does nothing.
-	if [ -f /boot/initrd.img ] && command -v unmkinitramfs >/dev/null 2>&1; then
-		rm -rf /tmp/irdcheck
-		if unmkinitramfs /boot/initrd.img /tmp/irdcheck >/dev/null 2>&1 &&
-			! find /tmp/irdcheck -name e2fsck 2>/dev/null | grep -q .; then
-			echo "== warning: initramfs contains no e2fsck; a damaged $SIDE root" \
-				"cannot be fsck'd at boot (see image/overlay/npu/etc/initramfs-tools/hooks/xgs87-e2fsck)" >&2
+	# `fsck.mode=force` only reaches systemd-fsck-root (which still works, thanks
+	# to /etc/fstab) instead of being handled before the root is mounted.
+	# Do not depend on unmkinitramfs here: qemu-built images may not have it.
+	if [ -f /boot/initrd.img ] && command -v cpio >/dev/null 2>&1; then
+		if ! { zstd -dc /boot/initrd.img 2>/dev/null || cat /boot/initrd.img; } |
+			cpio -t 2>/dev/null | grep -q 'e2fsck'; then
+			echo "== warning: initramfs contains no e2fsck (the hook ran but" \
+				"copy_exec could not resolve its libraries under qemu-user);" \
+				"run 'update-initramfs -u' once on the target to fix it" >&2
 		fi
-		rm -rf /tmp/irdcheck
 	fi
 fi
 

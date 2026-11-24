@@ -23,7 +23,7 @@ sudo dd if=debian-x86.img of=/dev/sdX bs=4M conv=fsync status=progress
 ## 装完
 
 - 登录 **`admin` / `P@ssw0rd`**（在 `sudo` 组里）。**没有 root 账户**：`root` 已 `passwd -l`，
-  sshd 里 `PermitRootLogin no`
+  sshd 里 `PermitRootLogin no`；主机名是 **`xgs-debian-x86`**（NPU 那半是 `xgs-debian-npu`）
 - 没有内置网口，唯一 netdev 是 vNTB → **NPU 起来之后**这台机器才有网络
 - 网络跟着 NPU 的两条 VLAN 走：
   - `eth0.100`（WAN / 管理）跑 DHCP，地址和默认路由都是上游给的
