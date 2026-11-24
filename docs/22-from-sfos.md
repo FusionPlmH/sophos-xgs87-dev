@@ -18,7 +18,7 @@
 |---|---|
 | SPI NOR `mtd0`（U-Boot）、`mtd1`（环境） | NPU 上 `cat /dev/mtd0 > mtd0-uboot.bin`、`cat /dev/mtd1 > mtd1-env.bin`，或 `fw_printenv` 导出文本 |
 | NPU eMMC | 在能启动的系统里 `dd if=/dev/mmcblk0 of=...`，至少把原厂 `p3` 留下 |
-| x86 eMMC | 维护 U 盘菜单的 `4`（整盘 `.img.gz`），或者在 SFOS 里 `dd` 到网络盘 |
+| x86 eMMC | 维护 U 盘菜单的 `1`（整盘 `debian-x86.img`），或者在 SFOS 里 `dd` 到网络盘 |
 
 U-Boot 的 `bootcmd` 指向 `mmc 0:3`，原厂系统在 p3；只要不动 `mtd0`，uboot 就还在，
 刷坏了还能从串口救。
