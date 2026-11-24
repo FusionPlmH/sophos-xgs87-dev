@@ -21,7 +21,7 @@
 脚本都在 root 的 `/opt/xgs87/payload` 里。所以**不用预估"给备份留多少"**：32 GB 的盘装完
 不到 1.5 GB 的系统，剩下 30 GB 第一次开机自己变成备份区；换 128 GB 的盘也不用重建镜像。
 
-> ⚠️ 维护盘上的 `xgs87-growroot` 是**故意关掉**的（`installer/mkusb.sh` 里 disable）：
+> ⚠️ 维护盘上的 `xgs87-growroot` 是**故意关掉**的（`installer/mkusb.sh` 直接删掉它的 enable 符号链接）：
 > 分区是构建时按 payload 大小撑开的，如果 growroot 再把它扩到整个 U 盘，`usbstore` 就没有
 > 空间切备份分区了 —— 这两者在盘尾抢地方，2026-11-25 审查时发现并修掉。
 

@@ -131,11 +131,6 @@ if [ "${USB_ROOT_LOGIN:-1}" = 1 ]; then
 		echo "   （U 盘 root 解锁失败，仍然可以用 admin + sudo）" >&2
 fi
 
-# 维护盘的 p2 是 mkusb 自己撑开的；如果再让 growroot 把 p2 扩到整个 U 盘，
-# usbstore 就没空间切备份分区了（2026-11-25 审查时发现，两边会抢盘尾）。
-chroot "$WORK/root" systemctl disable xgs87-growroot >/dev/null 2>&1 ||
-	rm -f "$WORK/root/etc/systemd/system/multi-user.target.wants/xgs87-growroot.service"
-
 cat > "$WORK/root/etc/systemd/system/xgs87-usbstore.service" <<'EOF'
 [Unit]
 Description=XGS 87 维护盘：把 U 盘剩下的空间做成 exfat 备份分区
