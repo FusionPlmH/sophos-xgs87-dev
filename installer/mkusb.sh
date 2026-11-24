@@ -123,6 +123,14 @@ echo "== 往 U 盘系统的 root 里塞菜单"
 install -m755 "$REPO/installer/payload/menu.sh" "$WORK/root/usr/local/sbin/xgs87-menu.sh"
 install -m755 "$REPO/installer/payload/usbstore.sh" "$WORK/root/usr/local/sbin/xgs87-usbstore.sh"
 
+# 维护盘：控制台直接给 root（密码同 admin）。插上 U 盘的人已经有物理访问权，
+# 而 sudo 的密码提示会和串口输出/内核刷屏交错，实机上就是这么把密码敲成命令的。
+# 只改这一份 U 盘 rootfs，装进内置盘的系统仍然 root 锁定 + admin/sudo。
+if [ "${USB_ROOT_LOGIN:-1}" = 1 ]; then
+	chroot "$WORK/root" sh -c "echo 'root:P@ssw0rd' | chpasswd && usermod -s /bin/bash root" ||
+		echo "   （U 盘 root 解锁失败，仍然可以用 admin + sudo）" >&2
+fi
+
 cat > "$WORK/root/etc/systemd/system/xgs87-usbstore.service" <<'EOF'
 [Unit]
 Description=XGS 87 维护盘：把 U 盘剩下的空间做成 exfat 备份分区
