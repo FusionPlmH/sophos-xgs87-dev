@@ -54,6 +54,9 @@ NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑�
 | 维护（诊断）U 盘：整盘重装 x86、ssh+tar / ssh+dd / U-Boot / 急救包推 NPU、备份内置盘 | [22](22-from-sfos.md)、[image/release-usb.md](../image/release-usb.md) |
 | MCP2210 SPI NOR 救砖工具（GP0 CS、NPU hold/release、整片双遍 dump、只写 env、失败回滚） | [23](23-mcp2210-spi-nor.md) |
 | 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
+| **主机名**：x86 = `xgs-debian-x86`，NPU = `xgs-debian-npu`（2026-11-25 起，`image/setup.sh`） | [image/setup.sh](../image/setup.sh) |
+| **NPU 的 DNS / NTP**：purge 掉 `systemd-resolved`，让 dhcpcd 直接写 `/etc/resolv.conf`；实测 DHCP 下发 `nameserver` 后 `getent hosts` 与 `timedatectl` 都正常 | [14](14-npu-debian-hardware.md) §14.13 |
+| **NPU 的开机 fsck**：initramfs 现在带 `e2fsck`（自建 hook），p2 的 ext4 已用它修到 `clean` | [14](14-npu-debian-hardware.md) §14.13 |
 
 ### 2026-11-25 砖机复盘：已解决 —— eMMC 数据从来没丢过
 
@@ -110,14 +113,18 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
 ## 9.2 还没做完的
 
 **当前唯一卡住的事**：x86 侧还没做那次 `--force-rescan`，所以 NPU 的 `eth0`（vNTB）是
-`NO-CARRIER`。在 x86 上跑一次 `/usr/local/sbin/xgs-ntb-up.sh --force-rescan` 即可
-（x86 开机时 NPU 还没有 vNTB 端点，PCI 总线没枚举到 `03:00.0`）。
+`NO-CARRIER`。在 x86 上跑这两条即可（x86 开机时 NPU 还没有 vNTB 端点，PCI 总线没枚举到 `03:00.0`）：
+
+```sh
+sudo /usr/local/sbin/xgs-ntb-up.sh --force-rescan
+sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debian
+```
 
 ### 高优先级（有明显用户价值）
 
 | # | 事项 | 现状 / 卡在哪 |
 |---|---|---|
-| 1 | **`cpufreq` 不可用** | `/sys/devices/system/cpu/cpu0/cpufreq` 根本不存在；`ap-cpu-clk` 模块段错误未修。修好才能降频省电 / 看真实频率 |
+| 1 | **`cpufreq` 不可用** | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在。2026-11-25 查明：DT 的 `cpu@0` 只有 `clocks`、没有 `operating-points-v2`，`cpufreq-dt` 无表可读（不是装包能解决的，见 [14](14-npu-debian-hardware.md) §14.13） |
 | 2 | **x86 断 PCIe 链路 → NPU 整机复位** | 软件手段已穷尽（停 EP、关 panic、看门狗确认 inactive 都试过），判定是 SoC/ATF 对 `PERST#` 的反应。**要改 ATF 才有意义**，见 [20](20-lan-over-vntb.md) §20.8 |
 | 3 | **掉链时 `ntb_transport` 的 lockup** | 现在靠 NPU 自身复位兜底。`ramoops` 这条路已证伪（每次复位都重跑 DDR scrub，保留区必被清空），改用 **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前最后几行已经能落在磁盘上 —— 判据见 [20](20-lan-over-vntb.md) §20.8，只差一次复现 |
 | 4 | **风扇不可控** | 整机一颗风扇，上电即转，温控曲线在硬件里；x86 无 SuperIO/ACPI 风扇，NPU DT 无 `fan`/`pwm` 节点。想做软件调速得先把 PWM 通道跟风扇对上（[19](19-module-vs-kernel-rebuild.md) §19.6） |

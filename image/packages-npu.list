@@ -8,12 +8,18 @@
 #                       it every port keeps the same MAC and nothing warns.
 #   initramfs-tools  -> bootcmd loads /boot/initrd.img
 #   ethtool          -> the port / SFP checks used throughout docs/
+#   wireless-regdb   -> regulatory.db; without it cfg80211 logs
+#                       "failed to load regulatory.db (-2)" on every boot
 #   nbd-server       -> 暂时禁用（这一级从未实测通过），需要时再加回来
+#
+# Not installed on purpose: firmware-misc-nonfree.  It is the only source of
+# the EIP197 microcode (ifpp.bin) and nothing else here needs it; the driver is
+# blacklisted in overlay/npu/etc/modprobe.d/xgs87-blacklist.conf (docs/14 §14.4).
 #
 # Kernel and switch drivers are stock Debian; the modules Debian does not
 # build are in kernel/npu and installed by DKMS.
 linux-image-arm64,initramfs-tools,linux-base
-dhcpcd-base,libubootenv-tool,ethtool
+dhcpcd-base,libubootenv-tool,ethtool,wireless-regdb
 u-boot-tools,mtd-utils,i2c-tools
 nftables
 pciutils

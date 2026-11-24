@@ -33,10 +33,10 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | `mv88e6xxx` + DSA（9 个 netdev） | ✅ | 发行版模块；TCAM 两个上游补丁是可选加固。`p1–p8` + `sfp`，本机面板只引出 p1–p4 + sfp（docs/06、docs/19） |
 | 面板 1G / SFP+ 10G | ✅ | `ethtool`：`p1/p4` 1000 Mb/s、`sfp` **10000 Mb/s** |
 | `spi_orion` + MTD | ✅ | `mtd0` u-boot 4032 KiB、`mtd1` env 64 KiB、`fw_printenv` 可读 |
-| `crypto_safexcel`（EIP197） | ✅ | `/proc/crypto` 1318 行，safexcel 注册 rfc4106/4309/4543 —— **能跑但比 CPU 慢，默认不用** |
+| `crypto_safexcel`（EIP197） | ⛔ | 镜像不带 `ifpp.bin` 微码，probe 直接 `-ENOENT`；已在 `/etc/modprobe.d/xgs87-blacklist.conf` 里屏蔽。即使有固件 PE 也起不来，而单核 AES-256-GCM 已有 ~8.5 Gbps（docs/14 §14.4） |
 | thermal（6 zone）+ 9 hwmon | ✅ | `ap-ic`/`ap-cpu0..3`/`cp0-ic` 49–51 ℃；`sfp` + 8 个 PHY 温度 |
 | PWM / GPIO | ✅ | `pwmchip0-2`、3 个 `gpiochip`（base 0/32/64） |
-| **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`；`ap-cpu-clk` 段错误未修，降频/调频不可用 |
+| **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`：DT 的 `cpu@0` 没有 `operating-points-v2`，`cpufreq-dt` 无表可读（docs/14 §14.13） |
 | 风扇 | ✅有 / ❌不可控 | 整机一颗，上电即转；无 SuperIO、无 ACPI 风扇、DT 无 `fan` 节点（docs/19 §19.6） |
 | x86 ↔ NPU vNTB | ✅ | 单流 1.2 Gbit/s、RTT 0.6 ms（docs/20 §20.5） |
 | x86 借道拿地址 | ✅ | `eth0.100` 走 WAN（DHCP）、`eth0.200` 走 LAN（静态 `10.234.56.2/24`） |
@@ -161,6 +161,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 | x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |
 | NPU console | x86 `/dev/ttyS2`，host 侧 **115200**（老 `image/` 内核才要 57600）；p3 原厂 `root` / `openwrt123`，`image/` 产出的是 `admin` / `P@ssw0rd` |
 | x86 console | RJ45 / micro-USB 二选一，同一个 ttyS0，**115200** |
+| 主机名 | x86 = **`xgs-debian-x86`**，NPU = **`xgs-debian-npu`**（`image/` 产出；p3 原厂仍是 `marvell`） |
 | 存储 | NPU：4 MB SPI NOR（U-Boot+env）+ 7.28 GiB eMMC；x86：16 GB eMMC |
 | MAC | VPD 的 7 个连续地址：p1–p4 = base+0..3，sfp = base+4，end0/ethaddr = base+5（docs/06 §6.6） |
 

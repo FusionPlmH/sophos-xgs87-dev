@@ -10,11 +10,27 @@ VARIANT=$2
 echo "== setup.sh: side=$SIDE variant=$VARIANT"
 
 case "$SIDE" in
-npu) HOSTNAME=xgs87-npu; ARCH=arm64 ;;
-x86) HOSTNAME=debian; ARCH=amd64 ;;
+npu) HOSTNAME=xgs-debian-npu; ARCH=arm64 ;;
+x86) HOSTNAME=xgs-debian-x86; ARCH=amd64 ;;
 esac
 echo "$HOSTNAME" > /etc/hostname
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME" > /etc/hosts
+# A real /etc/fstab: without the root entry systemd-fsck and initramfs-tools
+# cannot tell what "/" is, so the image ended up with no e2fsck in the initramfs
+# and no boot-time fsck at all.  The NPU always boots p2 by device name
+# (bootargs_deb: root=/dev/mmcblk0p2), so keep the entry in the same terms.
+if [ "$SIDE" = npu ]; then
+	printf '/dev/mmcblk0p2\t/\text4\tdefaults,noatime,errors=remount-ro\t0 1\n' \
+		> /etc/fstab
+	# dhcpcd 10 hands DNS to systemd-resolved as soon as it finds it, but the
+	# image never wires br-wan into resolved: /etc/resolv.conf ends up pointing
+	# at the 127.0.0.53 stub with no upstream, i.e. no DNS at all (apt, NTP and
+	# anything else that resolves a name fail).  Drop resolved and let dhcpcd
+	# write /etc/resolv.conf itself -- it does that once resolved is gone.
+	apt-get purge -y systemd-resolved >/dev/null 2>&1 || true
+	rm -f /etc/resolv.conf
+	: > /etc/resolv.conf
+fi
 # There is no `locales` package in the image (nothing reads translations here),
 # but C.UTF-8 is built into glibc, so the console still copes with UTF-8 names.
 printf 'LANG=C.UTF-8\n' > /etc/locale.conf
@@ -105,10 +121,12 @@ fi
 if [ "$SIDE" = npu ]; then
 	KVER=${KVER:-$(ls /lib/modules 2>/dev/null | sort -V | tail -1)}
 	mkdir -p /boot
-	# Some mmdebstrap hooks do not run update-initramfs; make sure the versioned
-	# file exists before hardlinking it to the fixed name.
-	if [ -n "$KVER" ] && [ ! -f "/boot/initrd.img-$KVER" ]; then
-		update-initramfs -c -k "$KVER" ||
+	# Regenerate unconditionally: our overlay hook (initramfs-tools/hooks/
+	# xgs87-e2fsck) has to be in there, otherwise a damaged root can only be
+	# repaired offline.  The kernel package built its own initramfs earlier,
+	# before the overlay was copied in.
+	if [ -n "$KVER" ]; then
+		update-initramfs -u -k "$KVER" ||
 			echo "== warning: update-initramfs failed for $KVER" >&2
 	fi
 	if [ -n "$KVER" ] && [ -f "/boot/vmlinuz-$KVER" ] && [ ! -e /boot/Image ]; then

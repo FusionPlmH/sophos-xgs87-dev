@@ -10,10 +10,17 @@
 linux-image-amd64
 grub-efi-amd64,grub-efi-amd64-signed,shim-signed,efibootmgr
 netcat-openbsd
+# ethtool: eth0 is the vNTB netdev -- when the link misbehaves this is the only
+# tool that shows carrier/speed/driver for it.
+ethtool
 pciutils,usbutils,dmidecode
 iperf3,tcpdump
 # the maintenance USB built by installer/mkusb.sh runs on this side
 whiptail,python3-minimal
+# zstd: install-npu.sh / npu-sshdd.sh / npu-rescue.sh stream tar.zst and
+# compress backups from this side.  initramfs-tools pulls it in today, but the
+# installer breaks without it, so ask for it explicitly.
+zstd
 # cpio: npu-rescue.sh inspects the rescue initramfs to decide whether the NPU's
 # existing /boot/Image can be reused (saves pushing 13.7 MB over the serial).
 cpio

@@ -26,7 +26,8 @@
 | 温度监控 | ✅ | SFP 模块 + 8 个 PHY（`hwmon0..8`）|
 | 看门狗 | ✅ | SBSA Generic Watchdog，`/dev/watchdog` |
 | I2C | ✅ | `cp0_i2c1`，SFP cage EEPROM |
-| 加密引擎 EIP197 | ⚠️ **不启用** | 见 14.4；结论是**不需要** |
+| 加密引擎 EIP197 | ⛔ **不启用** | 镜像不带微码，驱动 probe 失败，已 blacklist；见 14.4、14.13 |
+| `cpufreq` | ❌ | DT 没有 `operating-points-v2`，`cpufreq-dt` 无表可读；见 14.13 |
 | USB / SATA | — | 板上未引出，不追 |
 
 ---
@@ -551,9 +552,9 @@ spi-orion
 clkfix
 EOF
 
-# 4. U-Boot 环境访问
+# 4. U-Boot 环境访问（和镜像里 image/overlay/npu/etc/fw_env.config 完全一致）
 cat > /etc/fw_env.config <<EOF
-/dev/mtd1 0x0000 0x10000 0x1000 1
+/dev/mtd1 0x0000 0x10000 0x1000
 EOF
 fw_printenv
 
@@ -561,3 +562,23 @@ fw_printenv
 ip link set sfp up
 ethtool sfp | grep -E 'Speed|Link detected'
 ```
+
+---
+
+## 14.13 固件与驱动的缺口（2026-11-25 在现机上逐项查过）
+
+`dmesg` + sysfs 的实测结果，按"要不要动"排序：
+
+| 缺口 | 现象 | 处置 |
+|---|---|---|
+| **DNS**（`/etc/resolv.conf`） | 镜像里装了 `systemd-resolved`，但没有任何东西把 `br-wan` 接进 resolved：`/etc/resolv.conf` 指向 `127.0.0.53` stub，`getent hosts deb.debian.org` 全失败 —— apt、NTP 一起挂（**2026-11-25 实测**） | 镜像里 `apt-get purge systemd-resolved`，让 dhcpcd 直接写 `/etc/resolv.conf`；实测 dhcpcd 把 DHCP 下发的 `nameserver` 写进了 `/etc/resolv.conf`，DNS 与 NTP 同时恢复。见 [image/setup.sh](../image/setup.sh) |
+| **开机 fsck** | initramfs 里没有 `e2fsck`：构建 chroot 里 stock `fsck` hook 认不出根设备，于是 `fsck.mode=force` 什么也不做，坏掉的根只能离线修 | 新增 [image/overlay/npu/etc/initramfs-tools/hooks/xgs87-e2fsck](../image/overlay/npu/etc/initramfs-tools/hooks/xgs87-e2fsck)；NPU 另有真正的 `/etc/fstab`（root 条目 `pass=1`）。2026-11-25 用它跑通了一次 `fsck.mode=force fsck.repair=yes` |
+| EIP197 微码 `ifpp.bin` | `crypto-safexcel: firmware: failed to load inside-secure/eip197b/ifpp.bin (-2)` → `HW init failed`，整个驱动 probe 失败（`/proc/crypto` 只有 699 行，全是 CPU 实现） | **不装**：驱动进 blacklist（`/etc/modprobe.d/xgs87-blacklist.conf`）。有固件 PE 也起不来，CPU AES 已 8.5 Gbps（§14.4）。想试就 `apt install firmware-misc-nonfree` 再删掉 blacklist |
+| `regulatory.db` | `cfg80211: failed to load regulatory.db (-2)` —— 系统加载了 cfg80211，但镜像里没有监管数据库 | 镜像加 `wireless-regdb`（几十 KB）。比屏蔽 cfg80211 更好：以后插 USB 无线网卡还能用 |
+| `cpufreq` | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在；DT 的 `cpu@0` 只有 `clocks`，**没有 `operating-points-v2`**，所以 `cpufreq-dt` 没有表可读 | 不是装包能解决的，要 DT + 时钟驱动一起做（[09](09-remaining-work.md) §9.2 高优先级第 1 条） |
+| 自建模块未签名 | `spi_orion: module verification failed: signature and/or required key missing - tainting kernel` | 外挂 DKMS 模块的正常现象，只是 taint 内核；要消掉得自签 + 注册 MOK，收益为零 |
+| eMMC 的 `errors` 标记 | `EXT4-fs (mmcblk0p2): warning: mounting fs with errors` | 2026-11-24 事故留下的标记，不影响读写；离线 `e2fsck -fy` 可清（p3 的 e2fsprogs 1.44 太老，要用 p2 自己的 1.47） |
+
+x86 侧本身没有网卡/显卡硬件，镜像只装最小集。2026-11-25 补了两处**真实缺口**：
+`ethtool`（vNTB 的 `eth0` 出问题时，只有它能看 carrier/speed/driver）和显式的 `zstd`
+（安装器流式解包全靠它，以前只是被 `initramfs-tools` 顺带装进来，等于靠运气）。

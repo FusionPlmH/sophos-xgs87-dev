@@ -73,7 +73,8 @@ python tools/on-pc/npu-console.py --port COM7 --baud 115200 --seconds 30 --inter
 python tools/on-pc/npu-console.py --port COM7 --baud 115200 --send 'mmc list' --send 'ext4ls mmc 0:3 /boot'
 ```
 
-p3 内核登录后同样是 115200：`xgs87-npu login:`，`root` / `openwrt123`。
+p3 原厂内核登录后同样是 115200：提示符是 `marvell login:`，`root` / `openwrt123`。
+（我们镜像里的 Debian 提示符是 `xgs-debian-npu login:`。）
 
 长期挂后台（**只能有一个读者**）：
 

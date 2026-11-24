@@ -68,6 +68,10 @@ mmcblk0p4  100M ext4  /persistent    UUID=d5d1be41-…
 - **2026-11-25 当前（已修复）**：p2 一直是好的，只是缺 `/boot/initrd.img` 这个名字；补上硬链接后
   `bootcmd=run bootcmd_deb10g` 实测能进 Debian 13.8。芯片上的 `bootcmd` 已经是 `run bootcmd_deb10g`，
   `mbrfix` 已从启动路径移除（见 [03](03-boot-chain.md) §3.6）。
+- **2026-11-25 又补了三处**：p2 的 ext4 元数据损坏（inode checksum）用 `fsck.mode=force` 修好，
+  状态从 `clean with errors` 变成 `clean`（fsck 需要 initramfs 里有 e2fsck，见
+  [14](14-npu-debian-hardware.md) §14.13）；一个被写坏的 dpkg 文件清单
+  （`libseccomp2:arm64.list`）用 `--reinstall` 重新生成；DNS 从"完全不可用"修到 DHCP 下发即用。
 - 没有做 A/B：p3 就是天然的"另一套"，但它跑的是 4.14 原厂系统，不是同一代 Debian。
 
 ## 7.3 x86：eMMC（16 GB）
