@@ -129,7 +129,7 @@ sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debi
 | 1 | **`cpufreq` 不可用** | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在。2026-11-25 查明：DT 的 `cpu@0` 只有 `clocks`、没有 `operating-points-v2`，`cpufreq-dt` 无表可读（不是装包能解决的，见 [14](14-npu-debian-hardware.md) §14.13） |
 | 2 | **x86 断 PCIe 链路 → NPU 整机复位** | 软件手段已穷尽（停 EP、关 panic、看门狗确认 inactive 都试过），判定是 SoC/ATF 对 `PERST#` 的反应。**要改 ATF 才有意义**，见 [20](20-lan-over-vntb.md) §20.8 |
 | 3 | **掉链时 `ntb_transport` 的 lockup** | 现在靠 NPU 自身复位兜底。`ramoops` 这条路已证伪（每次复位都重跑 DDR scrub，保留区必被清空），改用 **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前最后几行已经能落在磁盘上 —— 判据见 [20](20-lan-over-vntb.md) §20.8，只差一次复现 |
-| 4 | **风扇不可控** | 整机一颗风扇，上电即转，温控曲线在硬件里；x86 无 SuperIO/ACPI 风扇，NPU DT 无 `fan`/`pwm` 节点。想做软件调速得先把 PWM 通道跟风扇对上（[19](19-module-vs-kernel-rebuild.md) §19.6） |
+| 4 | **风扇不可控 / 温控不动作** | 整机一颗风扇，上电即转，曲线在硬件里；NPU 的 thermal zone 有 100 ℃ trip 但 **0 个 cooling device**（连 `cpufreq` 都没有），所以到点也不会做什么。要软件调速得先把 PWM 通道跟风扇对上 + 补 OPP（[19](19-module-vs-kernel-rebuild.md) §19.6、[14](14-npu-debian-hardware.md) §14.13） |
 
 ### 中优先级（想用某个功能时才需要）
 

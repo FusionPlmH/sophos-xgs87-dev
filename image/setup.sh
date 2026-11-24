@@ -45,6 +45,10 @@ if [ "$SIDE" = npu ]; then
 	cat > /etc/modules-load.d/xgs87-hardware.conf <<'EOF'
 spi-orion
 clkfix
+# i2c-dev exposes /dev/i2c-1 (mv64xxx on the SFP cage bus).  Without it the
+# i2c-tools in this image cannot see anything: measured 2026-11-25, the SFP
+# EEPROM answers at 0x50/0x51 only after `modprobe i2c-dev`.
+i2c-dev
 EOF
 	# The two boot hooks arrive with image/overlay/npu (they land in
 	# /etc/kernel/postinst.d and /etc/initramfs/post-update.d, already
@@ -58,6 +62,13 @@ EOF
 	systemctl disable nftables.service >/dev/null 2>&1 || true
 else
 	systemctl enable systemd-networkd xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole
+	# k10temp is the only CPU temperature sensor this SoC exposes and Debian does
+	# not load it by itself: without it the x86 side has no hwmon at all, so
+	# nothing watches the CPU (measured 2026-11-25: 40.8 C once loaded).
+	cat > /etc/modules-load.d/xgs87-hardware.conf <<'EOF'
+k10temp
+fam15h_power
+EOF
 fi
 
 # --- out-of-tree modules ----------------------------------------------------

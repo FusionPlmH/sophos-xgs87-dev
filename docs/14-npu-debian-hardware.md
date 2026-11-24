@@ -575,8 +575,12 @@ ethtool sfp | grep -E 'Speed|Link detected'
 | **开机 fsck** | initramfs 里没有 `e2fsck`：构建 chroot 里 stock `fsck` hook 认不出根设备，**自建 hook 在 qemu-user 下也复制不到库**，于是 initramfs 阶段不会被 fsck | 镜像现在有真正的 `/etc/fstab`（root 条目 `pass=1`），所以 `fsck.mode=force fsck.repair=yes` 会落到 **systemd-fsck-root**（用 root 里的原生 e2fsck，不依赖 initramfs）；在机器上跑一次 `update-initramfs -u` 还能把 e2fsck 装进 initramfs。2026-11-25 用这条链把 p2 从 `clean with errors` 修成 `clean` |
 | EIP197 微码 `ifpp.bin` | `crypto-safexcel: firmware: failed to load inside-secure/eip197b/ifpp.bin (-2)` → `HW init failed`，整个驱动 probe 失败（`/proc/crypto` 只有 699 行，全是 CPU 实现） | **不装**：驱动进 blacklist（`/etc/modprobe.d/xgs87-blacklist.conf`）。有固件 PE 也起不来，CPU AES 已 8.5 Gbps（§14.4）。想试就 `apt install firmware-misc-nonfree` 再删掉 blacklist |
 | `regulatory.db` | `cfg80211: failed to load regulatory.db (-2)` —— 系统加载了 cfg80211，但镜像里没有监管数据库 | 镜像加 `wireless-regdb`（几十 KB）。比屏蔽 cfg80211 更好：以后插 USB 无线网卡还能用 |
-| `cpufreq` | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在；DT 的 `cpu@0` 只有 `clocks`，**没有 `operating-points-v2`**，所以 `cpufreq-dt` 没有表可读 | 不是装包能解决的，要 DT + 时钟驱动一起做（[09](09-remaining-work.md) §9.2 高优先级第 1 条） |
+| `cpufreq` | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在；DT 的 `cpu@0` 只有 `clocks`，**没有 `operating-points-v2`**，所以 `cpufreq-dt` 没有表可读 | 不是装包能解决的，要 DT + 时钟驱动一起做（[09](09-remaining-work.md) §9.2 高优先级第 1 条）。**x86 侧有**：`acpi-cpufreq` + `schedutil` |
+| `i2c-dev` 没加载 | `i2c-tools` 装了但 `/dev/i2c-*` 不存在，`i2cdetect` 直接报错；**2026-11-25 实测** SFP cage EEPROM 在 `i2c-1` 的 `0x50/0x51`，要手动 `modprobe i2c-dev` 才看得到 | 加进 `/etc/modules-load.d/xgs87-hardware.conf`（`i2c-dev`），已生效 |
+| **RTC 是坏的**（硬件） | `hwclock -r` 超时；`/sys/class/rtc/rtc0/since_epoch` 恒为 `4278124286`（2106），`hwclock --set` 返回成功但读回不变 —— 晶振/电池有问题，不是驱动能修的 | `fake-hwclock` 在开机第一秒就把时间改回存档值（实测 journal 第一行时间正常），再由 NTP 校准。**不要把 RTC 当成可用时钟** |
+| 温控实际不动作 | NPU 的 6 个 thermal zone 只有 `trip_point_0 = 100 ℃`、`policy = step_wise`，但 **`cooling_device` 数量为 0** —— 到 100 ℃ 也没有可降频的对象（连 `cpufreq` 都没有） | 硬件层面无解；上策是补 `operating-points-v2` 让 `cpufreq` 可用，之后 thermal 才有 cooling device 可挂 |
 | 自建模块未签名 | `spi_orion: module verification failed: signature and/or required key missing - tainting kernel` | 外挂 DKMS 模块的正常现象，只是 taint 内核；要消掉得自签 + 注册 MOK，收益为零 |
+| x86 `AMD-Vi: [Firmware Warn]: EFR mismatch` | BIOS 的 IVRS 表和 CPU 实际能力不一致（`0x37ef22294ada` vs `0x77ef22294ada`），内核每启动报一次 | 内核自己会覆盖成正确的 EFR，属于 BIOS 层面的瑕疵，没有实际影响；要消掉只能改 BIOS |
 | eMMC 的 `errors` 标记 | `EXT4-fs (mmcblk0p2): warning: mounting fs with errors` | 2026-11-24 事故留下的标记，不影响读写；离线 `e2fsck -fy` 可清（p3 的 e2fsprogs 1.44 太老，要用 p2 自己的 1.47） |
 
 > ℹ️ 两个镜像构建完都会 `rm -rf /var/lib/apt/lists/*`（省 40 MB），所以**装完第一件事是
