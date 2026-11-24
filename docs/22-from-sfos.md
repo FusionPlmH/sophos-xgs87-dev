@@ -53,7 +53,12 @@ lsblk; sfdisk -d /dev/mmcblk0
 3. 串口 115200 上出菜单：
    - `1` 重装 x86 —— 把 `debian-x86.img` 整盘写进内置 eMMC；
    - `2` 重装 NPU —— 自动按 **ssh+tar → ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试
-     （NBD 目前禁用；网络到不了就先走 `ttyS2` 串口，菜单 `4` 能直接开）。
+     （NBD 目前禁用）。开工前它会先把 vNTB 拉起来：没有 `eth0` 就重试最多 3 次
+     `xgs-ntb-up.sh --force-rescan`（NPU 的端点总在 x86 开机之后才枚举到），并幂等补上
+     `eth0.200 = 10.234.56.2/24` —— 维护盘跑的是 U 盘自己那套 root，它的 networkd 不一定
+     配这个地址，缺了就只能靠 `ttyS2` 兜底。真走串口时会自动登录、读出 NPU 的
+     `br-lan` 地址和 VLAN、在 x86 这边镜像出同样的 VLAN 再回来走 ssh。
+     串口这条路要求 `/dev/ttyS2` **没有别的读者**（别同时开菜单 `4`）。
 4. 写 NPU 时默认目标是 `/dev/mmcblk0p2`。**想保留原厂回滚就留在 p2**；
    U-Boot 的 `bootcmd` 指向 p3，改过 `bootcmd` 的机器要确认它指向你装的那个分区。
 5. 装完重启，x86 首次开机自动扩分区，NPU 由 U-Boot 拉起。
