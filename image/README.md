@@ -16,16 +16,16 @@ image/overlay/      直接覆盖到 rootfs 根的文件（目前只有 NPU 的�
 ```sh
 sudo ./image/build.sh --arch arm64              # NPU，含工具链和 DKMS 模块
 sudo ./image/build.sh --arch amd64              # x86
-sudo ./image/build.sh --arch amd64 --variant lean   # 编完模块就删工具链（小 ~380 MiB）
-sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架（tar ~240 MB）
+sudo ./image/build.sh --arch amd64 --variant lean   # 编完模块就删工具链（root 387 MiB，实测）
+sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架，不带模块
 ```
 
 - `--variant full`（默认）：额外装 `dkms` + `build-essential` + `linux-headers-*`，
   构建时就把 `kernel/<side>/` 的模块编好装上。**以后内核升级会自动重编**，代价是
   root 解开 ~900 MiB、tar ~350 MB。
 - `--variant lean`：用普通 `make` 编一次模块（装进 `/lib/modules/<kver>/updates/`），
-  然后把工具链按 **dpkg 快照差值**精确 purge 掉。**root 解开 525 MiB、tar 238 MB**
-  （x86 实测，比 full 少约 380 MiB）。代价是镜像自己没法再编模块，所以内核被
+  然后把工具链按 **dpkg 快照差值**精确 purge 掉。**root 解开 387 MiB、tar 199 MiB**
+  （2026-11-24 workflow 实测；full 的 root 约 900 MiB，所以少的正是工具链和 headers）。代价是镜像自己没法再编模块，所以内核被
   `apt-mark hold`；要升级内核就先 `apt-mark unhold linux-image-amd64`（NPU 是
   `linux-image-arm64`），再跑镜像里的 `/opt/xgs87/kernel/<side>/install.sh`。
 - `--variant base`：不装编译器、不带模块。根分区小的时候用，之后再跑一次
@@ -113,7 +113,7 @@ zstd -dc debian-npu.tar.zst | tar -xpf - -C /mnt
 首次开机的 `xgs87-growroot` 只在 root 是**最后一个分区**时才扩；本机 p2 后面还有
 p3/p4，所以会跳过，不会碰原厂回滚槽和 VPD。
 
-⚠️ 根分区 1.5 GB 装不下 `full`（root 解开 ~900 MB）。用 `--variant lean`（解开 525 MiB，
+⚠️ 根分区 1.5 GB 装不下 `full`（root 解开 ~900 MB）。用 `--variant lean`（root 解开 387 MiB，
 工具链编完就删，占用约一半），或者把根分区做到 ≥3 GB。`base` 也行，但要自己再跑一次
 `kernel/npu/install.sh`。
 

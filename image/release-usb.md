@@ -4,7 +4,7 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-usb.img.zst` | **整盘镜像**：可启动 U 盘，自带 x86 + NPU 两套安装包和串口菜单 | 解开 ~2.5 GB |
+| `debian-usb.img.zst` | **整盘镜像**：可启动 U 盘，自带 x86 + NPU 两套安装包和串口菜单 | 解开约 1.6 GB（`lean`，2026-11-24 实测 1.56 GiB） |
 
 插上从 U 盘启动，x86 串口上出菜单：格式化重装 x86、把新 rootfs 推给 NPU、备份内置盘、看状态。
 这台双架构机器的急救盘——升级、刷坏、换系统都靠它。
@@ -41,7 +41,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 
 **Windows**
 
-1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 2.5 GB）。
+1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 1.6 GB）。
 2. Rufus 选这个 `.img`，**分区类型 GPT、写入方式 DD 镜像**，开始写。
    Win32DiskImager 也行；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
 
@@ -103,15 +103,15 @@ IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -b
 | 内容 | 大小 | 为什么需要 |
 |---|---|---|
 | `Image.gz` | **13.7 MB** | NPU 的内核（37.7 MB 的 Image 压过），U-Boot 用 `unzip` 解开 |
-| `initramfs.gz` | **1.86 MB** | 静态 busybox（`wget`/`dd`/`ip`/`modprobe`）+ 11 个模块（EP、ntb、mmc、vlan）+ `/init` |
-| `cn9130-…dtb` | 61 KB | 板级设备树 |
+| `initramfs.gz` | **1.84 MB** | 静态 busybox（`wget`/`dd`/`ip`/`modprobe`）+ 9 个模块（EP、ntb、mmc、vlan）+ `/init` |
+| `cn9130-…dtb` | 21 KB | 板级设备树 |
 | 合计 | **≈15 MB** | 串口推得动 |
 
 `/init` 只做三件事：拉起 vNTB 端点 → 给裸 `eth0` 配 `10.234.56.1/24` → 从 x86
 `wget` 整盘影像并 `dd` 到 `p2`，然后 `reboot -f`。
 
 **为什么不用 NBD/TFTP 做 initramfs**：那要把 `nbd-server`（glibc + 依赖，约 4 MB）或
-TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 —— 1.86 MB vs 6 MB，
+TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 —— 1.8 MB vs 6 MB，
 而且 HTTP 比 TFTP 好传大文件（能续、能看到进度）。
 
 串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。

@@ -4,7 +4,7 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(476 MiB FAT32) + ext4 root + GRUB EFI | 解开 1.6 GiB（`full`）/ 1.2 GiB（`lean`） |
+| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(476 MiB FAT32) + ext4 root + GRUB EFI | 解开约 1.2 GB（`lean`，2026-11-24 实测 1,194,328,064 B）；`full` 更大 |
 
 ## 刷入
 
@@ -37,12 +37,13 @@ sudo dd if=debian-x86.img of=/dev/sdX bs=4M conv=fsync status=progress
 | 变体 | root 解开 | `tar.zst` | 模块怎么来的 | 内核升级 |
 |---|---|---|---|---|
 | `full`（默认） | ~900 MiB | ~350 MB | 镜像里带 DKMS + 编译器，构建时编好 | `apt upgrade` 自动重编 |
-| `lean` | **525 MiB** | **238 MB** | 构建时用 `make` 编一次，之后把工具链 purge 掉 | 内核被 `apt-mark hold`；要升就先 `apt-mark unhold linux-image-amd64` 再跑 `/opt/xgs87/kernel/x86/install.sh` |
-| `base` | ~550 MiB | ~240 MB | 不带模块 | 装完自己跑一次 `kernel/x86/install.sh` |
+| `lean` | **387 MiB** | **199 MB** | 构建时用 `make` 编一次，之后把工具链 purge 掉 | 内核被 `apt-mark hold`；要升就先 `apt-mark unhold linux-image-amd64` 再跑 `/opt/xgs87/kernel/x86/install.sh` |
+| `base` | 比 `lean` 略小 | 未测 | 不带模块 | 装完自己跑一次 `kernel/x86/install.sh` |
 
 ```sh
 sudo ./image/build.sh --arch amd64 --variant lean
 ```
 
 `lean` 里 `/lib/modules/<kver>/updates/` 有编好的 `ntb_*`（`modules.dep` 已指向它们），
-`gcc` / `cpp` / `make` / `linux-headers` 全都不在——这就是少掉的约 380 MiB。
+`gcc` / `cpp` / `make` / `linux-headers` 全都不在——`lean` 比 `full` 少的正是这部分工具链
+（最近一次 workflow 构建：`lean` 的 root 解开 387 MiB、`tar.zst` 199 MiB）。
