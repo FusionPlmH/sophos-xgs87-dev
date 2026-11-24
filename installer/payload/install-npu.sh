@@ -137,27 +137,18 @@ cleanup_nbd() {
 echo "== 先把 vNTB 链路拉起来（watcher 默认不碰 PCIe，安装期间也别让它插手）"
 systemctl stop xgs-ntb-watch 2>/dev/null || true
 systemctl start xgs-ntb 2>/dev/null || true
+# NPU 的端点是在 x86 开机之后才出现的，BIOS 那时枚举不到 03:00.0。装机这一步
+# 必须自己 rescan 一次，否则下面 find_npu 一定找不到它（2026-11-25 就卡在这）。
+if [ ! -e /sys/bus/pci/devices/0000:03:00.0 ] && [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
+	echo "   03:00.0 还没出现，做一次 rescan"
+	/usr/local/sbin/xgs-ntb-up.sh --force-rescan || true
+	sleep 3
+fi
 
-# ---- 破坏性操作的确认：只问一次，所有层级（U-Boot / NBD(禁用) / 急救）共用 ----
-printf '目标分区 [/dev/mmcblk0p2]: '
-read -r PART
-PART=${PART:-/dev/mmcblk0p2}
-case "$PART" in
-/dev/*) ;;
-*) echo "分区要写 /dev/... 的绝对路径"; exit 1 ;;
-esac
-# 裸文件系统镜像只能写分区：写成整盘会把 MBR/GPT 覆盖掉（2026-11-24 的砖机就是这么来的）
-. "$PAYLOAD/lib.sh"
-require_partition "$PART" "目标分区"
-echo "   目标：$PART  $(lsblk -dno SIZE,MODEL "$PART" 2>/dev/null | tr -s ' ')"
-echo "⚠️  接下来会把 $PART 整个重写（mmc write / mkfs / dd），NPU 上原有的东西会没。"
-printf '输入 YES 继续：'
-read -r ok
-[ "$ok" = YES ] || exit 1
-# 从这里开始不能被 Ctrl+C 打断：写到一半的 ext4 比没写更麻烦。
-trap '' INT QUIT
-echo "   已开始，Ctrl+C 不再中断（要重来就等它跑完）。"
-export PART
+# ---- 目标分区在 NPU 上，所以等找到 NPU 之后再问（见下面）----
+# 以前这里先问、还用本机的 `lsblk` 显示大小：在维护盘上那会显示 x86 自己的
+# 内置盘（/dev/mmcblk0p2 597M），看起来像要写本机，2026-11-25 实际吓到过人。
+# 真正写入一直是通过 npu_ssh 在 NPU 上做的，但提示必须说清楚。
 
 # U-Boot 放最后再试（见 try_uboot）：它会先把 NPU 停进 U-Boot，vNTB 一断就没
 # 退路了，所以必须等 ssh/整块写这些"不动 NPU"的路都失败之后再考虑。
@@ -211,7 +202,31 @@ EOM
 	exit 1
 fi
 
-echo "== NPU 在线（$NPU），目标分区 $PART"
+echo "== NPU 在线（$NPU）"
+
+# ---- 破坏性操作的确认：只问一次，所有层级（U-Boot / NBD(禁用) / 急救）共用 ----
+# 分区路径是**NPU 上的**（写入通过 npu_ssh 在 NPU 上执行），大小也从 NPU 读，
+# 不要用本机的 lsblk —— 维护盘上那会显示 x86 自己的 mmcblk0p2，看着像要写本机。
+printf 'NPU 上要重写的分区 [/dev/mmcblk0p2]: '
+read -r PART
+PART=${PART:-/dev/mmcblk0p2}
+case "$PART" in
+/dev/*) ;;
+*) echo "分区要写 /dev/... 的绝对路径"; exit 1 ;;
+esac
+# 裸文件系统镜像只能写分区：写成整盘会把 MBR/GPT 覆盖掉（2026-11-24 的砖机就是这么来的）
+. "$PAYLOAD/lib.sh"
+require_partition "$PART" "目标分区"
+_remote_size=$(npu_ssh "lsblk -dno SIZE,MODEL $PART 2>/dev/null || echo '(NPU 上没有这个分区)'" 20 2>/dev/null | tr -s ' ')
+echo "   目标：NPU 的 $PART  ${_remote_size:-（读不到大小）}"
+echo "⚠️  接下来会把 NPU 的 $PART 整个重写（mkfs / dd），里面的东西会没。"
+printf '输入 YES 继续：'
+read -r ok
+[ "$ok" = YES ] || exit 1
+# 从这里开始不能被 Ctrl+C 打断：写到一半的 ext4 比没写更麻烦。
+trap '' INT QUIT
+echo "   已开始，Ctrl+C 不再中断（要重来就等它跑完）。"
+export PART
 
 # 顺序按"前提最容易满足"排：ssh + tar 只要 NPU 上有 tar/zstd（哪个镜像都有），
 # NBD 还得多一个 nbd-server。所以先试 ssh，成不了再谈 nbd。
