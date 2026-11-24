@@ -54,6 +54,9 @@ if [ -d "/sys/class/pci_epc/$EPC" ]; then
 	echo 128 >"$N/spad_count" 2>/dev/null
 	echo 1 >"$N/num_mws" 2>/dev/null
 	echo 0x100000 >"$N/mw1" 2>/dev/null
+	echo 0x1957 >"$N/vntb_vid" 2>/dev/null
+	echo 0x080A >"$N/vntb_pid" 2>/dev/null
+	echo 0x10 >"$N/vbus_number" 2>/dev/null
 	ln -sf "$F" "$C/controllers/$EPC/func1" 2>/dev/null
 	echo 1 >"$C/controllers/$EPC/start" 2>/dev/null
 fi
@@ -78,11 +81,26 @@ fi
 # ---- 3. 拉影像 + 写盘 ----
 [ -b "$PART" ] || { echo "rescue: $PART 不存在"; exec sh; }
 echo "rescue: $URL -> $PART"
-if wget -q -O - "$URL" | dd of="$PART" bs=1M 2>/dev/null; then
-	sync
-	echo "rescue: 写完了，重启"
-	sleep 2
-	reboot -f
+# Do not rely on a pipe's exit status: dd can return 0 after a truncated
+# download, which would reboot with a half-written p2.  Use a FIFO so wget's
+# own status is still available.
+FIFO=/tmp/xgs87-rescue.img
+rm -f "$FIFO"
+if mkfifo "$FIFO"; then
+	wget -q -O "$FIFO" "$URL" &
+	wget_pid=$!
+	dd if="$FIFO" of="$PART" bs=1M 2>/dev/null
+	dd_rc=$?
+	wait "$wget_pid"
+	wget_rc=$?
+	rm -f "$FIFO"
+	if [ "$wget_rc" = 0 ] && [ "$dd_rc" = 0 ]; then
+		sync
+		echo "rescue: 写完了，重启"
+		sleep 2
+		reboot -f
+	fi
+	echo "rescue: wget rc=$wget_rc dd rc=$dd_rc"
 fi
 echo "rescue: 下载/写入失败，给你一个 shell（ip / wget / dd 都在）"
 exec sh

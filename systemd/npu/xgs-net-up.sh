@@ -56,6 +56,16 @@ ip link set "$NTB" mtu 2022 2>/dev/null || true
 ip link set "$NTB" up
 modprobe 8021q 2>/dev/null
 
+# Remove DSA ports that used to be in a bridge but are no longer listed, so
+# changing LAN_PORTS/WAN_PORTS really removes a port instead of only adding.
+for p in p1 p2 p3 p4 p5 p6 p7 p8 sfp; do
+	[ -e "/sys/class/net/$p" ] || continue
+	case " $WAN_PORTS $LAN_PORTS " in
+	*" $p "*) ;;
+	*) ip link set "$p" nomaster 2>/dev/null || true ;;
+	esac
+done
+
 # make_bridge <name> <vid> <ports...>
 make_bridge() {
 	br=$1

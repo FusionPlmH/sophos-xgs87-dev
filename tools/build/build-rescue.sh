@@ -41,8 +41,8 @@ mkdir -p "$R"/{bin,sbin,proc,sys,dev,run,tmp,lib/modules}
 
 echo "== 1/6 从 NPU 的 tar 里取内核和模块"
 # Debian 是 merged-/usr：模块在 ./usr/lib/modules，/lib 是个符号链接。
-# 镜像里没有 /boot/Image（那是装机后由 postinst 钩子从 vmlinuz 解出来的），
-# 只有 vmlinuz-<kver>。分开解：一个通配符没匹配到不该让整条命令失败。
+# 新镜像的 setup.sh 会补 /boot/Image，但这里仍优先用 vmlinuz-<kver>，两者都在时
+# 取哪个都行。分开解：一个通配符没匹配到不该让整条命令失败。
 tar --zstd -xf "$NPU" -C "$WORK" --wildcards './boot/*' 2>/dev/null || true
 tar --zstd -xf "$NPU" -C "$WORK" --wildcards './usr/lib/modules/*' 2>/dev/null || true
 KRUN=
@@ -56,19 +56,23 @@ done
 KVER=
 if [ -n "$KERNEL_DIR" ]; then
 	KVER=$(cat "$KERNEL_DIR/kver")
+else
+	for d in "$WORK"/lib/modules/*; do
+		[ -d "$d" ] && { KVER=${d##*/}; break; }
+	done
+fi
+[ -n "$KVER" ] || { echo "读不出内核版本" >&2; exit 1; }
+if [ -n "$KERNEL_DIR" ]; then
 	SRC_MODS="$KERNEL_DIR/modules/lib/modules/$KVER"
 else
 	SRC_MODS="$WORK/lib/modules/$KVER"
 fi
-for d in "$WORK"/lib/modules/*; do
-	[ -d "$d" ] && { KVER=${d##*/}; break; }
-done
-[ -n "$KVER" ] || { echo "读不出内核版本" >&2; exit 1; }
+[ -d "$SRC_MODS" ] || { echo "找不到 $SRC_MODS" >&2; exit 1; }
 echo "   kernel $KVER"
 
 # 急救要用的模块（EP + ntb 必须；mmc 用来写 eMMC）。急救全程用裸 eth0，
 # 不碰 VLAN，所以 8021q/vlan 不用带。
-KEEP="pci_ep_cfs pcie_dw_plat pci_epf_vntb ntb_core ntb_hw_epf ntb_transport ntb_netdev
+KEEP="pci_ep_cfs pcie_dw_plat pci_epf_vntb ntb_core ntb_transport ntb_netdev
       sdhci sdhci-of-dwcmshc mmc_block dw_mmc"
 mkdir -p "$R/lib/modules/$KVER"
 for m in $KEEP; do

@@ -108,8 +108,8 @@ pstart=fa800       ← 0xFA800 = 1026048 = 原厂 MBR 里 p2 的起始 LBA
    `lspci | grep -c 11ab` 连续 12 次采样恒为 1、`dmesg` 里 `11ab:7080` 的枚举计数不再增长
    （停之前是 31 次且持续增长）。
 
-   已改成：先静等 180 秒**完全不碰 PCIe**，只有确实等不到 NTB 设备时才做**一次**
-   `remove` + `rescan`。
+   已改成：默认先静等 180 秒**完全不碰 PCIe**；只有手动 `xgs-ntb-up.sh --force-rescan`
+   才做**一次** `remove` + `rescan`。`xgs-ntb-watch` 默认也只重建本地 VLAN，不自动重置。
 
 2. **U-Boot 的 `saveenv` 会把 env 写坏（没擦干净就写）**
 
