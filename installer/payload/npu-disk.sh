@@ -18,6 +18,14 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 PAYLOAD=${PAYLOAD:-$HERE}
 . "$PAYLOAD/lib.sh"
 
+# NBD 已在两个镜像里禁用（x86 不带 nbd-client、NPU 不带 nbd-server），
+# 这一项现在跑不起来 —— 直接说清楚，别让它走一半再报 Permission denied。
+if ! command -v nbd-client >/dev/null 2>&1; then
+	echo "NBD 已禁用：这个镜像没有 nbd-client，NPU 镜像也没有 nbd-server。"
+	echo "要用这一项，两个镜像都要把 NBD 装回来（详见图纸里的 NBD 一节）。"
+	exit 1
+fi
+
 PORT=${PORT:-10809}
 NBD=${NBD:-/dev/nbd0}
 
