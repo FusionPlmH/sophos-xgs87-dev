@@ -112,6 +112,13 @@ chown -R admin:admin /home/admin
 # find_npu 就是被这个坑过（明明通却报 NPU 不可达）。
 if command -v setcap >/dev/null 2>&1; then setcap cap_net_raw+ep /usr/bin/ping 2>/dev/null || true; fi
 passwd -l root
+# 维护 U 盘是 live 系统：插上去的人已经有物理访问权，控制台直接用 root 更省事
+# —— 今天实机上一半的坑都是 sudo 提示和串口输出交错造成的（密码被当成命令、
+# 提示被内核刷屏冲掉）。装进内置盘的系统仍然锁 root，admin + sudo 不变。
+if [ "${XGS_LIVE_ROOT:-0}" = 1 ]; then
+	echo 'root:P@ssw0rd' | chpasswd
+	sed -i 's/^root:x:/root:/' /etc/shadow 2>/dev/null || true
+fi
 cat > /etc/ssh/sshd_config.d/10-xgs87.conf <<'EOF'
 PermitRootLogin no
 PasswordAuthentication yes
