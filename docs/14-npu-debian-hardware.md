@@ -579,6 +579,11 @@ ethtool sfp | grep -E 'Speed|Link detected'
 | 自建模块未签名 | `spi_orion: module verification failed: signature and/or required key missing - tainting kernel` | 外挂 DKMS 模块的正常现象，只是 taint 内核；要消掉得自签 + 注册 MOK，收益为零 |
 | eMMC 的 `errors` 标记 | `EXT4-fs (mmcblk0p2): warning: mounting fs with errors` | 2026-11-24 事故留下的标记，不影响读写；离线 `e2fsck -fy` 可清（p3 的 e2fsprogs 1.44 太老，要用 p2 自己的 1.47） |
 
-x86 侧本身没有网卡/显卡硬件，镜像只装最小集。2026-11-25 补了两处**真实缺口**：
-`ethtool`（vNTB 的 `eth0` 出问题时，只有它能看 carrier/speed/driver）和显式的 `zstd`
-（安装器流式解包全靠它，以前只是被 `initramfs-tools` 顺带装进来，等于靠运气）。
+> ℹ️ 两个镜像构建完都会 `rm -rf /var/lib/apt/lists/*`（省 40 MB），所以**装完第一件事是
+> `sudo apt-get update`**，否则 `apt install` 会报 "has no installation candidate"。
+> 2026-11-25 在一台刚装好的 x86 上就踩到了这个（不是源配置错）。
+
+x86 侧本身没有网卡/显卡硬件，镜像只装最小集。2026-11-25 补了三处**真实缺口**：
+`ethtool`（vNTB 的 `eth0` 出问题时，只有它能看 carrier/speed/driver）、显式的 `zstd`
+（安装器流式解包全靠它，以前只是被 `initramfs-tools` 顺带装进来，等于靠运气），
+以及 `wireless-regdb`（见上方 regdb 那一行）。
