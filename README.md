@@ -154,7 +154,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 | NPU SoC | Marvell CN9130（AP807-B0 + CP115-A0），4×A72@1.6G，2 GB DDR |
 | NPU 系统 | p2 目标 **Debian 13.6 / 6.12.117+deb13-arm64**（当前待重刷）；p3 原厂 Buildroot 4.14 完好（档案见 docs/04） |
 | 交换机 | Marvell 88E6193X，MDIO addr 2，product 193，11 口（本机面板 4×RJ45 + 1×SFP） |
-| x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian 13.6 / 6.12.118 |
+| x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian 13.6；`lean` 镜像自带 **6.12.117** 且内核被 hold，`apt-mark unhold linux-image-amd64` 后可升（实机已升到 **6.12.118**，DKMS 自动重编） |
 | x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |
 | NPU console | x86 `/dev/ttyS2`，host 侧 **115200**（老 `image/` 内核才要 57600）；p3 原厂 `root` / `openwrt123`，`image/` 产出的是 `admin` / `P@ssw0rd` |
 | x86 console | RJ45 / micro-USB 二选一，同一个 ttyS0，**115200** |
