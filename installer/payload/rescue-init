@@ -82,25 +82,19 @@ fi
 [ -b "$PART" ] || { echo "rescue: $PART 不存在"; exec sh; }
 echo "rescue: $URL -> $PART"
 # Do not rely on a pipe's exit status: dd can return 0 after a truncated
-# download, which would reboot with a half-written p2.  Use a FIFO so wget's
-# own status is still available.
-FIFO=/tmp/xgs87-rescue.img
-rm -f "$FIFO"
-if mkfifo "$FIFO"; then
-	wget -q -O "$FIFO" "$URL" &
-	wget_pid=$!
-	dd if="$FIFO" of="$PART" bs=1M 2>/dev/null
-	dd_rc=$?
-	wait "$wget_pid"
-	wget_rc=$?
-	rm -f "$FIFO"
-	if [ "$wget_rc" = 0 ] && [ "$dd_rc" = 0 ]; then
-		sync
-		echo "rescue: 写完了，重启"
-		sleep 2
-		reboot -f
-	fi
-	echo "rescue: wget rc=$wget_rc dd rc=$dd_rc"
+# download, which would reboot with a half-written p2.  A subshell records
+# wget's own status without buffering the image (tmpfs cannot hold 1.5 GB).
+RC=/tmp/xgs87-wget.rc
+rm -f "$RC"
+( wget -q -O - "$URL"; echo $? >"$RC" ) | dd of="$PART" bs=1M 2>/dev/null
+dd_rc=$?
+wget_rc=$(cat "$RC" 2>/dev/null || echo 1)
+rm -f "$RC"
+if [ "$wget_rc" = 0 ] && [ "$dd_rc" = 0 ]; then
+	sync
+	echo "rescue: 写完了，重启"
+	sleep 2
+	reboot -f
 fi
-echo "rescue: 下载/写入失败，给你一个 shell（ip / wget / dd 都在）"
+echo "rescue: 下载/写入失败（wget rc=$wget_rc dd rc=$dd_rc），给你一个 shell"
 exec sh

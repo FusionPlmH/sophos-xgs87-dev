@@ -101,7 +101,13 @@ serial_run "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf
 serial_run "booti \$kernel_addr_r \$ramdisk_addr_r:\${rd_size} \$fdt_addr_r" 20 >/dev/null || true
 
 echo "== 等急救系统把 eth0 拉起来，然后喂它整盘影像"
-# vNTB 起来之前 x86 是没有地址的；直接给裸 eth0 配一个，急救系统那边是 10.234.56.1。
+# vNTB 起来之前 x86 是没有地址的；先等 NTB netdev 出现，再给裸 eth0 配一个。
+i=0
+while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ -e /sys/class/net/eth0 ] || { echo "   60 s 内 eth0 没出现（vNTB 没起来）"; return 1; }
 ip link set eth0 up 2>/dev/null || true
 ip addr show dev eth0 | grep -q ' 10.234.56.2/' || ip addr add 10.234.56.2/24 dev eth0
 cd "$WORK" || return 1
