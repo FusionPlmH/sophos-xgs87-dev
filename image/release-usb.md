@@ -115,7 +115,9 @@ TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 �
 而且 HTTP 比 TFTP 好传大文件（能续、能看到进度）。
 
 串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。
-要提速就在 U-Boot 里 `setenv baudrate 460800; saveenv`，x86 侧相应把 `BAUD=460800`。
+要提速就改 U-Boot 的 `baudrate`：**在 NPU 的 Linux 里用 `fw_setenv baudrate 460800`**（它会先擦后写），
+x86 侧相应把 `BAUD=460800`。别在 U-Boot 提示符下反复 `saveenv` —— 那颗 NOR 的 env 写入不先擦除，
+连续写会把 env 写成半截（[docs/23](../docs/23-mcp2210-spi-nor.md) §23.7）。
 （U-Boot 自己配置这个速率；老 image 内核的 2x 分频问题不适用于 U-Boot。）
 
 ## 备份区（`/media/xgs87-bak`）

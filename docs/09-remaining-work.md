@@ -154,7 +154,25 @@ pstart=fa800       ← 0xFA800 = 1026048 = 原厂 MBR 里 p2 的起始 LBA
 
 **还没做完的**
 
-1. **p2 的根文件系统仍是坏的**（当初那句 `dd` 把前 1023 MiB 写到了 LBA 0）。
+0. **先验证 p2 到底坏没坏，别急着重刷**（2026-11-25 补）。分区表回来之后，"p2 内容是否真的被
+   那次 `dd` 冲掉"有两种互斥的现场说法：更早的 `REPORT.md` 记录认为 `No partition table`
+   只是瞬态、MBR 从未丢过（依据是内核日志里 `mmcblk0: p1 p2 p3 p4` 和 p3 正常挂载）；
+   本次复盘认为是整盘 `dd` 真的盖了 LBA 0。那句内核日志**分辨不了**这两种说法（它可能来自
+   `mbrfix` 成功之后的一次启动），`mbrfix` 的 `step=12/pstart=fa800` 也分辨不了 —— 把同一份
+   MBR 再写一遍同样会得到这两个值。只有 p2 本身能分辨：
+
+   ```sh
+   # 从 p3 启动的 NPU 上（原厂 root / openwrt123）
+   mount -o remount,rw /
+   lsblk -o NAME,SIZE,FSTYPE /dev/mmcblk0            # p2 有 ext4 且大小正常？
+   mount -o ro /dev/mmcblk0p2 /mnt && cat /mnt/etc/debian_version
+   ```
+
+   - 能挂上、`/mnt/etc/debian_version` 是 `13.x` ⇒ **p2 是好的，不要重刷**，
+     只把 `bootcmd` 改成 `run bootcmd_deb10g` 再重启即可（原来那条 `dd` 应该是写到了分区节点）。
+   - `mount` 报 `bad magic number` / 结构损坏 / 挂上却是乱数据 ⇒ 才走下面第 1 步重刷 p2。
+
+1. **p2 的根文件系统可能是坏的**（若第 0 步挂不上：当初那句 `dd` 把前 1023 MiB 写到了 LBA 0）。
    分区表修好只是让它"能被找到"，内容还得重刷。**x86 上一条命令**：
 
    ```sh
@@ -172,7 +190,8 @@ pstart=fa800       ← 0xFA800 = 1026048 = 原厂 MBR 里 p2 的起始 LBA
 
 **下一步（按顺序）**
 
-1. 重刷 p2：`NPU=<npu-ip> NPU_PASS=... SRC=/mnt/usb/p2.img sh npu-sshdd.sh`
+1. **先只读验证 p2**（上面第 0 步）。挂得上就只改 `bootcmd`；挂不上再重刷：
+   `NPU=<npu-ip> NPU_PASS=... SRC=/mnt/usb/p2.img sh npu-sshdd.sh`
    （或者用维护盘菜单 2 的 ssh+dd 路径）。刷完把 `bootcmd` 切成 `run bootcmd_deb10g`；
 2. 如果 p2 暂时不刷：p3 原厂完好，`bootcmd=run bootcmd_emmc3` 就能用；
 3. 只有在 p2 也起不来、串口完全没输出时才往硬件方向查：量 12V/3.3V、JTAG 读 AP806

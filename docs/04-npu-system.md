@@ -107,6 +107,32 @@ armada-ep: pcinet: mvmgmt0: started
 
 `mvmgmt0` 是一条"管理以太网"，走 PCIe 到 x86。原厂 x86 侧靠它做带内管理。
 
+原厂的数据面初始化绑在**和 x86 的两次握手上**，所以换掉 x86 的原厂系统后这条链会停在中间：
+
+```
+xgs_dt1_startup.sh
+  └─ armada_target_setup_usfp.sh custom1
+       ├─ insert_mod mv_pcinet_trgt / mv_armada_ep / mv_nwa_target / mvmdio_uio …
+       ├─ ifup mvmgmt0
+       ├─ while true: 读 /sys/kernel/facility/dump_conf 的 handshake，等它 >= 0xb
+       │              ← 实测恒为 0x1（x86 上没有 pcinet host 驱动就没人推进它）
+       ├─ ./NetAgent &  UMSD_NPU &  usfp_startup_armada.sh …   ← 这三行永远轮不到
+       └─ touch /tmp/npu_startup_complete                      ← 从未生成
+```
+
+即使用手工补跑把 `usfp` 拉起来（内存分配、MQA 表初始化都成功），它还会卡在第二道
+`pf#0: Wait till Host change the status to 'Host Management Ready'`；**配交换机的代码在第二道之后**，
+所以 `eth0` 恒 `NO-CARRIER`。这就是"前面板口不通"的原厂原因，也是本仓库改走 vNTB 的理由
+（[17](17-x86-npu-shared-mgmt.md)、[20](20-lan-over-vntb.md)）。
+
+顺带两条常被误判的线索：
+
+- 内核那条 `mdio@12a200/switch@2 has invalid PHY address` **不是硬件故障**：DT 里用的是自定义
+  属性 `phy-addr`，标准 `of_mdio` 只认 `reg`，所以报"无效地址"；交换机本来就由用户态
+  （`mdio_uio` → USFP/DPDK）配置。`gpioget 2 17` = `1` 也说明复位线没被按住。
+- `mvswitch` / `ext4ls` 这类命令"敲了没反应"先怀疑串口，别怀疑命令集（[08](08-console-access.md) §8.5 第 10 条）。
+
+
 ## 4.5 `/opt/sophos` —— 机型数据库
 
 ```

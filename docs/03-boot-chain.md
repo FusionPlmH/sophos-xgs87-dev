@@ -216,6 +216,14 @@ Boot0002* debian  HD(1,GPT,…)/File(\EFI\DEBIAN\GRUBX64.EFI)
 5. **flash 侧全部是好的**：`mtd0` 与参考逐字节一致（SHA-256
    `fe13a2a3…`），env CRC 正常，MCP2210 读到 SR=0。**不要再刷 SPI NOR。**
 
+> ⚠️ **"MBR 到底有没有坏"有两种现场记录，别拿单条日志当判决**。更早的 `REPORT.md`（同一台机器、
+> 11-24）认为 `No partition table - mmc 0` 只是瞬态、MBR 从未丢过，依据是内核日志里
+> `mmcblk0: p1 p2 p3 p4` 和 p3 正常挂载 —— 但这**不构成反证**：只要那份日志来自 `mbrfix`
+> 成功之后的某次启动，两种说法都成立。`mbrfix` 的 `step=12` / `pstart=0xfa800` 也分辨不了，
+> 把同一份 MBR 再写一遍同样会得到这两个值。唯一能分辨的是 p2 现在能不能挂上，
+> 检查命令与判断标准见 [09](09-remaining-work.md) §9.2 第 0 步；**在跑那个只读检查之前
+> 不要重刷 p2**（重刷是破坏性操作）。
+
 ### 当前状态（2026-11-25）
 
 - U-Boot 2019.10 能正常跑到 `Marvell>>`；env 里的 `bootcmd` 已恢复为原厂

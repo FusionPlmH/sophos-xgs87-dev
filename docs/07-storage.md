@@ -165,8 +165,9 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 `step=12`（`part start mmc 0 2` 成功）且 `pstart=0xFA800`（= 1026048，与原厂 MBR 里
 p2 的起始 LBA 完全一致）⇒ 分区表回来了。
 
-⚠️ 但**分区表修好 ≠ p2 能用**：当初那句 `dd` 把 p2.img 的**前 1023 MiB** 写到了 LBA 0，
-所以 p2 自己的超级块不在它该在的位置。分区表恢复后还要把 p2.img 重刷到
+⚠️ 但**分区表修好 ≠ p2 能用**：如果当初那句 `dd` 真的写到了整盘，它会把 p2.img 的**前 1023 MiB**
+写到 LBA 0，p2 自己的超级块就不在它该在的位置。**先按 [09](09-remaining-work.md) §9.2 第 0 步
+只读挂载验证**（挂得上就是只缺 `bootcmd`，不要重刷）；确认挂不上才把 p2.img 重刷到
 `/dev/mmcblk0p2`（**分区节点**），内容才算回来。
 
 **脚本里现有的守卫**（都在 `installer/payload/lib.sh`）：

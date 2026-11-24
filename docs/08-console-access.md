@@ -136,6 +136,14 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
    串口传文件出错是静默的。100 KB 的 `mcp2210-nor.py` 压完 25 KB、base64 后 33.5 KB，
    24 条命令、约 20 秒完成。
 
+10. **U-Boot 提示符下"命令不存在"多半是假象**（2026-11-25 踩到，一度被记成"这份 `help` 是假的、
+    U-Boot 只能跑 `bootcmd`"）：某次排障里 `help` 明明列出 `mmc`/`ext4ls`/`run`，敲进去却全回
+    `Unknown command`，而同一台机器 `bootcmd` 每次都能从 p3 启动。真实原因是那一轮 `/dev/ttyS2`
+    上的输入正被复位风暴打断，命令根本没完整送进 U-Boot（`bootcmd` 是 U-Boot 自己解析的字符串，
+    不经串口，所以不受影响）。判别办法：先 `echo` 一个短串看回显是否完整、停掉 x86 侧的
+    remove/rescan，再用 `npu-uboot.py` 一行一行敲。**不要因为一次 `Unknown command` 就断定
+    命令集缺失** —— `bootcmd` 里的 `run`/`ext4load` 能跑，就说明命令是有的。
+
 ## 8.6 网络怎么来的（现状）
 
 不是临时 `ifconfig` 了，全部由 systemd 单元管，细节见 [20](20-lan-over-vntb.md)：
