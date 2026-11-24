@@ -13,6 +13,9 @@ netcat-openbsd
 # ethtool: eth0 is the vNTB netdev -- when the link misbehaves this is the only
 # tool that shows carrier/speed/driver for it.
 ethtool
+# wireless-regdb: cfg80211 logs "failed to load regulatory.db (-2)" on every
+# boot without it (seen in the first x86 boot log after reinstalling).
+wireless-regdb
 pciutils,usbutils,dmidecode
 iperf3,tcpdump
 # the maintenance USB built by installer/mkusb.sh runs on this side

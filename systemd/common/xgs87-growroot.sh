@@ -33,11 +33,30 @@ if [ -n "$LAST" ] && [ "$PART" != "$LAST" ]; then
 fi
 
 echo "xgs87-growroot: growing $DISK partition $PART ($ROOT)"
+# The image is written with dd, so the GPT still says "the disk ends where the
+# image ended" and the backup header sits in the middle of the real device.
+# growpart refuses to touch a table in that state, so move the header first
+# (this is what xgs87-usbstore.sh already did for the maintenance stick).
+if command -v sgdisk >/dev/null 2>&1; then
+	sgdisk -e "$DISK" >/dev/null 2>&1 ||
+		echo "xgs87-growroot: sgdisk -e failed (table may still be short)" >&2
+fi
 # growpart rewrites the partition entry and nudges the kernel; the kernel
 # refuses a full table re-read for a mounted disk, which growpart knows about.
-growpart "$DISK" "$PART" || echo "xgs87-growroot: growpart said no, trying resize anyway"
-resize2fs "$ROOT" || echo "xgs87-growroot: resize2fs failed, filesystem left as is"
+grown=1
+growpart "$DISK" "$PART" || {
+	echo "xgs87-growroot: growpart refused; leaving root at its current size" >&2
+	grown=0
+}
+if [ "$grown" = 1 ]; then
+	resize2fs "$ROOT" || {
+		echo "xgs87-growroot: resize2fs failed, will retry on next boot" >&2
+		grown=0
+	}
+fi
 
-mkdir -p /var/lib/xgs87
-: > "$MARKER"
+if [ "$grown" = 1 ]; then
+	mkdir -p /var/lib/xgs87
+	: > "$MARKER"
+fi
 df -h / || true

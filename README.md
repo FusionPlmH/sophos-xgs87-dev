@@ -163,6 +163,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 | NPU console | x86 `/dev/ttyS2`，host 侧 **115200**（老 `image/` 内核才要 57600）；p3 原厂 `root` / `openwrt123`，`image/` 产出的是 `admin` / `P@ssw0rd` |
 | x86 console | RJ45 / micro-USB 二选一，同一个 ttyS0，**115200** |
 | 主机名 | x86 = **`xgs-debian-x86`**，NPU = **`xgs-debian-npu`**（`image/` 产出；p3 原厂仍是 `marvell`） |
+| DNS | 默认 **`1.1.1.1` / `8.8.8.8`**（NPU 写 `/etc/resolv.conf.head`，DHCP 下发的服务器留作后备；x86 用 `resolved.conf.d` + WAN 链路 `UseDNS=no`） |
 | 存储 | NPU：4 MB SPI NOR（U-Boot+env）+ 7.28 GiB eMMC；x86：16 GB eMMC |
 | MAC | VPD 的 7 个连续地址：p1–p4 = base+0..3，sfp = base+4，end0/ethaddr = base+5（docs/06 §6.6） |
 

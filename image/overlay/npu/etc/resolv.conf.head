@@ -1,0 +1,8 @@
+# Public resolvers, used as the default DNS on both sides.
+#
+# The NPU runs without systemd-resolved and lets dhcpcd write /etc/resolv.conf;
+# this file is prepended to whatever the lease provides, so these two are tried
+# first and the DHCP servers stay as fallbacks.  Override per site by editing it
+# (or delete it to go back to DHCP-only).
+nameserver 1.1.1.1
+nameserver 8.8.8.8
