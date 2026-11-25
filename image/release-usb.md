@@ -4,7 +4,7 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-usb.img.zst` | **整盘镜像**：可启动 U 盘，自带 x86 + NPU 两套安装包和串口菜单 | 解开约 1.6 GB（`lean`，2026-11-24 实测 1.56 GiB） |
+| `debian-usb.img.zst` | **整盘镜像**：可启动 U 盘，自带 x86 + NPU 两套安装包和串口菜单 | 解开约 1.16 GiB（`lean`，2026-11-25 实测；ESP 从 476 MiB 降到 128 MiB 后少了约 348 MiB） |
 
 插上从 U 盘启动，x86 串口上出菜单：格式化重装 x86、把新 rootfs 推给 NPU、备份内置盘、看状态。
 这台双架构机器的急救盘——升级、刷坏、换系统都靠它。
@@ -45,7 +45,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 
 **Windows**
 
-1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 1.6 GB）。
+1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 1.16 GiB）。
 2. Rufus 选这个 `.img`，**分区类型 GPT、写入方式 DD 镜像**，开始写。
    Win32DiskImager 也行；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
 

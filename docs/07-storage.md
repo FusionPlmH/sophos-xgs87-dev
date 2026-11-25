@@ -91,7 +91,7 @@ mmcblk0      14.7 GiB
   所以这个尺寸只能在构建时定（`image/mkdisk.sh` 的 `ESP_MIB`）。要改就重新构建 + 重装，
   别指望已装好的机器自己变。构建日志会打印 ESP 占用率，超过 80% 直接告警 —— ESP 写满会让
   `grub-install` 失败，下一次更新就起不来。
-- **发布镜像约 727 MiB**（未压缩）：ESP 128 MiB + ext4 root（~440 MiB 内容 + 192 MiB 余量 +
+- **发布镜像约 727 MiB**（未压缩）：ESP 128 MiB + ext4 root（387 MiB 内容 + 192 MiB 余量 +
   元数据）。首次开机 `xgs87-growroot` 把 p2 扩到盘尾（实测 597 MiB → 14.6 GB）。
 - ℹ️ **下载体积几乎不受 ESP 大小影响**（`.zst` ≈ 208 MB）：ESP 里绝大部分是零，zstd 本来就能
   压掉。变化的是**未压缩镜像**，只影响 dd 时间（实测 eMMC 约 20 MB/s）。

@@ -45,8 +45,8 @@ cp cn9130-sophos-xgs87w-sfp10g.dtb /mnt/boot/
 
 | 变体 | root 解开 | 1.5 GB 的 `p2` | 内核升级 |
 |---|---|---|---|
-| `full`（默认） | ~900 MB | ❌ 装不下（占用 90% 以上） | DKMS 自动重编 |
-| `lean` | ~525 MB（x86 实测，arm64 同量级） | ✅ 约一半 | 内核被 `apt-mark hold`，升级见 `/opt/xgs87/kernel/npu/install.sh` |
+| `full` | **815 MiB**（2026-11-25 实测） | ❌ 装不下（占用 90% 以上） | DKMS 自动重编 |
+| `lean`（发布用，**workflow 默认**） | **500 MiB** 内容 / 190 MB 压缩（2026-11-25 实测；装上后 `df` 报 545 MiB） | ✅ 约三分之一 | 内核被 `apt-mark hold`，升级见 `/opt/xgs87/kernel/npu/install.sh` |
 | `base` | ~550 MB | ⚠️ 勉强 | 装完自己跑一次 `kernel/npu/install.sh` |
 
 ```sh
