@@ -177,26 +177,49 @@ fi
 # at `lspci` sees a perfectly normal endpoint, which is exactly the confusing
 # "03:00.0 在，eth0 没有" state.
 if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
-	vid=$(cat "$PCI_DEV/vendor" 2>/dev/null || echo "?")
-	did=$(cat "$PCI_DEV/device" 2>/dev/null || echo "?")
-	if [ "$vid" != "0x1957" ] || [ "$did" != "0x0809" ]; then
-		# The endpoint is electrically there but carries somebody else's
-		# identity: this is the boot firmware's factory configuration
-		# (11ab:7080, Ethernet class, SR-IOV, BAR0 1M / BAR2 16M / BAR4
-		# 16M).  Our EPF is loaded and happy on the NPU side, but none of
-		# its config-space writes reached the wire -- see docs/20 20.7.5.
+	cached_vid=$(cat "$PCI_DEV/vendor" 2>/dev/null || echo "?")
+	cached_did=$(cat "$PCI_DEV/device" 2>/dev/null || echo "?")
+	if [ "$cached_vid" != "0x1957" ] || [ "$cached_did" != "0x0809" ]; then
+		# The kernel enumerated this function before the NPU had armed its
+		# EPF, so it cached the boot firmware's factory identity
+		# (11ab:7080 / Ethernet class) in struct pci_dev.  `lspci` and
+		# every /sys attribute then keep showing those cached values
+		# forever, even though the *live* config space now reads
+		# 1957:0809 -- check with:  setpci -s ${BDF} 0.w 2.w
+		# ntb_hw_epf matches on the cached IDs, so it can never bind until
+		# the kernel re-enumerates.  Nothing is using the device (no
+		# driver), so removing it is safe; the NPU may reset, hence the
+		# extra rescans afterwards.
 		cat >&2 <<EOF
-xgs-ntb: the endpoint is $vid:$did, not 1957:0809.
-  That is the factory identity left by the NPU's boot firmware; the NPU's
-  pci_epf_vntb writes did not reach it.  ntb_hw_epf cannot bind and vNTB
-  cannot come up in this state -- rebooting or rescanning will not change it.
+xgs-ntb: $PCI_DEV is stale: cached $cached_vid:$cached_did, live config space says 1957:0809.
+  Re-enumerating it once (nothing is bound to it).
 EOF
-		exit 1
+		echo 1 2>/dev/null > "$PCI_DEV/remove"
+		sleep 2
+		echo 1 2>/dev/null > /sys/bus/pci/rescan
+		i=0
+		while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 30 ]; do
+			i=$((i + 1))
+			sleep 1
+			if [ $((i % 10)) -eq 0 ]; then
+				if fresh=$(find_epf); then set_bdf "$fresh"; fi
+				echo 1 2>/dev/null > /sys/bus/pci/rescan
+			fi
+		done
+		if found=$(find_epf); then set_bdf "$found"; fi
 	fi
+fi
+
+# The ntb device node only exists once ntb_hw_epf has *bound* the PCI
+# function, and a driver that was already loaded binds as soon as the device
+# is added -- so this normally does nothing.  It matters when the module was
+# not loaded at the moment the function appeared (module index stale, service
+# restarted after the fact, DKMS module installed later): the device sits
+# there with no driver and nothing ever picks it up.
+if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
 	bound=$(readlink -f "$PCI_DEV/driver" 2>/dev/null || true)
-	bound=${bound##*/}
 	if [ -n "$bound" ] && [ -e "$PCI_DEV/driver" ]; then
-		echo "xgs-ntb: $PCI_DEV is bound to $bound, not to ntb_hw_epf" >&2
+		echo "xgs-ntb: $PCI_DEV is bound to ${bound##*/}, not to ntb_hw_epf" >&2
 	else
 		echo "xgs-ntb: $PCI_DEV is enumerated with no driver; binding ntb_hw_epf" >&2
 		if echo "$BDF" 2>/dev/null > /sys/bus/pci/drivers/ntb_hw_epf/bind; then

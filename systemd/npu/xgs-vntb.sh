@@ -36,6 +36,14 @@ N=$F/pci_epf_vntb.0
 echo 0x1957 > "$F/vendorid"
 echo 0x0809 > "$F/deviceid"
 echo 16     > "$F/msi_interrupts"
+# 明确指定三个 BAR：控制 / 门铃 / 内存窗口。ntb_hw_epf 对 1957:0809 用的就是
+# ctrl=BAR0、db=BAR2、mw=BAR4 这张表（见 kernel/x86/ntb_hw_epf.c 的 mx8_map）。
+# 不写这几行时靠 pci_epc_get_next_free_bar() 配合 BAR_1/3/5 的 BAR_RESERVED
+# 也能得到同样的 0/2/4，但那是个隐含约定 —— 显式写死，省得以后改 features 时
+# 悄悄错位。openwrt-sophos-xgs107 也是这么配的（见 docs/20 §20.7.7）。
+echo 0      > "$N/ctrl_bar"
+echo 2      > "$N/db_bar"
+echo 4      > "$N/mw1_bar"
 echo 4      > "$N/db_count"
 echo 128    > "$N/spad_count"
 echo 1      > "$N/num_mws"

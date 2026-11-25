@@ -278,37 +278,77 @@ sudo lspci -nn -d 1957: ; ls /sys/bus/ntb/devices/
   15 s 再 rescan 一次
 - 这是「最后一次尝试」，不是常规路径；正常开机永远走不到这里
 
-### 20.7.5 现在的真实状态（2026-11-25 实测）：EP 的配置写没有落到线上
+### 20.7.5 真正的原因（2026-11-25 实测）：`lspci` 看的是**缓存**的身份
 
-这一条是**结论**，不是猜测。实测步骤与结果：
+这一条是查了很久才定下来的，值得记住：**`lspci`、`/sys/bus/pci/devices/.../vendor`
+（`device`、`class` 同样）显示的是内核在枚举那一刻缓存的值，不是活的配置空间。**
 
-| 步骤 | 结果 |
+于是出现了这样的画面：
+
+```
+$ sudo lspci -nn -s 03:
+03:00.0 Ethernet controller [0200]: Marvell [11ab:7080]        ← 缓存
+$ sudo setpci -s 03:00.0 0.w 2.w 8.l
+1957                                                            ← 活的
+0809
+05000000
+$ cat /sys/bus/pci/devices/0000:03:00.0/vendor
+0x11ab                                                          ← 缓存，永远不变
+```
+
+也就是说：**NPU 侧的 `pci_epf_vntb` 写得完全正确**（线上确实是 `1957:0809`、
+class `0x050000`）。问题是主机在 NPU 还没 arm 端点的时候就把这个 function 枚举了，
+缓存了启动固件的原厂身份 `11ab:7080`；`ntb_hw_epf` 是按**缓存值**做匹配的，所以
+永远匹配不上。**plain rescan 对已经存在的设备不会重读 ID**，只有
+`remove` + `rescan`（重新枚举）才行。
+
+修法与验证（同一台机器，实测）：
+
+```sh
+sudo sh -c 'echo 1 > /sys/bus/pci/devices/0000:03:00.0/remove
+            sleep 2; echo 1 > /sys/bus/pci/rescan'
+lspci -nn -s 03:      # → 03:00.0 RAM memory [0500]: Freescale [1957:0809]
+ls /sys/bus/ntb/devices/   # → 0000:03:00.0   （ntb_hw_epf 绑上了）
+sudo /usr/local/sbin/xgs-ntb-up.sh
+```
+
+结果：`eth0` / `eth0.100` / `eth0.200` 全部起来，`eth0.100` 从上游拿到 DHCP
+地址和默认路由（实测，地址从略）—— **x86 现在能上网了**，vNTB 数据通路完全正常。
+
+`xgs-ntb-up.sh` 已经按这个做了：等不到 NTB 设备、但 PCI function 在、且它的
+**缓存** ID 不是 `1957:0809` 时，自动 `remove`+`rescan` 一次（设备上没有驱动，
+移除是安全的；NPU 可能因此复位，所以之后还补了 rescan）。
+
+> 排查手法：判断端点身份**必须用 `setpci` 读活值**（`setpci -s 03:00.0 0.w 2.w
+> 8.l`），`lspci` / sysfs 只能用来判断"内核此刻认为它是什么"。
+
+### 20.7.6 附带的恢复手段：拉一次 Link Disable 就能复位 NPU
+
+2026-11-25 有一次 NPU 卡死在启动里（串口一个字都不出、板子 ping 不通）。用
+`tools/on-x86/x86-linkoff-test.sh` 里那套 Link Disable 写法，对**根端口**
+`00:03.1` 的 `CAP_EXP+10.w` 置 bit4 再清掉，NPU 立刻整机复位并从 BL1 重新启动，
+串口日志完整。这条比 MCP2210 hold/release 省事，而且不需要额外工具。
+
+### 20.7.7 对照开源实现 openwrt-sophos-xgs107（同一颗 SoC，很有参考价值）
+
+[nicologiuliani6/openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107)
+是把 XGS 87/107 的两颗 CPU 都刷成 OpenWrt 的项目，vNTB 那部分和我们做的是同一件事。
+它的 `docs/npu-x86-link.md` 把坑列得很全，逐条对照我们现在的状态：
+
+| 他们的结论 | 我们的状态 |
 |---|---|
-| NPU 侧完全重启后，`pci_epf_vntb` 正常 probe（`vntb-dbg: set_bar ctrl bar=0`，`pci-vntb ... eth0 created`） | ✅ 没有报错 |
-| x86 根端口 `00:03.1` 的 Link Status | `0x7023` → **Gen3 ×2，DLL Link Active = 1** |
-| x86 `echo 1 > /sys/bus/pci/rescan` 之后 | `03:00.0` 出现 |
-| x86 读到的身份 | `Ethernet controller [0200]: Marvell [11ab:7080]`，BAR0 **1M** / BAR2 **16M** / BAR4 **16M**，SR-IOV 6 VF |
-| 再重启一遍 NPU、**不做任何 rescan**、直接 `lspci` 读活值 | 同上，仍是 `11ab:7080` 与 1M/16M/16M |
+| EP 节点 `snps,dw-pcie-ep`，`reg-names = dbi/dbi2/addr_space` = `0xf2600000` / `0xf2604000` / `0x80_0000_0000`，删掉 `dma-coherent` | **完全一致**（`board/cn9130-sophos-xgs87w-sfp10g.dts`） |
+| `.align = SZ_1M`（BAR 匹配 iATU 忽略目标地址低 20 位） | **已有**（`ntb/0002`） |
+| 端点只实现偶数 BAR，主机按 ctrl=0/db=2/mw=4 找 | **已有**（`BAR_1/3/5 = BAR_RESERVED`），现在还在 `xgs-vntb.sh` 里把这三个 BAR 号**写死** |
+| 必须用 MSI，不能 MSI-X（DW 核宣称 MSI-X 但只发 MSI） | **已有**（`.msix_capable = false`，主机侧优先 MSI） |
+| `transport_mtu=2048` 两侧都要 | **已有** |
+| 1 MiB 窗口只有 15 个 slot，默认 64 KiB 帧导致每个小包都要等一次往返 | 同上，`transport_mtu=2048` 解决 |
+| 端点侧轮询要低于一个 tick | 我们用的是 **hrtimer**（`ntb/0001` 里 `poll_ns`），比他们的 1 ms `delayed_work` 更细 |
+| **U-Boot 留下的 iATU 窗口要 disable** | **暂未采用**：我们的 BAR 匹配目前是通的（vNTB 实测拿到 DHCP + 默认路由）。这一条只有在"主机访问落到错误 DDR"时才需要；盲加反而有把现在能用的窗口关掉的 Risk，所以先记在这里，出现症状再启用（写法就是他们 951 补丁里那 4 行 `dw_pcie_disable_atu()`） |
+| 端点消失会让主机自己重启（链路耦合） | 已知，见 [docs/09](09-remaining-work.md) |
 
-也就是说：**BAR 布局也是原厂那一套**，而我们 NPU 侧配的是 BAR0/BAR2/BAR4 各 1 MiB
-（`set_bar` 打印过、`pci-vntb` 也建起来了）。结论只能是 —— **Linux 侧对 EP
-配置空间（header 和 BAR/iATU）的写根本没有生效**，端点上留的还是 U-Boot/ATF
-配好的原厂状态。这一状态下 `ntb_hw_epf` 永远匹配不上 `1957:0809`，vNTB 起不来；
-rescan、重启 x86、重启 NPU 都改变不了它。
-
-对比 [17](17-x86-npu-shared-mgmt.md) §17.6：**vNTB 真正跑通的那次（2026-11-23）
-是"自编内核 + 自建 DT"**。现在这个镜像用的是 Debian 官方内核
-（`CONFIG_PCIE_DW_EP=y`，`dw_pcie_ep_write_header` 在 vmlinux 里）+ 仓库里的
-`board/*.dts`。两者差别还没定位到具体一处，已知配置项（`reg-names = dbi/dbi2/
-addr_space`、`num-ib/ob-windows`、`max-functions = 1`、`dma-coherent` 已删）都对，
-驱动也没有报错 —— 所以**这是一个未解决的缺口**，不是"再 rescan 一次"能解决的。
-
-`xgs-ntb-up.sh` 现在会认这个状态并直接说出来（`endpoint is 0x11ab:0x7080, not
-1957:0809` + 解释），不再傻等 180 秒然后报"设备没出现"。
-
-> 实际影响有限：NPU 的安装/维护走串口 + TFTP 那套阶梯，不依赖 vNTB；NPU 自己
-> 的面板口（`br-wan`/`br-lan`）是正常的。缺的是 **x86 没有自己的网口**，
-> 所以 x86 目前上不了网。
+他们没提到的一点、但这次真正卡住我们的是 **§20.7.5 的缓存身份问题** —— 他们大概
+每次装完都是整机冷启动，主机枚举时端点已经 armed，所以撞不上。
 
 ## 20.8 重启的真实代价（一次完整实测）
 
