@@ -209,6 +209,17 @@ banner、串口零输出），只能断电。
 10 秒的时候，`modprobe -r` 卸 vNTB 栈、大的 ext4 写入、卡住的 PCIe 访问都能让用户态
 停顿超过 10 秒，于是 SoC 在恢复过程中被自己复位 —— 2026-11-26 实测这直接变成
 「NPU 每 30 秒重启一次」的风暴。60 秒仍然抓得住真正的死机，喂狗进程每 4 秒喂一次。
+
+⚠️ `sbsa_gwdt` 是**从 initramfs 里**装起来的，所以光写 `/etc/modprobe.d` 不生效 ——
+必须再跑一次 `update-initramfs -u -k all`（否则开机还是 10 秒）。改完之后确认：
+
+```sh
+grep -c xgs-watchdog /boot/initrd.img-$(uname -r)     # lsinitramfs 里能看到
+cat /sys/class/watchdog/watchdog0/timeout              # 运行中应当是 60
+```
+
+要在不重启的情况下立刻生效：`systemctl stop xgs-watchdog; printf V > /dev/watchdog0;
+modprobe -r sbsa_gwdt; modprobe sbsa_gwdt; systemctl start xgs-watchdog`。
 ## 还没做的
 
 - 面板 LED 极性、`p5`–`p8` 的用途没验过。
