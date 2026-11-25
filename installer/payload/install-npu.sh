@@ -119,28 +119,16 @@ serial_repair() {
 }
 
 # 没有 nbd-server 时的退路：ssh + tar 流式解包（NPU 只要 tar 和 zstd）
+#
+# 这条路在"NPU 正跑着 tar/zstd 的那个镜像"上是**走不通的**：目标是它的根分区，
+# 而根分区正挂着，`mkfs.ext4` 会直接拒绝（"is mounted; will not make a
+# filesystem here!"，加了 -F -F 也只是继续到 "Device or resource busy"）。
+# 2026-11-25 在实机上确认过。真要用它，NPU 得先停进 急救 initramfs / U-Boot
+# 那种"根没挂"的状态；在那之前请走 ssh + dd。
 stream_install() {
-	echo "== ssh 直接解包到 $PART（不需要 nbd）"
-	npu_ssh "umount /mnt 2>/dev/null || true
-		mkfs.ext4 -q -F -L xgsroot $PART
-		mkdir -p /mnt
-		mount $PART /mnt
-		echo mounted" || return 1
-	echo "   解包（190 MB 走 vNTB，1-2 分钟）"
-	zstd -dc "$TAR" | npu_ssh_stream 'tar -xpf - -C /mnt' || return 1
-	cat "$DTB" | npu_ssh_stream \
-		'mkdir -p /mnt/boot && tee /mnt/boot/cn9130-sophos-xgs87w-sfp10g.dtb >/dev/null' || return 1
-	# bootcmd_deb loads these two fixed names; tar unpacking does not run the
-	# kernel postinst hooks that normally create them.
-	npu_ssh 'kver=$(ls /mnt/lib/modules 2>/dev/null | sort -V | tail -1)
-		if [ -n "$kver" ]; then
-			[ -e /mnt/boot/Image ] || ln -f "/mnt/boot/vmlinuz-$kver" /mnt/boot/Image 2>/dev/null || cp -f "/mnt/boot/vmlinuz-$kver" /mnt/boot/Image
-			[ -e /mnt/boot/initrd.img ] || ln -f "/mnt/boot/initrd.img-$kver" /mnt/boot/initrd.img 2>/dev/null || cp -f "/mnt/boot/initrd.img-$kver" /mnt/boot/initrd.img
-		fi' || return 1
-	npu_ssh "sync; umount /mnt; echo done" || return 1
-	echo "== 写完了，让它重启"
-	npu_ssh "pkill -f 'nbd-server' 2>/dev/null || true; (sleep 1; reboot) >/dev/null 2>&1 &" || true
-	return 0
+	echo "== ssh + tar 需要目标分区没被挂载，NPU 现在正跑在 $PART 上 —— 跳过"
+	echo "   （用 ssh + dd 那一级，或者先让它停在 U-Boot/急救包里）"
+	return 1
 }
 
 # 连 tar/zstd 都没有时的退路：x86 这边造一个等大的 ext4 镜像，ssh + dd 整块灌进去。

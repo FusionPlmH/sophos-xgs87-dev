@@ -105,17 +105,30 @@ fi
 
 echo "== 写到 $NPU:$PART（NPU 上正在用的根分区，它会崩）"
 sync
+
+# dd 要 root 才能打开块设备，而 ssh 登录的往往是 admin（我们自己的镜像）而不是
+# root。sudo 又不能直接读 stdin —— 那会把镜像开头几十字节当成密码吃掉。所以用
+# askpass 把密码从旁路喂给 sudo，stdin 留给镜像。原来那版直接 `dd`，在 admin
+# 登录时只会得到 "Permission denied"，而且末尾那句 `sync` 会把 dd 的退出码盖成
+# 0（`ssh "sync; dd …; sync"` 的返回值是最后一条命令的），于是失败被当成成功。
+DDCMD="dd of=$PART bs=1M conv=fsync"
+if [ "$login" != root ]; then
+	ssh $SSHOPT "$login@$NPU" \
+		"printf '#!/bin/sh\nprintf \"%%s\\n\" %s\n' '$NPU_PASS' > /tmp/.xgs87-ask; chmod 700 /tmp/.xgs87-ask" ||
+		die "写不了 askpass 助手"
+	DDCMD="SUDO_ASKPASS=/tmp/.xgs87-ask sudo -A dd of=$PART bs=1M conv=fsync"
+fi
 dd_rc=0
-ssh $SSHOPT "$login@$NPU" "sync; dd of=$PART bs=1M; sync" <"$IMG" || dd_rc=$?
+ssh $SSHOPT "$login@$NPU" "$DDCMD" <"$IMG" || dd_rc=$?
 
 echo "== 回读校验前 4 MiB"
 a=$(dd if="$IMG" bs=1M count=4 2>/dev/null | md5sum | cut -d' ' -f1)
 b=$(ssh $SSHOPT "$login@$NPU" "dd if=$PART bs=1M count=4 2>/dev/null | md5sum" 2>/dev/null | cut -d' ' -f1)
 echo "   本地 $a"
 echo "   NPU  ${b:-回读失败（NPU 崩了，属正常）}"
-[ -n "$SRC" ] || rm -f "$IMG"
 
 if [ "$a" = "$b" ]; then
+	[ -n "$SRC" ] || rm -f "$IMG"
 	echo "== 校验一致，写完了"
 	exit 0
 fi
