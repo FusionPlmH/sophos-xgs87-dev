@@ -253,9 +253,11 @@ e2fsprogs，而是 initramfs-tools 的 stock `fsck` hook 有个反直觉的分�
 | 把 x86 的 U 盘"共享 / 反射"给 NPU | usbip over vNTB | ❌ **明确不做**。要在两端各配一次、用完还得手动 detach，导出期间设备在本机消失。2026-11-25 试通之后已经从固件里删干净 |
 
 结论：**"用 USB 写 NPU" 现实里只有两种含义** —— U 盘启动 x86 再由它写 NPU（日常升级），
-或者 MCP2210 写 SPI NOR（救砖）。中间那条 U-Boot+tftp 只缺一块 USB 网卡，别的都齐了。
+或者 MCP2210 写 SPI NOR（救砖）。U-Boot+tftp 那条 2026-11-25 已证伪并删除（U-Boot 的网完全不通）。
 
 ### 11.2.8 p2 被写坏之后：面板口急救（2026-11-25 实测走通）
+
+> 可直接照着敲的完整 runbook 在 [14](14-rescue.md) §14.11；本节留的是"为什么"和实测数据。
 
 那天 `xgs87-reflash.sh install` 的 `dd` 在冻结的根上失败了，报错又被 `2>/dev/null` 吞掉，
 p2 的 ext4 只剩 `e2fsck` 捞出来的 11 个文件 —— 也就是**根分区彻底没了**，而当时 NPU 上、
@@ -322,7 +324,7 @@ python ymodem-com.py COM5 cmd "setenv bootargs 'console=ttyS0,115200n8 earlycon=
 python ymodem-com.py COM5 cmd 'booti 0x07000000 0x20000000:${rd_size} 0x06f00000'
 ```
 
-急救 init（[rescue-init](../../installer/payload/rescue-init)）只干三件事：装
+急救 init（[rescue-init](../installer/payload/rescue-init)）只干三件事：装
 `libphy/mvmdio/mvpp2/dsa_core/tag_dsa/mv88e6xxx/bridge` 把面板口 p1 拉起来；把 vNTB 的
 `eth0` 和 `p1..p4` 一起塞进 `br0`（`10.234.56.11/24`）；然后 `wget | dd` 写整盘、
 比 sha256、`reboot -f`。PC 侧只要 `python -m http.server 8080 --bind 10.234.56.10`
@@ -371,9 +373,10 @@ vNTB（PCIe）。vNTB 只通到 x86，而 x86 上没有那份镜像（要塞进�
    `Kernel panic - not syncing: No working init found`。日志里**看不到** `Run /init as
    init process` 这一行就是它 —— 包本身好好的，只是少了那个符号链接。`build-rescue.sh`
    现在会 `ln -sf busybox bin/sh`。
-2. **急救 init 没有 `modprobe sdhci / sdhci-of-dwcmshc / mmc_block`** →
-   `/dev/mmcblk0p2` 压根不存在，`[ -b $PART ]` 直接落到救急 shell。Debian 的 arm64 内核
-   把这些编成模块，而 initramfs 里没有 udev 帮你按需加载。
+2. **急救 init 没有点 eMMC 驱动** → `/dev/mmcblk0p2` 压根不存在，`[ -b $PART ]` 直接落到
+   救急 shell。而且这颗 SoC 的 eMMC 归 **`sdhci-xenon-driver`**（驱动名 `xenon-sdhci`）管，
+   `sdhci-of-dwcmshc` 加载"成功"但永不 bind（只认 `snps,dwcmshc-sdhci`）。initramfs 里没有
+   udev 帮你按需加载，顺序也得对。
 3. **透传进程会无限等下去** → NPU 一旦 panic 就不再读串口，x86 的 `tcsetattr(TCSADRAIN)`
    和 write 就永远不返回，**x86 的 console 彻底哑掉**（打什么都是石沉大海），只能拔电。
    `relay.py` 现在两个方向都设了 5 s 上限并丢字节继续，还挂了 SIGHUP/SIGTERM 处理器。

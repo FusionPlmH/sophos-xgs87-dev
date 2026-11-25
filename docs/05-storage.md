@@ -121,10 +121,10 @@ mmcblk0      14.7 GiB
   **这份 PC 上的 `p2.img` 一直没有刷回机器**；机器上的 p2 是 2026-11-25 现场补的硬链接，
   补完即可启动（[03](03-boot-chain.md) §3.6）。新的 `debian-npu.tar` 已经由
   [image/setup.sh](../image/setup.sh) 自动补齐这两个名字。
-- initrd 是**未压缩 cpio**（1705 项），含 `ext4.ko`、`jbd2.ko`、`sdhci-of-dwcmshc.ko`、`mvpp2.ko`、
+- initrd 是**未压缩 cpio**（1705 项），含 `ext4.ko`、`jbd2.ko`、`sdhci-xenon-driver.ko`、`mvpp2.ko`、
   `dsa_core.ko`，**但没有 `mv88e6xxx.ko`**（交换机驱动只在 rootfs 的 `/lib/modules` 里）。
   所以 initramfs 阶段只有 `mvpp2` 的口能通；root 挂上、systemd 加载 rootfs 里的 `mv88e6xxx` 之后
-  才是九口全通。`CONFIG_EXT4_FS=m`/`MMC_SDHCI_OF_DWCMSHC=m`，所以**不能扔掉 initrd 直接 `booti Image - dtb`**。
+  才是九口全通。`CONFIG_EXT4_FS=m`/`MMC_SDHCI_XENON=m`，所以**不能扔掉 initrd 直接 `booti Image - dtb`**。
 - 地址不冲突：`kernel_addr_r` 0x07000000 + 36 MiB、`fdt_addr_r` 0x06f00000、`ramdisk_addr_r` 0x0a000000 + 34 MiB。
 
 ### 完整备份命令（在 NPU 上）

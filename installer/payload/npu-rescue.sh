@@ -90,8 +90,10 @@ stty -F "$TTY" "$BAUD" raw -echo -crtscts 2>/dev/null || true
 push() {
 	_n=$1; _addr=$2
 	echo "   loady $_addr  ← $_n"
-	serial_uboot "loady $_addr" 1 >/dev/null 2>&1 || true   # 让 U-Boot 打出 "Ready for binary (ymodem) ..."
-	python3 "$PAYLOAD/ymodem.py" "$TTY" "$WORK/$_n" || return 1
+	# loady 由 ymodem.py 自己敲：它要先排空残留的 'C'，再核对 U-Boot 打出来的
+	# "download to <addr>"。以前这里先敲 loady、只等 1 秒就去发文件头，串口里
+	# 上一次 loady 留下的 'C' 会让数据落到旧地址（2026-11-25 实测踩过）。
+	python3 "$PAYLOAD/ymodem.py" --addr "$_addr" "$TTY" "$WORK/$_n" || return 1
 	serial_read_until "=> " 20 || true
 }
 d=$(ls "$WORK"/cn9130-*.dtb 2>/dev/null | head -1)
@@ -102,6 +104,15 @@ push initramfs.gz '$ramdisk_addr_r' || { echo "   initramfs.gz 推失败"; retur
 serial_uboot 'setenv rd_size ${filesize}' 3 >/dev/null || true
 serial_uboot "unzip \$ramdisk_addr_r $INITRD_RAW; setenv rd_size \${filesize}" 90 >/dev/null ||
 	{ echo "   unzip initramfs 失败"; return 1; }
+# 把解压后的大小**读成字面量**再用。`booti ...:${rd_size}` 一旦在那里被别的东西
+# 展开成空值，U-Boot 会把 initrd 放到 0x80000000（DRAM 之外），内核一个字符都
+# 不打就死 —— 2026-11-25 踩过，排查了很久。
+RD_SIZE=$(serial_uboot 'printenv filesize' 10 | sed -n 's/^filesize=//p' | tr -d '\r' | head -1)
+case "$RD_SIZE" in
+[0-9a-fA-F]*) ;;
+*) echo "   读不出 unzip 之后的大小（filesize），不往下走"; return 1 ;;
+esac
+echo "   initramfs 解压后 $((0x$RD_SIZE)) 字节"
 if [ "$USE_P2_KERNEL" != 1 ]; then
 	push Image.gz "$SCRATCH_KERNEL_GZ" || { echo "   Image.gz 推失败"; return 1; }
 	serial_uboot "unzip $SCRATCH_KERNEL_GZ \$kernel_addr_r" 120 >/dev/null || { echo "   unzip kernel 失败"; return 1; }
@@ -109,7 +120,7 @@ fi
 
 echo "== 6/6 启动"
 serial_uboot "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.2:$PORT/$IMG_NAME rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.1/24'" 15 >/dev/null || true
-serial_uboot "booti \$kernel_addr_r $INITRD_RAW:\${rd_size} \$fdt_addr_r" 20 >/dev/null || true
+serial_uboot "booti \$kernel_addr_r $INITRD_RAW:0x$RD_SIZE \$fdt_addr_r" 20 >/dev/null || true
 
 echo "== 等急救系统把 eth0 拉起来，然后喂它整盘影像"
 # vNTB 起来之前 x86 是没有地址的；先等 NTB netdev 出现，再给裸 eth0 配一个。

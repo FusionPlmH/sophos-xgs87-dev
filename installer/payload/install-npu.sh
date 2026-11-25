@@ -6,7 +6,7 @@
 #   1. ssh + dd：往 NPU 的块设备上整块写一个等大的 ext4 镜像。只要 busybox 的
 #      dd（原厂系统和我们的镜像都有）。**这是唯一实战验证过的路径**
 #      （2026-11-25：1.5 GiB 走 vNTB 用了 45 秒）
-#   2. U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
+#   2. （已删除）U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
 #      旁路（NPU 一进 U-Boot，vNTB 就断了）。会先停掉 xgs-ntb-watch，免得它
 #      的 PCIe rescan 把刚停住的 U-Boot 打飞
 #   3. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
@@ -197,13 +197,14 @@ fi
 # U-Boot 放最后再试（见 try_uboot）：它会先把 NPU 停进 U-Boot，vNTB 一断就没
 # 退路了，所以必须等 ssh/整块写这些"不动 NPU"的路都失败之后再考虑。
 
-# U-Boot + tftp：NPU 起不来时唯一还能用的路，但得先把 NPU 停进 U-Boot（vNTB 会
-# 断，x86 只能靠面板口的 USB 网卡）。所以它排在所有"不动 NPU"的路之后。
+# U-Boot + tftp：**2026-11-25 实机证伪，已删除**。那台 U-Boot 的网络完全不通 ——
+# 面板口 link/VLAN/PVID 全都对得上，ARP 收不到、TFTP 的 RRQ 也收不到；而且这条路
+# 会先把 NPU 停进 U-Boot（vNTB 立刻断），失败之后就只剩串口。所以 `try_uboot`
+# 只留一个立刻失败的空壳，脚本 npu-uboot-install.sh / tftp.py 一起删了。
 try_uboot() {
 	[ "${NO_UBOOT:-0}" != 1 ] || return 1
-	[ -x "$PAYLOAD/npu-uboot-install.sh" ] || return 1
-	echo "== 试 U-Boot 方式（tftpboot + mmc write）"
-	"$PAYLOAD/npu-uboot-install.sh"
+	echo "   跳过 U-Boot+tftp：这条路 2026-11-25 已证伪（U-Boot 网络不通），别再试"
+	return 1
 }
 
 # 最后一招：串口推 15 MB 急救包进去，让它把 vNTB 拉起来再写整盘。
@@ -234,7 +235,7 @@ if [ -z "$NPU" ]; then
 	cat <<EOM
 == NPU 完全不可达（试过：$NPU_CANDIDATES）。自动流程只剩急救包。
 
-   先确认串口还能看到它（菜单 4 → NPU 串口）：能停在 U-Boot 就还有 U-Boot+tftp
+   先确认串口还能看到它（菜单 4 → NPU 串口）：能停在 U-Boot 就还有急救 initramfs
    这条路（需要 x86 插 USB 网卡）；连 U-Boot 都进不去就只能走急救 initramfs。
    如果 NPU 其实起来了、只是网络不对，先用菜单 4 登录，把 br-lan/VLAN 修好，
    再回来重新选本项。

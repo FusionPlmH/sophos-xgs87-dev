@@ -106,6 +106,24 @@ fi
 echo "== 写到 $NPU:$PART（NPU 上正在用的根分区，它会崩）"
 sync
 
+# 目标分区是不是 NPU 此刻正在用的根？是的话，这次写入等于"用 dd 覆盖活着的
+# 根文件系统"——2026-11-25 就是这样把 p2 写成一堆碎片的：dd 在冻结的根上返回
+# write failed，错误被吞掉，元数据被打乱，e2fsck 最后只捞回 11 个文件。
+# 默认拒绝；只有 NPU 从**别的**系统起来（p3 原厂 / 急救 initramfs，那时根不是
+# $PART）才自动放行，或者你明确知道代价时 ALLOW_LIVE_ROOT=yes。
+root_src=$(ssh $SSHOPT "$login@$NPU" \
+	'findmnt -n -o SOURCE / 2>/dev/null || awk "\$2==\"/\"{print \$1; exit}" /proc/mounts' 2>/dev/null)
+root_src=${root_src%%\[*}
+if [ "$root_src" = "$PART" ] && [ "${ALLOW_LIVE_ROOT:-no}" != yes ]; then
+	die "拒绝：$PART 正是 NPU 现在的根（$root_src）。
+       在活着的根上 dd 会把它写成碎片 —— 2026-11-25 那次 p2 就是这么没的。
+       安全的做法二选一：
+         * 让 NPU 从别的系统起来（p3 原厂 或 急救 initramfs），那时根不是
+           $PART，本脚本会自动放行；急救流程见 docs/14-rescue.md；
+         * 或者 ALLOW_LIVE_ROOT=yes 再跑（请先把 p2 的整盘镜像备份到别处）。"
+fi
+echo "== NPU 的根是 $root_src（不是 $PART），可以安全写"
+
 # dd 要 root 才能打开块设备，而 ssh 登录的往往是 admin（我们自己的镜像）而不是
 # root。sudo 又不能直接读 stdin —— 那会把镜像开头几十字节当成密码吃掉。所以用
 # askpass 把密码从旁路喂给 sudo，stdin 留给镜像。原来那版直接 `dd`，在 admin

@@ -15,6 +15,7 @@
 """
 import os
 import sys
+import time
 
 SOH, STX, EOT, ACK, NAK, CAN, CRC_C = 0x01, 0x02, 0x04, 0x06, 0x15, 0x18, 0x43
 
@@ -56,6 +57,32 @@ class Sender:
             if b == CAN:
                 raise SystemExit("ymodem: 对端取消（收到 CAN）")
             # 其它字节（例如回显）忽略
+
+    def drain_input(self, seconds):
+        """把串口里残留的字节吃掉。
+
+        为什么必须：上一次 loady 超时退出之后，内核 tty 缓冲区里还留着它打过的
+        'C'。不排空就直接发文件头，U-Boot 那边其实还在命令行上 —— 文件头里的
+        文件名会被当成命令执行，数据落到**上一次 loady 的地址**去。
+        2026-11-25 就是这样把 2.2 MB 写到别处、`unzip` 报 "Bad gzipped data"、
+        `md.b` 读到全 0。
+        """
+        end = time.time() + seconds
+        while time.time() < end:
+            self.read_byte(0.05)
+
+    def read_text_until(self, pred, timeout):
+        """读到满足条件为止，返回文本（U-Boot 的提示行都是 ASCII）。"""
+        end = time.time() + timeout
+        s = ''
+        while time.time() < end:
+            b = self.read_byte(max(0.02, min(0.25, end - time.time())))
+            if b is None:
+                continue
+            s += chr(b)
+            if pred(s):
+                break
+        return s
 
     def send_packet(self, payload, blk):
         fill = 0x1A
@@ -143,11 +170,30 @@ def make_raw(path):
 
 
 def main():
-    if len(sys.argv) < 3:
-        raise SystemExit("用法: ymodem.py <tty> file...")
-    fd = make_raw(sys.argv[1])
+    args = sys.argv[1:]
+    addr = None
+    if len(args) >= 2 and args[0] == '--addr':
+        addr, args = args[1], args[2:]
+    if len(args) < 2:
+        raise SystemExit("用法: ymodem.py [--addr <loady 地址>] <tty> file...")
+    fd = make_raw(args[0])
     s = Sender(fd)
-    for path in sys.argv[2:]:
+    if addr:
+        # 自己敲 loady，并核对 U-Boot 打出来的 "download to <addr>" ——
+        # 只信自己看到的 banner，不信缓冲区里剩下的 'C'（见 drain_input）。
+        s.drain_input(0.6)
+        os.write(fd, ("loady %s\r" % addr).encode())
+        banner = s.read_text_until(
+            lambda t: 'download to' in t or 'Unknown command' in t, 15)
+        if 'download to' not in banner:
+            raise SystemExit("ymodem: loady 没起来（U-Boot 说: %r）" % banner[-200:])
+        want = addr.lower().replace('0x', '').lstrip('0')
+        # 地址可能是 U-Boot 的变量名（$fdt_addr_r），那样 banner 里出现的是展开后
+        # 的数字；能核对的一定要核对，核对不了就只认 banner。
+        if not addr.startswith('$') and want not in banner.lower().replace('0x', ''):
+            raise SystemExit("ymodem: loady 去的地址不对（%r）" % banner[-200:])
+        print("ymodem: loady 就绪 -> %s" % addr, file=sys.stderr)
+    for path in args[1:]:
         s.send_file(path)
     s.finish()
     print("ymodem: done", file=sys.stderr)

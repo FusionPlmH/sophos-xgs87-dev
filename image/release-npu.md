@@ -59,7 +59,7 @@ sudo ./image/build.sh --arch arm64 --variant lean     # 必须在 arm64 上跑
 ## 出问题
 
 维护 U 盘 [`debian-usb`](https://github.com/FusionPlmH/sophos-xgs87-dev/releases/tag/debian-usb)
-菜单选 `2`：自动按 **ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试。
+菜单选 `2`：自动按 **ssh+dd → 急救 initramfs（串口 + 面板口）** 逐级尝试。
 网络到不了 NPU 时，选项 `2` 会自己走 `ttyS2` 串口登录、问出它的
 `br-lan` 地址和 VLAN、在 x86 上镜像同样的 VLAN 再重试；两条都不通时它会提示走急救包
 （串口是菜单 `4`）。

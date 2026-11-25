@@ -1,7 +1,7 @@
 # 13 · 维护 U 盘：装系统（含从原厂 SFOS 换过来）
 
 > 🏷 **状态（2026-11-25 复核）**：✅ 现机两台都是用这套流程装出来的。
-> 安装阶梯现在只有三级：**ssh+dd → U-Boot+tftp → 急救 initramfs**（`ssh+tar` 与 NBD 两级
+> 安装阶梯现在只有两级：**ssh+dd → 急救 initramfs（串口 + 面板口）**（`ssh+tar` 与 NBD 两级
 > 已删除，它们永远不可能成功，见 [11](11-operations.md) §11.2.1）。
 > 📦 维护盘本身怎么造在 [installer/mkusb.sh](../installer/mkusb.sh) 与
 > [image/release-usb.md](../image/release-usb.md)。
@@ -58,7 +58,7 @@ lsblk; sfdisk -d /dev/mmcblk0
 2. U 盘插前面板 USB，开机按 **F11** 选 U 盘启动。
 3. 串口 115200 上出菜单：
    - `1` 重装 x86 —— 把 `debian-x86.img` 整盘写进内置 eMMC；
-   - `2` 重装 NPU —— 自动按 **ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试。
+   - `2` 重装 NPU —— 自动按 **ssh+dd → 急救 initramfs（串口 + 面板口）** 逐级尝试。
      开工前它会先把 vNTB 拉起来：没有 `eth0` 就重试最多 3 次
      `xgs-ntb-up.sh --force-rescan`（NPU 的端点总在 x86 开机之后才枚举到），并幂等补上
      `eth0.200 = 10.234.56.2/24` —— 维护盘跑的是 U 盘自己那套 root，它的 networkd 不一定
