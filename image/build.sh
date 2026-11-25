@@ -108,7 +108,8 @@ mmdebstrap \
 	--customize-hook="sync-in $REPO/systemd /opt/xgs87/systemd" \
 	--customize-hook="sync-in $REPO/kernel /opt/xgs87/kernel" \
 	--customize-hook="sync-in $STAGE_BOARD /opt/xgs87/board" \
-	--customize-hook="copy-in $REPO/image/setup.sh /tmp" \	--customize-hook="chroot \$1 /bin/sh /tmp/setup.sh $SIDE $VARIANT" \
+	--customize-hook="copy-in $REPO/image/setup.sh /tmp" \
+	--customize-hook="chroot \$1 /bin/sh /tmp/setup.sh $SIDE $VARIANT" \
 	"$SUITE" "$TAR" "$MIRROR"
 
 echo "== compress"

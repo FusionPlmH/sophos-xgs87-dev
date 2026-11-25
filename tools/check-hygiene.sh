@@ -36,6 +36,12 @@ serials=$(git grep -n -E 'X01[0-9]{10}|SEAAMDA0200-0001[0-9]' || true)
 paths=$(git grep -n -i -E '[A-Za-z]:\\Users\\' || true)
 [ -z "$paths" ] || report "Windows user paths" "$paths"
 
+# A backslash followed by a tab does not continue a line in sh: it escapes the
+# tab, so two options silently fuse into one word and the build fails much
+# later with something unrelated ("E: invalid mirror: out/...").
+glued=$(git grep -n -P '\\\t' -- '*.sh' || true)
+[ -z "$glued" ] || report "backslash followed by a tab (line continuation eaten)" "$glued"
+
 if [ "$fail" = 0 ]; then
 	echo "hygiene: tracked tree is clean"
 fi
