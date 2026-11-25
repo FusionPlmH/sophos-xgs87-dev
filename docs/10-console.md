@@ -184,7 +184,6 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 | `tools/on-x86/mcp2210-nor.py` | **救砖工具**，见 [14](14-rescue.md) §14.6 |
 | `tools/on-x86/mrvl-uart.py`、`mk-hb.py` | BootROM UART 通道与心跳桩，见 [14](14-rescue.md) §14.8 |
 | `tools/on-x86/x86-linkoff-test.sh` | 判决实验：把 PCIe 链路彻底关掉干看 45 秒。**注意**：现在这条路会把 x86 自己带下去，复位 NPU 请用串口 SysRq（[11](11-operations.md) §11.2.5） |
-| `tools/on-x86/usbip-export.sh` | 把 x86 的 USB 设备借给 NPU（`list` / `export` / `unexport` / `status`），见 [07](07-npu-system.md) §7.14 |
 
 ```sh
 # x86 上

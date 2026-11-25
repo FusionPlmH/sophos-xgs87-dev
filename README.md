@@ -42,7 +42,6 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | 风扇 | ✅有 / ❌不可控 | 整机一颗，上电即转；无 SuperIO、无 ACPI 风扇、DT 无 `fan` 节点（docs/15 §15.8） |
 | x86 ↔ NPU vNTB | ✅ | 单流 1.2 Gbit/s、RTT 0.6 ms（docs/09 §9.1） |
 | x86 借道拿地址 | ✅ | `eth0.100` 走 WAN（DHCP）、`eth0.200` 走 LAN（静态 `10.234.56.2/24`） |
-| NPU 借 x86 的 USB 设备 | ✅ | usbip：NPU 没有 USB 主控，但 `vhci-hcd` 是虚拟主控。实测把 x86 的 MCP2210 导出后，NPU 上出现 `/dev/hidraw0` 且救砖工具能用（docs/07 §7.14） |
 | 一条链路跑 WAN + LAN | ✅ | VLAN 100（WAN）/ VLAN 200（LAN），两段在交换芯片上真隔离（docs/08 §8.2） |
 | 面板口分 WAN / LAN 且可配 | ✅ | `/etc/xgs87/net.conf`：`2/WAN` = `p2` → `br-wan`（VLAN 100，DHCP），`1/LAN` = `p1` → `br-lan`（VLAN 200，静态 `10.234.56.1/24`，不发 DHCP）（docs/08 §8.3） |
 | LAN 能真的上网（转发 + NAT） | ✅ | `xgs-nat.service`：`ip_forward=1` + `inet xgs87` 表里 `br-lan → br-wan` masquerade（docs/08 §8.3.1） |
