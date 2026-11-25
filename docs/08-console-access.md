@@ -162,5 +162,5 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 | NPU U-Boot 坏了 | x86 的 MCP2210（USB-SPI）写 SPI NOR，或 JTAG |
 | x86 系统坏了 | UEFI 启动菜单，或换 eMMC / U 盘启动 |
 | x86 卡在 GRUB 命令行 | 串口发 ESC 逼回 `grub>`，再发 `normal` + 回车 |
-| 交换机模块改坏了 | 面板口全消失但 NPU 还活着 → 用 `.ko.orig` 回滚（模块不压缩，见 20 §20.9） |
+| 交换机模块改坏了 | 面板口全消失但 NPU 还活着 → 用 `.ko.orig` 回滚（别手工 `xz -9` 压，见 20 §20.9） |
 | 两台都失联 | 断电源 5 秒。注意**只有一条电源线**，断电两台一起下 |

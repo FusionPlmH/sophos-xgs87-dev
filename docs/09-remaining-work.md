@@ -115,13 +115,11 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
 
 ## 9.2 还没做完的
 
-**当前唯一卡住的事**：x86 侧还没做那次 `--force-rescan`，所以 NPU 的 `eth0`（vNTB）是
-`NO-CARRIER`。在 x86 上跑这两条即可（x86 开机时 NPU 还没有 vNTB 端点，PCI 总线没枚举到 `03:00.0`）：
-
-```sh
-sudo /usr/local/sbin/xgs-ntb-up.sh --force-rescan
-sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debian
-```
+**vNTB 当前是通的**（2026-11-25 复核）：x86 上 `eth0/.100/.200` 全 UP、`10.234.56.2/24` 在
+`eth0.200`，主机名 `xgs-debian-x86`。以前这里写着"唯一卡住的事是手动跑
+`xgs-ntb-up.sh --force-rescan`"，那条已经不需要了：脚本自己会发现内核缓存的是固件出厂
+身份并 `remove`+`rescan` 一次（[20](20-lan-over-vntb.md) §20.7.5），`xgs-ntb-watch` 默认
+`AUTO_RECOVER=1` 兜底（§20.11.6）。
 
 ### 高优先级（有明显用户价值）
 
@@ -131,16 +129,17 @@ sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debi
 | 2 | **x86 断 PCIe 链路 → NPU 整机复位** | 软件手段已穷尽（停 EP、关 panic、看门狗确认 inactive 都试过），判定是 SoC/ATF 对 `PERST#` 的反应。**要改 ATF 才有意义**，见 [20](20-lan-over-vntb.md) §20.8 |
 | 3 | **掉链时 `ntb_transport` 的 lockup** | 现在靠 NPU 自身复位兜底。`ramoops` 这条路已证伪（每次复位都重跑 DDR scrub，保留区必被清空），改用 **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前最后几行已经能落在磁盘上 —— 判据见 [20](20-lan-over-vntb.md) §20.8，只差一次复现 |
 | 4 | **风扇不可控 / 温控不动作** | 整机一颗风扇，上电即转，曲线在硬件里；NPU 的 thermal zone 有 100 ℃ trip 但 **0 个 cooling device**（连 `cpufreq` 都没有），所以到点也不会做什么。要软件调速得先把 PWM 通道跟风扇对上 + 补 OPP（[19](19-module-vs-kernel-rebuild.md) §19.6、[14](14-npu-debian-hardware.md) §14.13） |
+| 5 | **`kernel/x86/` 的四份拷贝比发行版内核旧一代** | 实测（2026-11-25，对着 Debian 的 `linux-source-6.12` = 6.12.117 逐文件 `diff`）：`ntb_hw_epf.c` / `ntb_transport.c` / `ntb_netdev.c` 是 **6.12.94 那一代**的上游源码（少了 `atomic64_t db_val` + 每 IRQ 一个 ctx 的 doorbell 修法、`ntb_get_dma_dev()` 的 DMA 设备修法、rx 侧重新分配 skb 的修法），`kernel/npu/` 的三份才是 6.12.117 的。它们**能编也能用**（当前链路就跑在这批上），只是没吃到上游 6.12.x 后续那几个 doorbell 修复。要刷新：把 6.12.117 的源码放进 `kernel/x86/`、用 `diff -u` 重新生成 `ntb/0101-ntb_hw_epf.patch`，然后**必须重启一次实测链路**（手工 `rmmod ntb_hw_epf` 会把 x86 带崩，见 §9.4） |
 
 ### 中优先级（想用某个功能时才需要）
 
 | # | 事项 | 现状 |
 |---|---|---|
-| 5 | **LED 极性 / 映射未逐一验证** | 面板灯走 PHY 的 LED 控制寄存器；`PCA9555` 驱动面板灯已被证伪。要逐个口试（[06](06-switch-and-ports.md)、[12](12-measurements.md)） |
-| 6 | ~~交换机 port 5–8 是否引到面板~~ | ✅ **已确认（用户）**：XGS 87 面板就是 4 口，port 5–8 是 **XGS 107** 才有。不用再查 |
-| 7 | ~~**MCP2210 SPI NOR 读写工具**~~ | ✅ **已完成（2026-11-24）**：`tools/on-x86/mcp2210-nor.py`；实机读到 JEDEC `C2 20 16` 和 env。GP0=CS，GP0/3/5 hold/release，只写 env。见 [23](23-mcp2210-spi-nor.md) |
-| 8 | **x86 的 i2c-dev / GPIO 暴露** | 目前没开，接外设时再弄 |
-| 9 | **`dev_write … 4 f002/2000` 的字段含义** | 已确认是 SerDes/PCS 块，细节要 datasheet |
+| 6 | **LED 极性 / 映射未逐一验证** | 面板灯走 PHY 的 LED 控制寄存器；`PCA9555` 驱动面板灯已被证伪。要逐个口试（[06](06-switch-and-ports.md)、[12](12-measurements.md)） |
+| 7 | ~~交换机 port 5–8 是否引到面板~~ | ✅ **已确认（用户）**：XGS 87 面板就是 4 口，port 5–8 是 **XGS 107** 才有。不用再查 |
+| 8 | ~~**MCP2210 SPI NOR 读写工具**~~ | ✅ **已完成（2026-11-24）**：`tools/on-x86/mcp2210-nor.py`；实机读到 JEDEC `C2 20 16` 和 env。GP0=CS，GP0/3/5 hold/release，只写 env。见 [23](23-mcp2210-spi-nor.md) |
+| 9 | **x86 的 i2c-dev / GPIO 暴露** | 目前没开，接外设时再弄 |
+| 10 | **`dev_write … 4 f002/2000` 的字段含义** | 已确认是 SerDes/PCS 块，细节要 datasheet |
 
 ### 低优先级 / 也许永远不做
 

@@ -110,7 +110,7 @@ sudo /usr/local/sbin/npu-console.sh 'lsmod | grep mv88e'
 cp -a /lib/modules/$(uname -r)/kernel/drivers/net/dsa/mv88e6xxx/mv88e6xxx.ko /root/backup/
 cp -a /lib/modules/$(uname -r)/kernel/drivers/net/ethernet/marvell/mvpp2/mvpp2.ko /root/backup/
 
-# 2. 覆盖（**不压缩**，见 20 §20.9 的 xz 坑）+ depmod
+# 2. 覆盖（放未压缩的 .ko 最省事；别手工 xz -9，见 20 §20.9 的 xz 坑）+ depmod
 # 3. 重启（不要热换：DSA 卸载/重装会让已创建的 netdev 处于不一致状态）
 reboot
 
