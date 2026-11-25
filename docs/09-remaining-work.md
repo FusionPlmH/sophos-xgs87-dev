@@ -178,7 +178,7 @@ sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debi
 | **在端点抖动时读它的 PCIe 配置空间**（哪怕只是 `lspci`） | **x86 会直接重启**。2026-11-25 实测：`lspci -nn \| grep -i 11ab` 一跑机器就重启（当晚这样崩了 4~5 次）。端点复位风暴期间，主机在抖动窗口里读 config space 会触发致命错误 | 用 sysfs 判存在性（`[ -e /sys/bus/pci/devices/0000:03:00.0 ]`），**端点不稳定时不要 `lspci`**；真正要"脱开"这条链路就用 Link Disable（`setpci -s 00:03.1 CAP_EXP+10.w=0010`），见 [tools/on-x86/x86-linkoff-test.sh](../tools/on-x86/x86-linkoff-test.sh) |
 
 > ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（root 解开约 900 MB）。现在实测 1.4G/1.5G，
-> 只剩 276 MB。三条路：装 `--variant lean`（root 解开 387 MiB，**推荐**，工具链编完就删掉）、
+> 只剩 276 MB。三条路：装 `--variant lean`（root 解开 ~440 MiB，**推荐**，工具链编完就删掉）、
 > 把根分区做到 ≥3 GB、或者 `--variant base` + 之后自己跑 `kernel/npu/install.sh`
 > （见 [image/README.md](../image/README.md)）。`lean` 的内核被 `apt-mark hold`，
 > 要升级内核时先 `apt-mark unhold linux-image-arm64` 再跑 `/opt/xgs87/kernel/npu/install.sh`。

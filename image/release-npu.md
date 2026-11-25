@@ -4,7 +4,7 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-npu.tar.zst` | **根文件系统 tar**，不是磁盘镜像 | `full` ~320 MB；`lean` **199 MB**（2026-11-24 实测） |
+| `debian-npu.tar.zst` | **根文件系统 tar**，不是磁盘镜像 | `lean` **190 MB** 压缩 / **~500 MiB** 解开（2026-11-25 实机 `df /` 报 545 M 已用，含元数据） |
 | `cn9130-sophos-xgs87w-sfp10g.dtb` | 板级设备树，必须和这版内核配套 | **21 KB**（20.6 KiB） |
 
 NPU 没有 ESP、没有 GRUB：U-Boot 直接从 eMMC 的一个 ext4 分区里 `ext4load` 内核和 DTB
