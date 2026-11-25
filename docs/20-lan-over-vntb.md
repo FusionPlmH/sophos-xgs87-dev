@@ -278,6 +278,38 @@ sudo lspci -nn -d 1957: ; ls /sys/bus/ntb/devices/
   15 s 再 rescan 一次
 - 这是「最后一次尝试」，不是常规路径；正常开机永远走不到这里
 
+### 20.7.5 现在的真实状态（2026-11-25 实测）：EP 的配置写没有落到线上
+
+这一条是**结论**，不是猜测。实测步骤与结果：
+
+| 步骤 | 结果 |
+|---|---|
+| NPU 侧完全重启后，`pci_epf_vntb` 正常 probe（`vntb-dbg: set_bar ctrl bar=0`，`pci-vntb ... eth0 created`） | ✅ 没有报错 |
+| x86 根端口 `00:03.1` 的 Link Status | `0x7023` → **Gen3 ×2，DLL Link Active = 1** |
+| x86 `echo 1 > /sys/bus/pci/rescan` 之后 | `03:00.0` 出现 |
+| x86 读到的身份 | `Ethernet controller [0200]: Marvell [11ab:7080]`，BAR0 **1M** / BAR2 **16M** / BAR4 **16M**，SR-IOV 6 VF |
+| 再重启一遍 NPU、**不做任何 rescan**、直接 `lspci` 读活值 | 同上，仍是 `11ab:7080` 与 1M/16M/16M |
+
+也就是说：**BAR 布局也是原厂那一套**，而我们 NPU 侧配的是 BAR0/BAR2/BAR4 各 1 MiB
+（`set_bar` 打印过、`pci-vntb` 也建起来了）。结论只能是 —— **Linux 侧对 EP
+配置空间（header 和 BAR/iATU）的写根本没有生效**，端点上留的还是 U-Boot/ATF
+配好的原厂状态。这一状态下 `ntb_hw_epf` 永远匹配不上 `1957:0809`，vNTB 起不来；
+rescan、重启 x86、重启 NPU 都改变不了它。
+
+对比 [17](17-x86-npu-shared-mgmt.md) §17.6：**vNTB 真正跑通的那次（2026-11-23）
+是"自编内核 + 自建 DT"**。现在这个镜像用的是 Debian 官方内核
+（`CONFIG_PCIE_DW_EP=y`，`dw_pcie_ep_write_header` 在 vmlinux 里）+ 仓库里的
+`board/*.dts`。两者差别还没定位到具体一处，已知配置项（`reg-names = dbi/dbi2/
+addr_space`、`num-ib/ob-windows`、`max-functions = 1`、`dma-coherent` 已删）都对，
+驱动也没有报错 —— 所以**这是一个未解决的缺口**，不是"再 rescan 一次"能解决的。
+
+`xgs-ntb-up.sh` 现在会认这个状态并直接说出来（`endpoint is 0x11ab:0x7080, not
+1957:0809` + 解释），不再傻等 180 秒然后报"设备没出现"。
+
+> 实际影响有限：NPU 的安装/维护走串口 + TFTP 那套阶梯，不依赖 vNTB；NPU 自己
+> 的面板口（`br-wan`/`br-lan`）是正常的。缺的是 **x86 没有自己的网口**，
+> 所以 x86 目前上不了网。
+
 ## 20.8 重启的真实代价（一次完整实测）
 
 x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal recovery），启动 38 → 26 秒：

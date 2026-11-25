@@ -177,6 +177,22 @@ fi
 # at `lspci` sees a perfectly normal endpoint, which is exactly the confusing
 # "03:00.0 在，eth0 没有" state.
 if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
+	vid=$(cat "$PCI_DEV/vendor" 2>/dev/null || echo "?")
+	did=$(cat "$PCI_DEV/device" 2>/dev/null || echo "?")
+	if [ "$vid" != "0x1957" ] || [ "$did" != "0x0809" ]; then
+		# The endpoint is electrically there but carries somebody else's
+		# identity: this is the boot firmware's factory configuration
+		# (11ab:7080, Ethernet class, SR-IOV, BAR0 1M / BAR2 16M / BAR4
+		# 16M).  Our EPF is loaded and happy on the NPU side, but none of
+		# its config-space writes reached the wire -- see docs/20 20.7.5.
+		cat >&2 <<EOF
+xgs-ntb: the endpoint is $vid:$did, not 1957:0809.
+  That is the factory identity left by the NPU's boot firmware; the NPU's
+  pci_epf_vntb writes did not reach it.  ntb_hw_epf cannot bind and vNTB
+  cannot come up in this state -- rebooting or rescanning will not change it.
+EOF
+		exit 1
+	fi
 	bound=$(readlink -f "$PCI_DEV/driver" 2>/dev/null || true)
 	bound=${bound##*/}
 	if [ -n "$bound" ] && [ -e "$PCI_DEV/driver" ]; then
