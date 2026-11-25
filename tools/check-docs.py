@@ -9,7 +9,7 @@ import os
 import re
 import sys
 
-docs = sorted(glob.glob('docs/*.md')) + sorted(glob.glob('docs/archive/*.md'))
+docs = sorted(glob.glob('docs/*.md'))
 valid = {}          # chapter number as string -> set of section paths
 headings = {}
 for p in docs:

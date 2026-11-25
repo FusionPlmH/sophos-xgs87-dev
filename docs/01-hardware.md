@@ -109,7 +109,7 @@ NPU 侧 `pcie@f2600000`（DesignWare + Marvell wrapper）工作在 **endpoint �
 
 > ⚠️ **分两种状态看**：下面这张表是**原厂** endpoint function 的档案（`11ab:7080`，SR-IOV 6 个 VF）。
 > 现在跑的是自己写的 **vNTB** function，在 x86 上枚举成 `03:00.0 [1957:0809]`，BAR 只有
-> ctrl / db / mw 各 1 MiB（见 [档案](archive/p8-shared-mgmt.md)）。原厂那张表：
+> ctrl / db / mw 各 1 MiB（见 [档案](archive.md)）。原厂那张表：
 
 | BAR | 大小 | 说明 |
 |---|---|---|

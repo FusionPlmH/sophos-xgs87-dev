@@ -19,7 +19,7 @@ NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑�
 
 - **OpenWrt 不装了**：NPU 上原来那个 OpenWrt 已经删掉，x86 也只装 Debian。
   早期设想（"NPU 跑 OpenWrt 当路由、x86 装 OpenWrt"）**作废**，文中如遇一律以此处为准。
-- 原厂 Buildroot 4.14 也已替换，只作为档案留在 [档案](archive/factory-npu-system.md)；p3 那一槽仍保留着，
+- 原厂 Buildroot 4.14 也已替换，只作为档案留在 [档案](archive.md)；p3 那一槽仍保留着，
   是目前唯一能直接启动的系统。
 - 两个参考项目（[openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107)、
   [os-xgs-npu](https://github.com/AbdelmonemAwad/os-xgs-npu)）现在的用途只剩两个：
@@ -41,23 +41,23 @@ NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑�
 
 | 能力 | 证据文档 |
 |---|---|
-| x86 Debian 自启；NPU Debian 自启（p2，2026-11-25 复测）；eMMC 整盘备份（7.28 GiB，SHA256 校验） | [05](05-storage.md)、[档案](archive/measurements.md) |
+| x86 Debian 自启；NPU Debian 自启（p2，2026-11-25 复测）；eMMC 整盘备份（7.28 GiB，SHA256 校验） | [05](05-storage.md)、[档案](archive.md) |
 | 88E6193X DSA 九个 netdev（`p1–p8` + `sfp`；面板只引出 p1–p4 + sfp），发行版驱动；TCAM 两个上游修复为可选补丁 | [04](04-switch.md)、[15](15-modules-and-kernel.md) |
 | SFP+ 实测 10000 Mb/s | [07](07-npu-system.md) |
 | `mvpp2` 用发行版；`AGGR_TXQ_SIZE=512` 自编译版可选（[tools/build/build-npu-net.sh](../tools/build/build-npu-net.sh)） | [15](15-modules-and-kernel.md) |
 | SPI NOR / MTD / `fw_printenv` | [07](07-npu-system.md) |
 | thermal 6 zone + 9 hwmon、PWM、GPIO | [01](01-hardware.md) |
-| x86 ↔ NPU vNTB（1.2 Gbit/s，RTT 0.6 ms） | [档案](archive/p8-shared-mgmt.md)、[09](09-vntb.md) |
+| x86 ↔ NPU vNTB（1.2 Gbit/s，RTT 0.6 ms） | [档案](archive.md)、[09](09-vntb.md) |
 | 一条链路同时跑 WAN + LAN（VLAN 100 / 200），x86 在 WAN 侧拿到 DHCP | [09](09-vntb.md) |
 | 管理段和家里 LAN 在交换芯片上真正隔离（WAN/LAN 各用一条 VLAN，都不碰默认 VLAN 1） | [08](08-network.md) §8.2 |
 | 掉链 / 关机不再 oops（peer_db 校验、spad 守卫、关机道别） | [09](09-vntb.md) §9.3 |
 | 崩溃取证：netconsole 双目标（NPU → x86 + PC） | [11](11-operations.md) §11.1 |
-| 镜像构建：`image/` + 一个 CI workflow（`target=x86/npu/usb/all`），自动发 release | [image/README.md](../image/README.md)、[12](12-images.md) |
+| 镜像构建：`image/` + 一个 CI workflow（`target=x86/npu/usb/all`），自动发 release | [docs/12-images.md](../docs/12-images.md)、[12](12-images.md) |
 | 维护（诊断）U 盘：整盘重装 x86、ssh+dd / U-Boot / 急救包推 NPU、备份内置盘 | [13](13-installer.md)、[image/release-usb.md](../image/release-usb.md) |
 | MCP2210 SPI NOR 救砖工具（GP0 CS、NPU hold/release、整片双遍 dump、只写 env、失败回滚） | [14](14-rescue.md) |
 | 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
 | **主机名**：x86 = `xgs-debian-x86`，NPU = `xgs-debian-npu`（2026-11-25 起，`image/setup.sh`） | [image/setup.sh](../image/setup.sh) |
-| **硬件看门狗**：`xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`，实测不喂狗 10–20 s 整机复位 | [档案](archive/factory-npu-system.md) §4.13 |
+| **硬件看门狗**：`xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`，实测不喂狗 10–20 s 整机复位 | [07](07-npu-system.md) §7.13 |
 | **默认 DNS**：`1.1.1.1` / `8.8.8.8`（NPU 用 `/etc/resolv.conf.head`，x86 用 resolved 全局 DNS + `UseDNS=no`），2026-11-25 实测两边都能解析 | [07](07-npu-system.md) §7.13 |
 | **NPU 的 DNS / NTP**：purge 掉 `systemd-resolved`，让 dhcpcd 直接写 `/etc/resolv.conf`；实测 DHCP 下发 `nameserver` 后 `getent hosts` 与 `timedatectl` 都正常 | [07](07-npu-system.md) §7.13 |
 | **NPU 的开机 fsck**：initramfs 现在带 `e2fsck`（自建 hook），p2 的 ext4 已用它修到 `clean` | [07](07-npu-system.md) §7.13 |
@@ -136,7 +136,7 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
 
 | # | 事项 | 现状 |
 |---|---|---|
-| 6 | **LED 极性 / 映射未逐一验证** | 面板灯走 PHY 的 LED 控制寄存器；`PCA9555` 驱动面板灯已被证伪。要逐个口试（[04](04-switch.md)、[档案](archive/measurements.md)） |
+| 6 | **LED 极性 / 映射未逐一验证** | 面板灯走 PHY 的 LED 控制寄存器；`PCA9555` 驱动面板灯已被证伪。要逐个口试（[04](04-switch.md)、[档案](archive.md)） |
 | 7 | ~~交换机 port 5–8 是否引到面板~~ | ✅ **已确认（用户）**：XGS 87 面板就是 4 口，port 5–8 是 **XGS 107** 才有。不用再查 |
 | 8 | ~~**MCP2210 SPI NOR 读写工具**~~ | ✅ **已完成（2026-11-24）**：`tools/on-x86/mcp2210-nor.py`；实机读到 JEDEC `C2 20 16` 和 env。GP0=CS，GP0/3/5 hold/release，只写 env。见 [14](14-rescue.md) |
 | 9 | **x86 的 i2c-dev / GPIO 暴露** | 目前没开，接外设时再弄 |
@@ -181,7 +181,7 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
 > ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（root 解开约 900 MB）。现在实测 1.4G/1.5G，
 > 只剩 276 MB。三条路：装 `--variant lean`（root 解开 387 MiB，**推荐**，工具链编完就删掉）、
 > 把根分区做到 ≥3 GB、或者 `--variant base` + 之后自己跑 `kernel/npu/install.sh`
-> （见 [image/README.md](../image/README.md)）。`lean` 的内核被 `apt-mark hold`，
+> （见 [docs/12-images.md](../docs/12-images.md)）。`lean` 的内核被 `apt-mark hold`，
 > 要升级内核时先 `apt-mark unhold linux-image-arm64` 再跑 `/opt/xgs87/kernel/npu/install.sh`。
 
 ## 16.5 如果要重做一遍（换机 / 重刷的最小路径）
@@ -201,11 +201,11 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
    headers 装上，之后再升级内核就是自动重编）。
    只有要改驱动源码时才用 `tools/build/*` —— 它负责先把 `ntb/*.patch`、`net/patches/*`
    打到上游源码上再编。
-5. **网络**：`systemd/npu/` 装到 NPU、`systemd/x86/` 装到 x86（见 [systemd/README.md](../systemd/README.md)、[09](09-vntb.md)）。
+5. **网络**：`systemd/npu/` 装到 NPU、`systemd/x86/` 装到 x86（见 [docs/11-operations.md](../docs/11-operations.md)、[09](09-vntb.md)）。
 6. **别做的事**：见 §16.4 的维护红线 —— `mtd0` 永不写、别手工 `rmmod ntb_hw_epf`、
    `p1` 留给原厂回滚、`/persistent` 只读。内核包不用再 hold，DKMS 会跟着重编。
 
-> 完整的实测数据见 [archive/measurements.md](archive/measurements.md)；
+> 完整的实测数据见 [archive.md](archive.md)；
 > 每篇文档开头都有状态标记（✅ 实测 / 📦 原厂档案 / 💡 设想 / ⚠️ 未验证）。
 
 ## 16.6 vNTB 侧仍开着的问题

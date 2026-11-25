@@ -76,7 +76,7 @@ mdio@12a200 {
 
 **本机（rev 07）实测推翻了它**：把 PCA9555 的 16 个输出整体拉低 / 拉高，
 面板 LED 状态**没有任何变化**，只有插了网线的口（LAN1/LAN4）亮 —— 说明这些灯是
-**PHY 直接驱动**的，与 PCA9555 无关。详见 [archive/measurements.md](archive/measurements.md) §12.7。
+**PHY 直接驱动**的，与 PCA9555 无关。详见上面这张表与 [档案](archive.md) 的说明。
 
 > 参考项目的 `gpio-leds` 节点在我们的机器上不成立（那套映射是另一个机型的）；用 PHY 的 LED 控制寄存器
 > （`MVL6193LEDcontrol=0xe3`）或者重新测绘。
@@ -194,7 +194,7 @@ mvswitch 2 link 1     → Link: UP, Duplex: FULL, Speed: 1000 Mbps
 > 铜口 PHY 也不复位 —— 网络是坏的。要用 6.4 里这套原厂序列。
 
 这套序列就是原厂 U-Boot 环境变量 `sw_init_p0..p3` / `sw_init_2` 的内容，
-`fw_printenv` 可直接看到（详见 [archive/measurements.md](archive/measurements.md#1212)）。
+`fw_printenv` 可直接看到（详见 [archive.md](archive.md)）。
 
 ### Linux 侧等价做法（原厂 `xgs-mdio`，无需 U-Boot）
 
@@ -264,7 +264,7 @@ sfp = 基址+4    end0 / ethaddr = 基址+5    基址+6 留空
 
 ## 4.7 未验证 / 待确认
 
-- [x] **SFP 是否支持 2.5G/10G**：10GBASE-SR 模块实测 **10Gbps UP**（[12.11](archive/measurements.md#1211)）；
+- [x] **SFP 是否支持 2.5G/10G**：10GBASE-SR 模块实测 **10Gbps UP**（[档案](archive.md) §A.2）；
       2.5G/5G 模块没测，但 phylink 走同一条自适应路径
 - [ ] LED 到底接在哪（本机实测：与 PCA9555 无关，跟随 PHY link）
 - [ ] `dev_write … 4 f002/2000` 这两个寄存器在 PCS 里的具体含义（已知是 SerDes 块，

@@ -240,3 +240,68 @@ ssh admin@10.234.56.1 'uptime'          # x86 → NPU 那一跳
 ```
 
 `xgs-ntb.service` 成功时是 `active (exited)`（`RemainAfterExit=yes`），不是 `active (running)`。
+
+## 11.4 设备上到底装了什么 unit
+
+`image/setup.sh` 构建时就把这些装好并 `enable` 了；下面只在"不用镜像、自己装"时才需要。
+脚本一律装到 `/usr/local/sbin/`，unit 到 `/etc/systemd/system/`。
+
+### 两台都装（`systemd/common/`）
+
+| unit | 干什么 |
+|---|---|
+| `xgs87-growroot.service` | 首次开机 `growpart` + `resize2fs` 把 root 扩到盘尾，成功后留 `/var/lib/xgs87/grown` |
+
+`setup.sh` 另外做了几件"减负"的事：`journald.conf.d/xgs87.conf`（`SystemMaxUse=64M`、
+`SystemKeepFree=256M`，journal 是唯一的取证材料所以不能关但要封顶）；`mask` 掉
+`getty@tty1`、`man-db.timer`、`dpkg-db-backup.timer`、`e2scrub_all.timer`；
+`ssh.service.d/10-xgs87-hostkeys.conf` 先 `ssh-keygen -A` —— 镜像故意不带
+`/etc/ssh/ssh_host_*`，而 Debian 13 的 `ssh.service` 自己不会生成，没这个装完机就没有 SSH。
+
+### NPU（`systemd/npu/`）
+
+| unit / 脚本 | 干什么 |
+|---|---|
+| `xgs-ports-up` / `xgs-ports-init.sh` | 等 DSA 把面板口建出来 → 按 U-Boot env 的 `ethaddr` 推 MAC（p1–p4 = base+0..3，sfp = base+4，end0 = base+5）→ `up` 让 PHY 协商。p5–p8 面板没引出，不配 |
+| `xgs-vntb` / `xgs-vntb.sh` | configfs 建 `pci_epf_vntb`（`1957:0809`）→ `start` EPC → 装 `ntb_transport` + `ntb_netdev` |
+| `xgs-net-up` / `xgs-net-up.sh` | 按 `/etc/xgs87/net.conf` 把面板口分成 `br-wan`（`p2` + `eth0.100`）和 `br-lan`（`p1` + `eth0.200`），两个桥各一条 VLAN（100/200），谁都不用默认 VLAN 1 |
+| `xgs-dhcp` / `xgs-dhcp.sh` | 在 `net.conf` 里选 `dhcp` 的桥上跑**一个** `dhcpcd`（默认只有 `br-wan`） |
+| `xgs-nat` / `xgs-nat.sh` | LAN → WAN 的转发 + `masquerade`（`inet xgs87` 表，子网从 `LAN_ADDR` 推） |
+| `xgs-netconsole` | `modprobe netconsole`，把内核 console 推给 x86 和 PC（崩溃取证的主要手段） |
+
+```sh
+sudo install -m755 systemd/npu/*.sh      /usr/local/sbin/
+sudo install -m644 systemd/npu/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-nat xgs-netconsole
+```
+
+### x86（`systemd/x86/`）
+
+| unit / 脚本 | 干什么 |
+|---|---|
+| `xgs-ntb` / `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`；按 `1957:0809` 找端点（BDF 由 BIOS 分配）→ 必要时**重枚举一次** → 等 netdev → 建 `eth0.100/.200` 并钉 MAC |
+| `xgs-ntb-watch` / `xgs-ntb-watch.sh` | 每 15 s 查 carrier + ping 对端；默认 `AUTO_RECOVER=1`，5 分钟不通自动 `--force-rescan` 一次，冷却 10 分钟 |
+| `xgs-ntb-stop` / `xgs-ntb-stop.sh` | 关机前卸掉 `ntb_hw_epf`，给端点发 `COMMAND_LINK_DOWN` |
+| `xgs-netconsole` | `nc -u -l -k 6666`，收 NPU 推来的 console → `/var/log/npu-netconsole.log` |
+| `xgs-npu-console` | **可选**：`cat /dev/ttyS2` 连续录到 `/var/log/npu-console.log`。它**独占** ttyS2，交互调试前要先停 |
+| `100-wan.network` / `200-lan.network` | `eth0.100` DHCP（默认路由从这来）；`eth0.200` 静态 `10.234.56.2/24` |
+
+```sh
+sudo install -m755 systemd/x86/*.sh      /usr/local/sbin/
+sudo install -m644 systemd/x86/*.service /etc/systemd/system/
+sudo install -m644 systemd/x86/*.network /etc/systemd/network/
+sudo systemctl daemon-reload
+sudo systemctl enable --now xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole systemd-networkd
+```
+
+### 装错机器的症状
+
+| 装错方向 | 现象 |
+|---|---|
+| NPU 脚本装到 x86 | `xgs-ports-init.sh` 等不到 `p1`/`sfp` 直接退出；`xgs-vntb.sh` 找不到 `/sys/class/pci_epc/f2600000.pcie` |
+| x86 脚本装到 NPU | `xgs-ntb-up.sh` 找不到 `/sys/class/ntb/devices/...`（NPU 是 EP 不是 host），且会占用 `eth0` 这个名字 |
+| 两个都装 | 最惨：两边都去建 `eth0.100`，互相抢 |
+
+x86 上可能还有一个历史遗留的 `/usr/local/sbin/npuc`，功能和 [10](10-console.md) 里那套重复
+（少了 login 分支），以仓库里的 `tools/on-x86/npu-console.sh` 为准。

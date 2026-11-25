@@ -48,7 +48,7 @@ eth0.200@eth0    UP       10.234.56.2/24           ← LAN，经 NPU 的 p1 到�
   （现在是 `p2` 走 WAN、`p1` 走 LAN）。详见 [09](09-vntb.md)。
 - 需要的模块都在 `/lib/modules/$(uname -r)/updates/`（`make modules_install` 放那儿，压成 `.ko.xz`）：`ntb_core` / `ntb_hw_epf` /
   `ntb_transport` / `ntb_netdev`（Debian 不自带 NTB 栈，见 [tools/build](../tools/build/)）。
-- 装机脚本在 [systemd/x86/](../systemd/x86/)，安装步骤见 [systemd/README.md](../systemd/README.md)。
+- 装机脚本在 [systemd/x86/](../systemd/x86/)，安装步骤见 [docs/11-operations.md](../docs/11-operations.md)。
 
 ## 6.3 关键外设
 
@@ -72,7 +72,7 @@ eth0.200@eth0    UP       10.234.56.2/24           ← LAN，经 NPU 的 p1 到�
 ```
 
 x86 上跑 `ntb_hw_epf` + `ntb_transport` + `ntb_netdev`，端点由 NPU 的
-`pci_epf_vntb` 提供（BAR0 控制 / BAR2 门铃 / BAR4 共享内存，各 1 MiB）。见 [档案](archive/p8-shared-mgmt.md)。
+`pci_epf_vntb` 提供（BAR0 控制 / BAR2 门铃 / BAR4 共享内存，各 1 MiB）。见 [档案](archive.md)。
 
 > 原厂那个 BAR 布局和 `barmap` 结构现在用不上了。如果要做只读探测，
 > `setpci -s 03:00.0 COMMAND=0x2` 打开 MEM decode 后 mmap `resource0` 即可 —— 但**别写**。

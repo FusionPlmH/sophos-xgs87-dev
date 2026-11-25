@@ -105,7 +105,7 @@ mmcblk0      14.7 GiB
 |---|---|---|---|
 | NPU U-Boot (mtd0) | 4 MiB | `dd` + gzip | `reference/mtd/npu-mtd0-uboot.bin.gz` |
 | NPU env (mtd1) | 64 KiB | `dd` + gzip | `reference/mtd/npu-mtd1-env.bin.gz` |
-| **NPU 整盘 eMMC** | **7.28 GiB** | `dd` 全盘 | 本地 `npu/backup/mmcblk0-full.img`（SHA256 记录在 [档案](archive/measurements.md)）**不可再生** |
+| **NPU 整盘 eMMC** | **7.28 GiB** | `dd` 全盘 | 本地 `npu/backup/mmcblk0-full.img`（SHA256 记录在备份目录的 `SHA256SUMS.txt` 里，不入库）**不可再生** |
 | **NPU p2 根分区（救砖镜像）** | **1 524 MiB** | `dd` 到 `/dev/mmcblk0p2` | 本地 `p2.img`（仓库不放二进制），SHA256 `383cb3aee23d325a25340e8e045f81c7b667252a3a0cbf3ae203708afeafb6e4`（2026-11-24 修补后） |
 | x86 ESP | 128 MiB | `dd` 或 `rsync` | 未备份（重装即可再生） |
 

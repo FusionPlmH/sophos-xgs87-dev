@@ -7,7 +7,7 @@
 这一页回答一个问题：**拿到这个仓库（和历史里没有的真机标识），怎么在另一台机器上把
 x86 / NPU 两套系统重新做出来。** 下面每一步都在 2026-11-23 用 Debian trixie 实跑过。
 镜像内部怎么装出来（`image/build.sh` 的各个 variant、`setup.sh` 干了什么）看
-[image/README.md](../image/README.md)；怎么把镜像写到机器上看 [13](13-installer.md)。
+[docs/12-images.md](../docs/12-images.md)；怎么把镜像写到机器上看 [13](13-installer.md)。
 
 ## 12.1 先分清哪些是"源码"，哪些是"产物"
 
@@ -132,3 +132,87 @@ gh workflow run image.yml -f target=usb -f variant=lean     # 只出 U 盘
 
 x86 的 rootfs tar 只作为 CI artifact 保留（7 天），不发 release——它和镜像里的内容一样，
 自己 build 也能得到。
+
+## 12.8 构建脚本与变体（原 `docs/12-images.md`）
+
+```
+image/build.sh        mmdebstrap 构建 rootfs（本机或 GitHub Actions）
+image/setup.sh        chroot 里跑：装 unit、编 out-of-tree 模块、enable 服务
+image/mkdisk.sh       把 x86 的 rootfs 变成可启动 GPT 镜像（ESP + GRUB EFI）
+image/packages-*.list 软件包清单（common / x86 / npu）
+image/overlay/        直接覆盖到 rootfs 根的文件
+```
+
+```sh
+sudo ./image/build.sh --arch arm64                 # NPU
+sudo ./image/build.sh --arch amd64                 # x86
+sudo ./image/build.sh --arch amd64 --variant lean  # 发布用：编完模块就删工具链
+sudo ./image/build.sh --arch amd64 --variant base  # 只要骨架，不带模块
+```
+
+| 变体 | root 解开 | 带什么 | 代价 |
+|---|---|---|---|
+| `full` | ~900 MiB | dkms + 编译器 + headers，模块编好 | 大；`p2` 1.5 GB 装不下 |
+| **`lean`（发布用）** | **387 MiB**（tar 199 MB） | 模块编好放进 `/lib/modules/*/updates/`（`.ko.xz`），工具链按 dpkg 快照差值 purge | 镜像里没有 dkms，内核被 `apt-mark hold` |
+| `base` | 更小 | 无模块 | 装完自己跑 `kernel/<side>/install.sh` |
+
+`lean` 必须在 chroot 里自己 `apt-get install` 工具链：mmdebstrap 的 `--include` 会把包标成
+manual，`autoremove` 永远删不掉，purge 完 `gcc`/`make`/`libc6-dev` 还在（实测只小 60 MiB）。
+用装前/装后的 `dpkg-query` 快照做差值才能删干净。
+
+**x86 整盘镜像**：`sudo ./image/mkdisk.sh --rootfs out/xgs87-x86.tar.zst --out out/debian-x86.img`。
+`--size auto`（rootfs + 5% + 192 MiB + 128 MiB ESP），首次开机 `xgs87-growroot` 扩到盘尾。
+`grub-install --removable`（这块 BIOS 只认 `\EFI\BOOT\BOOTX64.EFI`），GRUB 超时压到 2 s
+（否则 `recordfail` 白等 30 s）。
+
+**压缩一律 `zstd -T0 -10`**。试过更狠的不划算：
+
+| 方法 | 大小 | 压缩耗时（16 核） | 裸 `zstd -d` 能解 |
+|---|---|---|---|
+| **`-10`（现在用）** | 249.6 MiB | 2 s | ✅ |
+| `-19 --long=27` | 222.6 MiB | 33 s | ✅ |
+| `-22 --long=31` | 195.7 MiB | 159 s | ❌ 要 `--long=31` |
+| `xz -9e` | 225.6 MiB | 110 s | 解压比 zstd 慢 5 倍 |
+
+`-19` 省 11%，CI 上 x86 job 从 2.6 min 涨到 7.8 min、USB 拼盘从 3.4 min 涨到 20 min 以上，
+不值。格式保持 `.zst`，解压永远是裸 `zstd -d`。
+
+**解包时就扔掉的**（`--dpkgopt=path-exclude=`，事后删只是把时间挪个地方）：
+
+| 排除 | 省 | 为什么可以 |
+|---|---|---|
+| `/usr/share/locale/*` | 56 MB | 串口机没有翻译需求 |
+| `/usr/share/i18n/*` | 17 MB | 不跑 `locale-gen`，`C.UTF-8` 在 glibc 里 |
+| `/usr/share/doc/*`（留 `copyright`） | 18 MB | dpkg 政策只要求许可证 |
+| `/usr/share/man/*` | 11 MB | 有 `--help` 和这个仓库 |
+| `locales`、`console-setup` | 30 MB | 同上 |
+
+还没做的：内核模块白名单（`/lib/modules` 现在 108 MB，按真机 `lsmod` 能到 30 MB 量级）、
+把 `python3-minimal` + `whiptail`（21 MB，只为 U 盘菜单）换成纯文本菜单。
+
+**账号**：镜像里只有 `admin`（`P@ssw0rd`，sudo 组，sudo 要密码）；`root` 保留 uid 0 但
+`passwd -l` 锁死，sshd `PermitRootLogin no`。维护 U 盘是例外（`XGS_LIVE_ROOT=1`），控制台
+直接给 root。
+
+**NPU 没有 ESP**：U-Boot 从 eMMC 分区 `ext4load` 内核 + DTB，所以装完必须保证
+`/boot/Image` 和 `/boot/initrd.img` 两个固定名字存在（`installer/payload/*.sh` 会自动做）。
+根分区 1.5 GB 装不下 `full`；`xgs87-growroot` 只在 root 是**最后一个分区**时才扩，
+NPU 的 p2 后面还有 p3/p4，所以它跳过 —— 不会碰原厂回滚槽和 VPD。
+
+## 12.9 构建工具（原 `docs/10-console.md` 的 `build/` 部分）
+
+这些**在 PC 的 WSL 上跑**，不是在设备上。最容易搞混的就是这一点：编 NPU 的模块不代表
+脚本在 NPU 上跑。
+
+| 脚本 | 产物 → 装到 |
+|---|---|
+| `build-npu-vntb.sh` | 6 个 vNTB 模块 → **NPU**（`chroot /srv/npu` + qemu user-mode） |
+| `build-x86-vntb.sh` | `ntb_*.ko` 四个 → **x86**（amd64 原生） |
+| `build-dtb.sh` | `out/cn9130-sophos-xgs87w-sfp10g.dtb`（先 `cpp` 再 `dtc`） |
+| `build-npu-net.sh` | 可选：带 TCAM 补丁的 `mv88e6xxx.ko`、`AGGR_TXQ_SIZE=512` 的 `mvpp2.ko` → **NPU**（镜像默认用发行版原版） |
+| `build-rescue.sh` | `xgs87-rescue.tar.zst`（`Image.gz` + `initramfs.gz` + DTB，约 15 MB）→ **NPU 的 U-Boot 内存** |
+| `build-rescue-kernel.sh` | 裁剪版急救内核；**默认不用**，只在想再压 10 MB 时才需要 |
+| `build-npu-kernel.sh` | 整颗 `Image`。只有"必须编进 vmlinux"的选项才需要（`PSTORE_CONSOLE` 那次），`ramoops` 已证伪，别再为它重编 |
+
+三条铁律（踩过的坑见 [15](15-modules-and-kernel.md) §15.5）：不能用 `linux-headers` 交叉编译
+（包里的 `scripts/` 是 aarch64 二进制）、`vermagic` 必须带 `+deb13-<arch>`、**别手工 `xz -9`**。

@@ -11,7 +11,7 @@
 |---|---|---|---|
 | mv88e6xxx TCAM 越权修复（`e3624f5eeac4` + `242ebf4c5114`） | `drivers/net/dsa/mv88e6xxx/` | `CONFIG_NET_DSA_MV88E6XXX=m` | 重建 **`mv88e6xxx.ko`** |
 | `MVPP2_AGGR_TXQ_SIZE` 256 → 512 | `drivers/net/ethernet/marvell/mvpp2/mvpp2.h` | `CONFIG_MVPP2=m` | 重建 **`mvpp2.ko`** |
-| vNTB 全套 | `drivers/ntb/`、`drivers/pci/endpoint/` | 都没编 | 外挂模块（[ntb/](../ntb/)），见 [档案](archive/p8-shared-mgmt.md) |
+| vNTB 全套 | `drivers/ntb/`、`drivers/pci/endpoint/` | 都没编 | 外挂模块（[ntb/](../ntb/)），见 [档案](archive.md) |
 | x86 侧 NTB 栈 | 同上（amd64） | 都没编 | 外挂模块，见 [tools/build](../tools/build/) |
 | cpufreq（OPP）+ thermal 降频 | `drivers/cpufreq/armada-8k-cpufreq.c`、`drivers/clk/mvebu/ap-cpu-clk.c` | 两个都**没编** | 两个模块都试了：`ap-cpu-clk` 段错误，`armada-8k-cpufreq` 报 `Cannot get clock for CPU 0`，**仍未修** |
 | safexcel 8 ring / MUSDK SAM | `drivers/crypto/inside-secure/` | `=m` | 大工程，暂不做（CPU 侧足够快） |

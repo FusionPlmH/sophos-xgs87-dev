@@ -155,3 +155,43 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 | x86 卡在 GRUB 命令行 | 串口发 ESC 逼回 `grub>`，再发 `normal` + 回车 |
 | 交换机模块改坏了 | 面板口全消失但 NPU 还活着 → 用 `.ko.orig` 回滚（别手工 `xz -9` 压，见 20 §15.5） |
 | 两台都失联 | 断电源 5 秒。注意**只有一条电源线**，断电两台一起下 |
+
+## 10.7 现成的工具（原 `docs/10-console.md`）
+
+按**在哪台机器上跑**分目录 —— 最容易搞混的就是这一点。
+
+### 在 PC 上跑（COM 口）
+
+| 文件 | 说明 |
+|---|---|
+| `tools/on-pc/x86-console.py` | 走面板 micro-USB / RJ45（COM5 或 COM6，115200）跟 **x86** 控制台交互，UTF-8 安全；`--script FILE` 把文件里每行当一条命令发过去 |
+| `tools/on-pc/npu-console.py` | NPU 的 CH340（`--port COM7`）直连；`--interrupt` 空格停 autoboot，`--send CMD` 依次下发 |
+| `tools/on-pc/npu-cmd.py` | 命令从 x86 的 `ttyS2` 发、回显从 PC 的 CH340 读；不需要先登录 x86 shell |
+| `tools/on-pc/npu-listen.py` | 只读监听 NPU 控制台，给冷启动打时间戳（默认 60 s，`--raw` 全量打印） |
+| `tools/on-pc/serial-capture.py` | 把 COM 口原始字节流录进日志（默认 `logs/x86-console.log`） |
+| `tools/on-pc/grub-unstick.py` | x86 卡在 GRUB 命令行时发 ESC / Ctrl-C / `normal` 推回正常启动 |
+| `tools/on-pc/netconsole-listen.py` | 收 UDP 6666 的 netconsole 日志（默认 `logs/npu-netcon.log`） |
+| `tools/on-pc/redact.py` | 发布前抹掉序列号、真实 MAC、EUI-64 链路本地地址、UUID |
+| `tools/on-pc/module-whitelist.sh` | 从真机 `lsmod` 求依赖闭包，算"这台机器真正用到的模块"和体积（裁 `/lib/modules` 第一步） |
+
+### 在 x86 上跑
+
+| 文件 | 说明 |
+|---|---|
+| `tools/on-x86/npu-console.sh` | 通过 `/dev/ttyS2` 操作 NPU 控制台。`login` 分支自动登录；`'cmd'` 分支发一条命令并抓回显 |
+| `tools/on-x86/npu-uboot.py` | 上一行的 Python 版：termios 直连，启动窗口内空格打断 `bootdelay`，识别 `=>`/`U-Boot 20`/`Hit any key`，再 `--cmd`/`--pre`/`--p3`/`--login` 下发；`--log` 落盘 |
+| `tools/on-x86/uboot-probe.sh` | 早期探针：启动窗口狂发空格并录全程，判断 U-Boot 是否出提示符 |
+| `tools/on-x86/mcp2210-nor.py` | **救砖工具**，见 [14](14-rescue.md) |
+| `tools/on-x86/mrvl-uart.py`、`mk-hb.py` | BootROM UART 通道与心跳桩，见 [14](14-rescue.md) §14.8 |
+| `tools/on-x86/x86-linkoff-test.sh` | 判决实验：把 PCIe 链路彻底关掉干看 45 秒。**注意**：现在这条路会把 x86 自己带下去，复位 NPU 请用串口 SysRq（[11](11-operations.md) §11.2.5） |
+
+```sh
+# x86 上
+sudo ./tools/on-x86/npu-console.sh login
+sudo ./tools/on-x86/npu-console.sh 'uname -r'
+WAIT=8 sudo ./tools/on-x86/npu-console.sh 'dmesg | tail'
+```
+
+> 这些脚本不再写死本机路径：日志默认落在当前目录的 `logs/`。真机专属的值（序列号、
+> 用户名）不要写进仓库，用 `redact.py --list <文件>` 从仓库外读。
+> 改完文档/路径跑一次 `python3 tools/check-docs.py` 和 `bash tools/check-hygiene.sh`。

@@ -61,7 +61,7 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
 
 > **更正（2026-11-23）**：本机 Debian 内核确实没有 NTB（`CONFIG_NTB` 未编），但**不需要换内核** ——
 > 这套 NTB 全是**外挂模块**（`ntb_core` / `ntb_transport` / `ntb_netdev` / `pci_epf_vntb` / `pcie_dw_plat`），
-> 对着现成 headers 编出来 `insmod` 就能跑。构建见 [tools/](../tools/)，四个真实 bug 见 [档案](archive/p8-shared-mgmt.md) §17.6。
+> 对着现成 headers 编出来 `insmod` 就能跑。构建见 [tools/](../tools/)，四个真实 bug 见 [档案](archive.md) §A.3。
 
 ## 2.4 通路三：串口（永远可用）
 

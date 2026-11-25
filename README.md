@@ -47,7 +47,7 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | LAN 能真的上网（转发 + NAT） | ✅ | `xgs-nat.service`：`ip_forward=1` + `inet xgs87` 表里 `br-lan → br-wan` masquerade（docs/08 §8.3.1） |
 | 维护 U 盘不用预留 payload 分区 | ✅ | 安装包放 root 的 `/opt/xgs87/payload`；U 盘剩余空间第一次开机自动切成 exfat（`XGS87BAK`，挂 `/media/xgs87-bak`）放备份 |
 | 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
-| 硬件看门狗 | ✅ | `xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`；实测不喂狗约 10–20 s 整机复位（[docs/07](docs/07-npu-system.md) §7.13、[档案](docs/archive/factory-npu-system.md) §4.13） |
+| 硬件看门狗 | ✅ | `xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`；实测不喂狗约 10–20 s 整机复位（[docs/07](docs/07-npu-system.md) §7.13） |
 | NPU 单独重启 → x86 恢复 | ✅ | 自动：`xgs-ntb-watch` 默认 `AUTO_RECOVER=1`，链路连续 5 分钟不通就跑一次 `xgs-ntb-up.sh --force-rescan`（5 分钟是为了不打断正在启动的 NPU），见 docs/11 §11.2.6 |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
 | **内核/系统可以随便升级** | ❌ | **发布用的 `lean` 镜像把内核 hold 住了，而且不带 `dkms`**（实测 2026-11-25：`apt-mark showhold` 有 `linux-image-*`、`command -v dkms` 为空，模块是构建时用 `make` 编好放进 `/lib/modules/*/updates/` 的 `.ko.xz`）。要升级就 `apt-mark unhold linux-image-amd64`（NPU 是 `linux-image-arm64`）+ 跑一次 `/opt/xgs87/kernel/<side>/install.sh` —— 那个脚本装 dkms 并从源码重编。`full` variant 才自带 dkms、能自动重编（历史实测：6.12.94 → 6.12.118 自动重编成功） |
@@ -55,7 +55,7 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/11 §11.1） |
 | NPU 内核 `CONFIG_PSTORE_CONSOLE` | 📦 | 自编内核已退役（37.7 → 44.3 MB 的那版）；发行版内核不带它，而且 ramoops 被 DDR scrub 证伪，净收益为零 |
 | 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 `PERST#` 复位。软件手段已穷尽（停 EP、关 panic、看门狗 inactive 都试过），要改 ATF 才有意义（docs/11 §11.1） |
-| LED / PCA9555 极性 | ⚠️ | 沿用原厂记录，未逐一验证（[docs/04](docs/04-switch.md)、[档案](docs/archive/factory-npu-system.md)） |
+| LED / PCA9555 极性 | ⚠️ | 沿用原厂记录，未逐一验证（[docs/04](docs/04-switch.md)、[档案](docs/archive.md)） |
 
 ## 一分钟看懂这台机器
 
@@ -119,13 +119,42 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 | x86 系统盘 | 64 GB SATA | **16 GB eMMC**（SD 控制器，GPT+EFI） |
 | Wi-Fi | QCA988x | **无** |
 
-## 仓库结构
+## 文档怎么读
 
-详细索引（按任务查、五分钟上手路径）在 **[docs/README.md](docs/README.md)**。
+**只有这一个索引**（原来 `README.md` 的内容并进来了）。
+
+不知道从哪读，就按这五步：**[01 硬件](docs/01-hardware.md)** → **[02 架构](docs/02-architecture.md)**
+→ **[08 网络](docs/08-network.md)** → **[11 运维手册](docs/11-operations.md) §11.0** →
+**[16 待办](docs/16-remaining-work.md)**。
+
+| 我要… | 读 |
+|---|---|
+| 知道这台机器有什么硬件 | [01 硬件清单](docs/01-hardware.md) |
+| 搞清两颗芯片之间的三条通路 | [02 架构](docs/02-architecture.md) |
+| 看开机每一行、改 U-Boot 环境变量 | [03 启动链](docs/03-boot-chain.md) |
+| 配置面板口、PHY、SFP、MAC | [04 交换机与端口](docs/04-switch.md) |
+| 看分区表、备份、容量 | [05 存储](docs/05-storage.md) |
+| 动 x86 这一侧 | [06 x86 系统](docs/06-x86-system.md) |
+| 动 NPU 这一侧（10G / SPI NOR / EIP197 / 时序） | [07 NPU 系统](docs/07-npu-system.md) |
+| 改 WAN/LAN、加 VLAN、加 NAT | [08 网络](docs/08-network.md) |
+| vNTB 不通 / 想更快 | [09 vNTB](docs/09-vntb.md) |
+| 进不去机器（SSH、串口、波特率），或要现成的串口工具 | [10 进机器的方式](docs/10-console.md) |
+| 重启、复位、换 NPU 的根分区、看 unit 清单 | [11 运维手册](docs/11-operations.md) |
+| 重新构建/发布镜像、构建工具 | [12 镜像与发布](docs/12-images.md) |
+| 用维护 U 盘装系统 | [13 维护 U 盘](docs/13-installer.md) |
+| 机器变砖，救 SPI NOR / BootROM | [14 救砖](docs/14-rescue.md) |
+| 换内核、换模块、风扇 | [15 模块与内核](docs/15-modules-and-kernel.md) |
+| 还剩什么、什么绝对不能做 | [16 待办与红线](docs/16-remaining-work.md) |
+| 改造前的机器、原始测量、被推翻的方案 | [📦 档案](docs/archive.md) |
+
+**约定**：文件名 = 章节号（`09-vntb.md` 里就是 `## 9.x`，所以 `§9.3.5` 靠名字就能定位）；
+每份文档开头有状态行（✅ 实测 / ⚠️ 有条件 / ❌ 不可用 / 📦 档案）；改完文档跑
+`python3 tools/check-docs.py` —— 章节引用和相对链接都必须能解析。
+
+## 代码与产物
 
 | 路径 | 内容 |
 |---|---|
-| **[docs/README.md](docs/README.md)** | **文档索引：按任务查、五分钟上手路径、现状一页纸** |
 | [docs/01-hardware.md](docs/01-hardware.md) | 完整硬件清单（x86 / NPU / 外设），含 DMI、PCI、USB、I²C、温度 |
 | [docs/02-architecture.md](docs/02-architecture.md) | 整体架构、三条通路（PCIe 端点 / vNTB / 串口）、电源与复位 |
 | [docs/03-boot-chain.md](docs/03-boot-chain.md) | BootROM → TF-A → U-Boot → Linux，全过程实录与环境变量 |
@@ -142,7 +171,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 | [docs/14-rescue.md](docs/14-rescue.md) | **MCP2210 SPI NOR 救砖工具**：GP0/3/5 hold/release、整片双遍 dump、只写 env |
 | [docs/15-modules-and-kernel.md](docs/15-modules-and-kernel.md) | 换模块 vs 重编内核、DKMS 组织、失联风险、风扇归属 |
 | [docs/16-remaining-work.md](docs/16-remaining-work.md) | **唯一的待办清单**：还剩什么、什么不用做、维护红线 |
-| [docs/archive/](docs/archive/) | 历史档案：原厂 Buildroot 系统、2026-11-22 原始测量、选型过程、已退役的 p8 方案 |
+| [docs/archive.md](docs/archive.md) | 📦 档案：原厂 p3 槽、仍有效的原始测量、被推翻的两个方案 |
 | [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本，按 **`npu/` / `x86/`** 分目录 |
 | [kernel/npu/](kernel/npu/) | NPU 侧 out-of-tree 模块（DKMS 包：vNTB、`spi-orion`、`clkfix`） |
 | [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |
@@ -160,7 +189,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 |---|---|
 | 型号 | Sophos XGS 87，DMI `XGS 87r1`，板卡 rev 07，BIOS 1906 |
 | NPU SoC | Marvell CN9130（AP807-B0 + CP115-A0），4×A72@1.6G，2 GB DDR |
-| NPU 系统 | p2 **Debian 13.8 / 6.12.117+deb13-arm64**（2026-11-25 实测启动）；p3 原厂 Buildroot 4.14 完好（档案见 [docs/archive/factory-npu-system.md](docs/archive/factory-npu-system.md)） |
+| NPU 系统 | p2 **Debian 13.8 / 6.12.117+deb13-arm64**（2026-11-25 实测启动）；p3 原厂 Buildroot 4.14 完好（档案见 [docs/archive.md](docs/archive.md)） |
 | 交换机 | Marvell 88E6193X，MDIO addr 2，product 193，11 口（本机面板 4×RJ45 + 1×SFP） |
 | x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian **13.8**；`lean` 镜像自带 **6.12.117** 且内核被 `apt-mark hold`（**镜像里没有 dkms**，要换内核先 `apt-mark unhold linux-image-amd64` 再跑 `/opt/xgs87/kernel/x86/install.sh`） |
 | x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |
