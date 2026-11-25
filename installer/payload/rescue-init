@@ -82,6 +82,7 @@ if [ -n "$ONESHOT" ]; then
 	echo "rescue: oneshot 清除 ${ONESHOT%%:*} 块 ${ONESHOT##*:}"
 	dd if=/dev/zero of="${ONESHOT%%:*}" bs=4096 seek="${ONESHOT##*:}" count=1 conv=notrunc 2>/dev/null
 	sync
+	flush_log
 fi
 
 # 内核自己带驱动时（build-rescue-kernel.sh 产的那个），initramfs 里没有
@@ -205,6 +206,7 @@ if [ -e "/sys/class/net/$DEV" ]; then
 	done
 	echo "rescue: $DEV link=$(cat "/sys/class/net/$DEV/carrier" 2>/dev/null) state=$(cat "/sys/class/net/$DEV/operstate" 2>/dev/null)"
 	ifconfig "$DEV" 2>/dev/null | head -3
+	flush_log
 fi
 ip -br a 2>/dev/null
 

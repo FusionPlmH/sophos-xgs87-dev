@@ -1,17 +1,33 @@
-# xgs-ntb-watch.sh sources this file if it exists.
+# xgs-ntb-watch.sh 会 source 这个文件。
 #
-# 1 = allow ONE automatic `xgs-ntb-up.sh --force-rescan` after the link has been
-# unhealthy for LIMIT*INTERVAL (5 min); it then cools down for 10 min.
+# 它是唯一负责"把 vNTB 拉起来并一直盯着"的东西（xgs-ntb.service 只在开机遇一次）。
+# 这台机器唯一的网络就是这条链路，链路没起来就没法远程进来，所以这里默认就是
+# "一直重试到成功"：上电顺序不受控（BIOS 可能比 NPU 的端点早、host 重启会把 NPU
+# 一起复位、NPU 可能还在 U-Boot），一次性脚本只要抢在那个瞬间跑完就再没人管了。
 #
-# Measured 2026-11-25, twice: an NPU reboot never brings this end back by
-# itself.  eth0 stays at operstate DOWN with "endpoint unreachable, dropping
-# doorbell" in dmesg, and because the only route to this machine is the vNTB
-# link (PC -> NPU br-lan -> eth0.200 -> here) the box becomes unreachable
-# exactly when it is needed -- the serial console is the only way in.  So the
-# watcher recovers on its own now.
+# 五种状态各自的动作，按代价从低到高：
+#   接口在、carrier 不是 1     -> 重新 up + 补地址（不碰 PCIe）                        PLUMB_CD 秒一次
+#   端点在、没有驱动           -> 后台重写 .../ntb_hw_epf/bind（probe 失败后没人重试） BIND_CD 秒一次
+#   还是没驱动、挂了很久       -> remove + rescan 重枚举                              REENUM_CD 秒一次
+#   端点在、没有 ntb netdev    -> 重跑 xgs-ntb-up.sh（不碰 PCIe）                     PLUMB_CD 秒一次
+#   总线上没有端点             -> plain rescan（不碰已知设备，安全）                   RESCAN_CD 秒一次
+#   carrier=1 但对端不答       -> remove + rescan 重枚举（对端重启后只有这档有效）     REENUM_CD 秒一次
+#   上面都不行                 -> 卸掉本机 NTB 协议栈再装                              STACK_CD 秒一次
+#   连着 RETRAIN_AFTER 次没救  -> toggle 根端口 Link Disable 重训链路                  RETRAIN_CD 秒一次
 #
-# Why the 5 minute delay: a remove/rescan re-asserts PERST# and would interrupt
-# an NPU that is still booting.  The NPU's Linux is up in 11 s, so waiting five
-# minutes costs nothing and removes that failure mode.
-AUTO_RECOVER=1
-MAX_RECOVER=1
+# 全部留空就用脚本里的默认值。
+
+# 每隔几秒看一次
+#INTERVAL=5
+# 对端地址（NPU 的 LAN 口），用来判断"接口看着好但对面没起来"
+#PEER=10.234.56.1
+#BIND_CD=8
+#REENUM_AFTER=20
+#REENUM_CD=90
+#PLUMB_CD=8
+#RESCAN_CD=5
+#STACK_AFTER=45
+#STACK_CD=60
+#PING_CD=25
+#RETRAIN_AFTER=12
+#RETRAIN_CD=180

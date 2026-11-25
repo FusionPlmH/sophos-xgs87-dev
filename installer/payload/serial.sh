@@ -19,13 +19,21 @@ BAUD=${BAUD:-115200}
 NPU_USER=${NPU_USER:-admin}
 NPU_PASS=${NPU_PASS:-P@ssw0rd}
 
+# U-Boot 的提示符。这台原厂 U-Boot 是 "Marvell>> "，不是主线的 "=> "：
+# 2026-11-25 实测，之前所有只等 "=> " 的写法每次都白等满整个超时，于是
+# npu-rescue.sh 判"没停住"、lzma 那次实验也永远等不到提示符。两个都认。
+UBOOT_PROMPT=${UBOOT_PROMPT:-'Marvell>> '}
+UBOOT_PROMPT_ALT=${UBOOT_PROMPT_ALT:-'=> '}
+
 _serial_open=0
 
-# 读，直到出现 $1（正则不支持的，纯字符串匹配）或者 $2 秒超时。
+# 读，直到出现 $1（纯字符串匹配，不是正则）或者 $2 秒超时。
+# 可选的 $3 是"另一个也算数的标记"，用来同时认两种提示符。
 # 输出写进 $_SERIAL_BUF，成功返回 0。
 serial_read_until() {
 	_pat=$1
 	_to=${2:-10}
+	_pat2=${3:-}
 	_SERIAL_BUF=
 	_end=$(( $(date +%s) + _to ))
 	while [ "$(date +%s)" -le "$_end" ]; do
@@ -34,6 +42,11 @@ serial_read_until() {
 		case "$_SERIAL_BUF" in
 		*"$_pat"*) return 0 ;;
 		esac
+		if [ -n "$_pat2" ]; then
+			case "$_SERIAL_BUF" in
+			*"$_pat2"*) return 0 ;;
+			esac
+		fi
 	done
 	return 1
 }

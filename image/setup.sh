@@ -55,7 +55,7 @@ EOF
 	# executable); just make sure the directories exist.
 	chmod 755 /etc/kernel/postinst.d/zz-xgs87-image \
 		  /etc/initramfs/post-update.d/zz-xgs87-initrd
-	systemctl enable xgs-ports-up xgs-vntb xgs-net-up xgs-dhcp xgs-nat xgs-netconsole \
+	systemctl enable xgs-ports-up xgs-vntb xgs-vntb-watch xgs-net-up xgs-dhcp xgs-nat xgs-netconsole \
 		xgs-watchdog
 	# Debian ships an nftables.service that flushes the ruleset; our NAT lives in
 	# its own table and is applied by xgs-nat.service instead.

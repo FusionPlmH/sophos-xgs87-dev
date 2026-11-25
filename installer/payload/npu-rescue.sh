@@ -57,7 +57,7 @@ echo "== 3/6 让 NPU 停在 U-Boot"
 stty -F "$TTY" "$BAUD" raw -echo 2>/dev/null || true
 TTY=$TTY BAUD=$BAUD INTERACTIVE=0 sh "$PAYLOAD/npu-uboot.sh" || return 1
 TTY=$TTY BAUD=$BAUD . "$PAYLOAD/serial.sh" || return 1
-if ! serial_read_until "=> " 10; then
+if ! serial_read_until "$UBOOT_PROMPT" 10 "$UBOOT_PROMPT_ALT"; then
 	echo "   没停住（NPU 已经进系统了？）"
 	return 1
 fi
@@ -94,7 +94,7 @@ push() {
 	# "download to <addr>"。以前这里先敲 loady、只等 1 秒就去发文件头，串口里
 	# 上一次 loady 留下的 'C' 会让数据落到旧地址（2026-11-25 实测踩过）。
 	python3 "$PAYLOAD/ymodem.py" --addr "$_addr" "$TTY" "$WORK/$_n" || return 1
-	serial_read_until "=> " 20 || true
+	serial_read_until "$UBOOT_PROMPT" 20 "$UBOOT_PROMPT_ALT" || true
 }
 d=$(ls "$WORK"/cn9130-*.dtb 2>/dev/null | head -1)
 cp "$d" "$WORK/xgs87.dtb"

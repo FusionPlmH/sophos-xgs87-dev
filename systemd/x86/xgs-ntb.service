@@ -3,15 +3,15 @@ Description=NTB link to the NPU (eth0.100 WAN + eth0.200 LAN)
 After=network-pre.target sys-kernel-config.mount
 Wants=network-pre.target
 
-# Type=simple: xgs-ntb-up.sh may legitimately wait up to WAIT (180 s) for the
-# NPU, and a oneshot here would hold multi-user.target hostage for that long.
-# The script keeps running in the background; xgs-ntb-watch starts right after.
-# RemainAfterExit makes a *successful* run stay "active (exited)" instead of
-# looking dead, and a failed one still shows up in `systemctl --failed`.
+# 开机时"试一次"。等端点最多 60 秒 —— 值得等（NPU 从上电到 vNTB 就绪 ~12 s），
+# 但不能像以前那样等 180 秒把开机拖成三分钟。
+# 失败也不许把 unit 标成 failed：真正保证"开机就有"的是 xgs-ntb-watch（每 5 秒一拍、
+# 会一直重试到成功为止），这里只让顺利的情况在开机阶段就完成。
 [Service]
 Type=simple
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/xgs-ntb-up.sh
+Environment=WAIT=60
+ExecStart=-/usr/local/sbin/xgs-ntb-up.sh
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Watch this end of the vNTB link (re-arm the endpoint when the host resets us)
+After=xgs-vntb.service
+Wants=xgs-vntb.service
+
+[Service]
+Type=simple
+# 对端（x86）重启、或者它自己重装 NTB 协议栈之后，我们这端的 QP 会停在老状态，
+# carrier 一直是 0。这个循环就是负责在这种情况下重新武装端点 —— 没有它，
+# 那个状态只能靠人工 restart xgs-vntb 才能出来（2026-11-25 实测两次）。
+ExecStart=/usr/local/sbin/xgs-vntb-watch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

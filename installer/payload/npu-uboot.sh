@@ -19,6 +19,12 @@ NPU_PASS=${NPU_PASS:-P@ssw0rd}
 SPAM_SECS=${SPAM_SECS:-20}
 INTERACTIVE=${INTERACTIVE:-1}
 
+# 这台原厂 U-Boot（2019.10-10.22.03）的提示符是 "Marvell>> "，不是主线的
+# "=> "。2026-11-25 实测：只等 "=> " 的写法每次都白等满超时，于是这里判
+# "没停住"，npu-rescue.sh 也跟着失败。两个都认。
+UBOOT_PROMPT=${UBOOT_PROMPT:-'Marvell>> '}
+UBOOT_PROMPT_ALT=${UBOOT_PROMPT_ALT:-'=> '}
+
 [ -e "$TTY" ] || { echo "找不到 $TTY" >&2; exit 1; }
 
 echo
@@ -73,10 +79,11 @@ while [ "$try" -lt 2 ]; do
 		BUF="$BUF$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')"
 	done
 	case "$BUF" in
-	*'=> '*) break ;;
+	*"$UBOOT_PROMPT"*) break ;;
+	*"$UBOOT_PROMPT_ALT"*) break ;;
 	esac
 	[ "$try" -lt 2 ] || break
-	echo "   还没看到 => （关机慢？），再来一轮"
+	echo "   还没看到 U-Boot 提示符（关机慢？），再来一轮"
 	printf 'sudo -S systemctl reboot\r' >"$TTY"
 	sleep 1
 	printf '%s\r' "$NPU_PASS" >"$TTY"
@@ -90,7 +97,7 @@ while [ "$try" -lt 2 ]; do
 	printf '\r' >"$TTY"
 done
 restore_ntb
-echo "== 空格敲完，串口交给你（看到 '=> ' 就是停住了；U-Boot 里 Ctrl-C 之类不走本地信号）"
+echo "== 空格敲完，串口交给你（看到 'Marvell>> ' 或 '=> ' 就是停住了；U-Boot 里 Ctrl-C 之类不走本地信号）"
 
 [ "$INTERACTIVE" = 1 ] || exit 0
 if command -v picocom >/dev/null 2>&1; then
