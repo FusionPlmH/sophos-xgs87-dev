@@ -146,6 +146,9 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 - eMMC 的 `boot0/boot1` 全 0，说明 **不是** 从 eMMC 硬件分区启动，靠 SPI NOR 的 U-Boot。
 - 换 eMMC 后要先分好 p1-p4，再把 Debian 解到 p2，最后确认 `bootcmd`（见 [03](03-boot-chain.md) §3.3）。
 - **p4 是出厂的 VPD**（机型/序列号/MAC 基址），任何时候都不要格式化它。
+- **要替换 p2 的内容，先看 [20](20-lan-over-vntb.md) §20.11**：对着一个正在使用的根
+  分区 `dd` 会把新镜像写坏（旧文件系统的脏页会继续落到新镜像的元数据区上），
+  2026-11-25 就是这么坏的，症状是随机二进制 `Input/output error`、sshd 握手即断。
 
 ## 7.5 容量规划
 

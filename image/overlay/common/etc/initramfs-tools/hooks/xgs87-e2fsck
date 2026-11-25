@@ -1,0 +1,39 @@
+#!/bin/sh
+# Make sure the initramfs can check and repair the root filesystem.
+#
+# Two separate things have to go wrong for this hook to be needed:
+#
+#   1. initramfs-tools' stock "fsck" hook probes the root *device* to learn its
+#      type instead of believing /etc/fstab, which cannot work inside a chroot
+#      -- that is what conf.d/10-xgs87-fstype.conf (FSTYPE=ext4) fixes.
+#   2. with the image cross-built under qemu-user, copy_exec can fail to
+#      resolve a binary's libraries, and the hook only warns.
+#
+# So copy the pieces unconditionally -- and copy fsck(8) itself: the boot
+# script does `command -v fsck` and gives up when it is missing, however many
+# fsck.<type> helpers are present.  That is exactly the state the arm64 image
+# shipped in (e2fsck and fsck.ext4 present, fsck absent), so every boot
+# reported "fsck not present, so skipping root file system".
+#
+# Usage once this is in place: put `fsck.mode=force fsck.repair=yes` on the
+# kernel command line (or touch /forcefsck) for one boot, then remove it.
+
+PREREQ=""
+
+prereqs() {
+	echo "$PREREQ"
+}
+
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+copy_exec /sbin/e2fsck /sbin
+copy_exec /sbin/fsck.ext4 /sbin 2>/dev/null || true
+copy_exec /sbin/fsck /sbin 2>/dev/null || true
+copy_exec /sbin/logsave /sbin 2>/dev/null || true

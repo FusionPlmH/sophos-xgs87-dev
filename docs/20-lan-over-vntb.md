@@ -555,7 +555,130 @@ xgs-ntb-up.sh                                      （握手、重建 VLAN、补
 > 教训：**别在 x86 上手工 `rmmod ntb_hw_epf`** —— 在端点已经失联时，那一步会把整机带崩。
 > 关机钩子（`xgs-ntb-stop.service`）里的顺序是安全的。
 
-## 20.11 当前网络
+## 20.11 换掉 NPU 的根分区：唯一安全的做法，以及写坏之后怎么救
+
+2026-11-25 用错了方法，把 NPU 的 p2 写坏了，代价是两台机器各宕一次。这一节把这
+条路踩实，以后不要再试别的方式。
+
+### 20.11.1 为什么"dd 到正在使用的根分区"一定会坏
+
+那天的顺序是：
+
+```
+sync; dd of=/dev/mmcblk0p2 bs=1M conv=fsync     # 边跑边用旧根，45 秒写完 1.5 GB
+sync; reboot
+```
+
+`conv=fsync` 只保证**设备**的写回落盘，管不了**旧文件系统还挂在内存里的脏数据**。
+dd 一结束，旧 ext4（大小还是 597 MiB 时代的）继续按它自己的位图和 inode 表往下写：
+journald 每几秒写一次日志，落点就是新镜像的元数据区。`reboot` 也写到那里。
+
+结果（`e2fsck -fn /dev/mmcblk0p2` 实测）：
+
+```
+Inode 9635 passes checks, but checksum does not match inode.
+Inode 9643 passes checks, but checksum does not match inode.
+Multiply-claimed block(s) in inode 7: 26624--28669
+```
+
+现场症状很有辨识度：**随机某个二进制执行时报 `Input/output error`**（`grep`、
+`lsinitramfs`、`depmod` 都中过），sshd 在 `kex_exchange_identification` 就
+`Connection reset by peer`，串口 getty 能回显但 `login` 卡死。原因是这些进程要读的
+块正好被写坏了，而它们各自的运气不同。
+
+同一个机制也解释了 20.7.5 那个"缓存身份"坑：**只要旧文件系统还活着，它就会继续
+写**。
+
+### 20.11.2 正确的换根流程
+
+三选一，按可靠性排：
+
+1. **在 initramfs 里换**（p2 没有挂载，最干净）：`break=premount` 或急救 initramfs，
+   在那里 `dd` / 解包。缺点是镜像得能进到 RAM 或另一个分区。
+2. **先把根变成只读再 dd**：`mount -o remount,ro /` 成功之后 dd 才安全。注意它经常
+   直接 EBUSY（有进程正开着文件写），`echo u > /proc/sysrq-trigger`（紧急只读重挂）
+   也不保证成功；两条都失败就**不要** dd。
+3. **只修不换**：文件系统只是元数据坏了就用 `e2fsck`（见 20.11.3）。2026-11-25 就是
+   这么修的，修完 `md5sum -c` 对着 dpkg 的 `.md5sums` 全量校验，**3435 个"失败"全是
+   镜像构建时故意排除的 `/usr/share/doc`、`/usr/share/man`，真正的校验错 0 个** ——
+   所以元数据修复之后不需要重刷。
+
+### 20.11.3 写坏之后的自救：让 initramfs 在挂载前修一次
+
+前面说过镜像里的 initramfs **根本没有 fsck**（20.11.4），所以第一件事是把它补进去：
+
+```sh
+# 1) 让 fsck hook 别再"探测设备"，直接认 ext4
+printf 'FSTYPE=ext4\n' > /etc/initramfs-tools/conf.d/10-xgs87-fstype.conf
+# 2) 兜底 hook 把 fsck 本体也拷进去（见 image/overlay/common/etc/initramfs-tools/hooks/xgs87-e2fsck）
+update-initramfs -u -k "$(uname -r)"
+lsinitramfs /boot/initrd.img-$(uname -r) | grep -E 'sbin/fsck'   # 必须能看到 usr/sbin/fsck
+```
+
+然后借 U-Boot 的环境变量强制一次（**不要 saveenv**，只在内存里改）：
+
+```sh
+fw_setenv bootargs_deb 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 \
+  root=/dev/mmcblk0p2 rootwait rw fsck.mode=force fsck.repair=yes'
+reboot
+# 起来后确认干净，再把 bootargs_deb 改回去：
+#   console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 root=/dev/mmcblk0p2 rootwait rw
+```
+
+`fsck.mode=force` / `fsck.repair=yes` 是 initramfs-tools 自己认的（
+`/usr/share/initramfs-tools/init:188-192` → `forcefsck=y`、`fsckfix=y`），不是 systemd
+的专利。修完的开机日志里会看到正常的一次：
+
+```
+[/sbin/fsck.ext4 (1) -- /dev/mmcblk0p2] fsck.ext4 -a -C0 /dev/mmcblk0p2
+root: clean, 16457/97536 files, 168940/390144 blocks
+```
+
+### 20.11.4 镜像的 initramfs 里为什么没有 fsck（已修）
+
+开机一直打 `Warning: fsck not present, so skipping root file system`。原因不是没装
+e2fsprogs，而是 initramfs-tools 的 stock `fsck` hook 有个反直觉的分支：**对 `/` 它不信
+`/etc/fstab` 写的类型，要去探测设备**（`/usr/share/initramfs-tools/hooks/fsck` 里那段
+`if [ "${MNT_DIR}" = "/" ]`），而 chroot 里没有 `/dev/mmcblk0p2` 可探 → `fsck_types`
+为空 → 整个 hook 直接 `exit 0`，一个二进制都不拷。
+
+修法（`image/overlay/common/` 下，两侧共用）：
+
+- `etc/initramfs-tools/conf.d/10-xgs87-fstype.conf` → `FSTYPE=ext4`，hook 走不探测的
+  分支；顺带 arm64 交叉构建下 `copy_exec` 解析库失败时也有兜底。
+- `etc/initramfs-tools/hooks/xgs87-e2fsck` → 无条件拷 `e2fsck`、`fsck.ext4`、
+  **`fsck` 本体**、`logsave`。只拷 `fsck.ext4` 不够：`scripts/functions` 里是
+  `command -v fsck` 判断，缺了它照样跳过。
+- `image/setup.sh` 现在**两侧都重建 initramfs 并校验** `(usr/)?sbin/fsck` 在不在，
+  不在就打警告。以前只有 NPU 侧重建，x86 侧用的还是内核包在 mmdebstrap 阶段生成
+  的那份（那时 overlay 还没拷进去）。
+
+### 20.11.5 复位两台机器：串口 SysRq（不碰 PCIe）
+
+那天的教训：**从 x86 去拉根端口 `00:03.1` 的 Link Disable 会把 x86 自己带下去**
+（20.7.6 那招现在不再可靠）。可靠的替代是串口 SysRq：
+
+```sh
+# 在 x86 上对 NPU 的 /dev/ttyS2，或用 COM5 对 x86 自己的 ttyS0
+# 1) 发一个 BREAK（.NET: SerialPort.BreakState，Linux: termios.tcsendbreak）
+# 2) 250 ms 内发一个字符：s=sync  u=只读重挂  b=立刻复位
+```
+
+实测 NPU 回了 `sysrq: HELP : ...`，`b` 干净复位并回到 U-Boot；x86 在用户态已经卡死
+（回车只回 CRLF、没有 shell）的情况下，`s`+`b` 照样把机器拉了回来。**用户态挂了也要
+能救**，这是它比脚本更值钱的地方。
+
+### 20.11.6 NPU 一重启，x86 那条 vNTB 就不会自己回来
+
+实测两次：NPU 重启后 x86 侧 `eth0` 的 operstate 停在 DOWN / 端点
+`endpoint unreachable, dropping doorbell`，`xgs-ntb-watch` 因为 `AUTO_RECOVER=0`
+只记日志不动手，于是**从 PC 到 x86 的路整段消失**（PC → NPU br-lan → eth0.200 → x86）。
+现在镜像里默认 `AUTO_RECOVER=1`（`image/overlay/x86/etc/default/xgs-ntb-watch`）：链路
+连续 5 分钟不通就主动跑一次 `xgs-ntb-up.sh --force-rescan`，之后冷却 10 分钟。5 分钟
+的延迟是为了不打断正在启动的 NPU（它的 Linux 只要 11 秒）。
+
+## 20.12 当前网络
+
 
 | 位置 | 地址 | 说明 |
 |---|---|---|
@@ -564,7 +687,7 @@ xgs-ntb-up.sh                                      （握手、重建 VLAN、补
 | x86 ↔ NPU（LAN） | `10.234.56.2` ↔ `10.234.56.1` | VLAN 200 走 vNTB |
 | 面板 1/LAN | `br-lan` 静态 `10.234.56.1/24` | 插笔记本（自己配 `10.234.56.x`）可同时访问 `.1` / `.2` |
 
-## 20.12 还是开着的问题
+## 20.13 还是开着的问题
 
 1. `ntb_transport` 的 link-cleanup 在掉链时会把 NPU 卡住（两条 `qp 0: Link Cleanup` 之后静默），
    随后被复位。要根治得能在掉链瞬间抓到栈 —— `ramoops` 已加到 DTB 并被证伪（DDR scrub），

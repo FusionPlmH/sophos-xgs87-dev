@@ -116,6 +116,36 @@ if [ "$VARIANT" = full ] || [ "$VARIANT" = lean ]; then
 	fi
 fi
 
+# --- initramfs --------------------------------------------------------------
+# Regenerate on both sides, not just the NPU.  The kernel package built its own
+# initramfs during mmdebstrap, i.e. before image/overlay was copied in, so
+# without this the image ships an initramfs with no fsck in it and every boot
+# logs "Warning: fsck not present, so skipping root file system" -- measured on
+# the x86, first boot of the 762 MB image on 2026-11-25.
+KVER=${KVER:-$(ls /lib/modules 2>/dev/null | sort -V | tail -1)}
+INITRD=
+if [ -n "$KVER" ]; then
+	mkdir -p /boot
+	# -v so the build log shows which hooks actually ran; the fsck hooks are
+	# the difference between "a damaged root is repairable at boot" and "it
+	# is not".
+	update-initramfs -u -k "$KVER" -v 2>&1 |
+		grep -E 'Calling hook|^W:|^E:' || true
+	INITRD=/boot/initrd.img-$KVER
+fi
+# Do not trust the hook to have done it: verify, and do not depend on
+# unmkinitramfs here (qemu-built images may not have it).
+if [ -n "$INITRD" ] && [ -f "$INITRD" ] && command -v cpio >/dev/null 2>&1; then
+	if ! { zstd -dc "$INITRD" 2>/dev/null || cat "$INITRD"; } |
+		cpio -t 2>/dev/null | grep -qxE '(usr/)?sbin/fsck'; then
+		echo "== warning: $INITRD contains no fsck, so a damaged root could" \
+			"only be repaired offline. Look at" \
+			"etc/initramfs-tools/conf.d/10-xgs87-fstype.conf and" \
+			"etc/initramfs-tools/hooks/xgs87-e2fsck in image/overlay/common," \
+			"then run 'update-initramfs -u' on the target." >&2
+	fi
+fi
+
 # --- fixed boot filenames ---------------------------------------------------
 # U-Boot's bootcmd_deb loads /boot/Image and /boot/initrd.img by fixed name.
 # The kernel postinst hooks create them, but a rootfs tar is unpacked by the
@@ -123,19 +153,6 @@ fi
 # hardlink keeps the image from carrying a second 36 MB kernel or 34 MB initrd;
 # the tar preserves hardlinks.  The postinst hooks still update them later.
 if [ "$SIDE" = npu ]; then
-	KVER=${KVER:-$(ls /lib/modules 2>/dev/null | sort -V | tail -1)}
-	mkdir -p /boot
-	# Regenerate unconditionally: our overlay hook (initramfs-tools/hooks/
-	# xgs87-e2fsck) has to be in there, otherwise a damaged root can only be
-	# repaired offline.  The kernel package built its own initramfs earlier,
-	# before the overlay was copied in.
-	if [ -n "$KVER" ]; then
-		# -v so the build log shows which hooks actually ran; the fsck hooks
-		# are the difference between "a damaged root is repairable at boot"
-		# and "it is not".
-		update-initramfs -u -k "$KVER" -v 2>&1 |
-			grep -E 'Calling hook|^W:|^E:' || true
-	fi
 	if [ -n "$KVER" ] && [ -f "/boot/vmlinuz-$KVER" ] && [ ! -e /boot/Image ]; then
 		ln -f "/boot/vmlinuz-$KVER" /boot/Image 2>/dev/null ||
 			cp -f "/boot/vmlinuz-$KVER" /boot/Image
@@ -151,18 +168,6 @@ if [ "$SIDE" = npu ]; then
 	if [ -f "$_dtb" ] &&
 		! cmp -s "$_dtb" /boot/cn9130-sophos-xgs87w-sfp10g.dtb; then
 		cp -f "$_dtb" /boot/cn9130-sophos-xgs87w-sfp10g.dtb
-	fi
-	# Verify the initramfs can actually repair the root: without e2fsck inside,
-	# `fsck.mode=force` only reaches systemd-fsck-root (which still works, thanks
-	# to /etc/fstab) instead of being handled before the root is mounted.
-	# Do not depend on unmkinitramfs here: qemu-built images may not have it.
-	if [ -f /boot/initrd.img ] && command -v cpio >/dev/null 2>&1; then
-		if ! { zstd -dc /boot/initrd.img 2>/dev/null || cat /boot/initrd.img; } |
-			cpio -t 2>/dev/null | grep -q 'e2fsck'; then
-			echo "== warning: initramfs contains no e2fsck (the hook ran but" \
-				"copy_exec could not resolve its libraries under qemu-user);" \
-				"run 'update-initramfs -u' once on the target to fix it" >&2
-		fi
 	fi
 fi
 

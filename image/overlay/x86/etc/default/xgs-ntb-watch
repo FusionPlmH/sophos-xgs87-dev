@@ -1,10 +1,17 @@
 # xgs-ntb-watch.sh sources this file if it exists.
 #
-# Default 0: the watcher only rebuilds the local VLANs/addresses and logs.
-# Set to 1 to allow ONE automatic `xgs-ntb-up.sh --force-rescan` after the link
-# has been unhealthy for LIMIT*INTERVAL (5 min); it then cools down for 10 min.
+# 1 = allow ONE automatic `xgs-ntb-up.sh --force-rescan` after the link has been
+# unhealthy for LIMIT*INTERVAL (5 min); it then cools down for 10 min.
 #
-# A remove/rescan re-asserts PERST# and will interrupt an NPU that is still
-# booting, so keep this off unless you know the NPU is already up.
-AUTO_RECOVER=0
+# Measured 2026-11-25, twice: an NPU reboot never brings this end back by
+# itself.  eth0 stays at operstate DOWN with "endpoint unreachable, dropping
+# doorbell" in dmesg, and because the only route to this machine is the vNTB
+# link (PC -> NPU br-lan -> eth0.200 -> here) the box becomes unreachable
+# exactly when it is needed -- the serial console is the only way in.  So the
+# watcher recovers on its own now.
+#
+# Why the 5 minute delay: a remove/rescan re-asserts PERST# and would interrupt
+# an NPU that is still booting.  The NPU's Linux is up in 11 s, so waiting five
+# minutes costs nothing and removes that failure mode.
+AUTO_RECOVER=1
 MAX_RECOVER=1
