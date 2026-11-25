@@ -47,9 +47,33 @@ timeout 5 cat /dev/ttyS2                     # 只看一眼
 . installer/payload/serial.sh                # serial_run / serial_uboot / serial_read_until
 ```
 
-坑：
+## ssh（装完就能用，不需要先交换钥匙）
 
-- **两个读者会把字节流切成乱码**。看到乱码先 `pgrep -af ttyS2`。
+镜像里不带任何私钥，只有 `admin` / `P@ssw0rd` 和 `PasswordAuthentication yes`，再加一份
+客户端配置 `image/overlay/common/etc/ssh/ssh_config.d/10-xgs87.conf`：
+
+- `StrictHostKeyChecking accept-new` —— 第一次连不问 yes/no；
+- `ControlMaster` + `ControlPersist 12h` —— **密码只输一次**，之后的 `ssh`/`scp`/脚本里的
+  `BatchMode` 全部复用那条连接，12 小时内不再问。
+
+```sh
+ssh admin@10.234.56.1            # 第一次输一次密码
+ssh admin@10.234.56.1 'uptime'   # 复用同一条连接，不再问
+```
+
+想彻底免密（给 cron/脚本用，或者不留 master 连接），上来做一次就行：
+
+```sh
+ssh-copy-id admin@10.234.56.1   # 从 x86 到 NPU
+ssh-copy-id admin@10.234.56.2   # 从 NPU 到 x86
+```
+
+脚本要跨机器时别依赖钥匙：`installer/payload/lib.sh` 的 `npu_ssh`（`SSH_ASKPASS` 拿密码，
+`npu-sshdd.sh` 同一套）在新装的系统上就成立。
+
+## 控制台的坑
+
+- **两个读者会把串口字节流切成乱码**。看到乱码先 `pgrep -af ttyS2`。
 - 登录要状态机，不能靠固定 `sleep`：等 `login:` 发用户名、等 `Password:` 发密码。
 - 115200 是硬上限，别想提速（见 [01](01-hardware.md)）。
 - PC 想直接接到 NPU 的 UART 上：x86 上跑 `installer/payload/relay.py`（见 [06](06-rescue.md)）。
