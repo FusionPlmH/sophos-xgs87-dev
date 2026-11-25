@@ -59,6 +59,23 @@ sudo ./installer/mkusb.sh --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.
    `dsa_core` 要 `selftests`+`hsr`；eMMC 要 `sdhci-xenon-driver`。`build-rescue.sh` 现在用
    `depmod` 的闭包，不是手写清单。
 
+## 急救包还能不能更小（2026-11-26 实测）
+
+15.9 MB 里 **86% 是内核**，所以只有裁内核才有意义。同一份 37.7 MB 的 Image：
+
+| 做法 | 结果 | 代价 |
+|---|---|---|
+| gzip -9（现状） | 13.68 MB | — |
+| `--kernel-fmt lzma` | **9.76 MB**（−29%） | 只要 U-Boot 的 `unzip` 认 lzma；换之前**必须先在真机 U-Boot 里试一次** |
+| zstd -19 | 11.37 MB | 同上，且 U-Boot 未必有 zstd |
+| `make tinyconfig` + 逐项加回（~200 项） | 预计 1.5–3 MB | 每轮都要真机验证能不能起；现在这份 `board/rescue-kernel.config` **不是**这种写法 |
+| ~~defconfig + 关几十项~~ | **40.6 MB / gz 12.3 MB —— 反而更大** | 已试过，别再来一遍 |
+| initramfs 换 `xz -9` | 2.24 → 2.01 MB | 内核要 `CONFIG_RD_XZ`（Debian 的内核有）；省 0.23 MB，可以一起做 |
+| 自编一个精简 busybox | initramfs 再省 ~1 MB | 得编 busybox；收益仍被内核压着 |
+
+结论：`--kernel-fmt lzma` 是唯一"不重编内核也能省 7 分钟"的路（15.9 MB→11.8 MB，27→20 分钟）；
+想进到 5 MB 以内（~10 分钟）必须做 tinyconfig 内核，而且**没有真机验证不能当默认**。
+
 ## 其他构建脚本
 
 | 脚本 | 干什么 |

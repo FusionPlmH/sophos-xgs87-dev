@@ -114,7 +114,10 @@ case "$RD_SIZE" in
 esac
 echo "   initramfs 解压后 $((0x$RD_SIZE)) 字节"
 if [ "$USE_P2_KERNEL" != 1 ]; then
-	push Image.gz "$SCRATCH_KERNEL_GZ" || { echo "   Image.gz 推失败"; return 1; }
+	# 内核在包里可能是 Image.gz 也可能是 Image.lzma（build-rescue.sh --kernel-fmt）
+	KIMG=$(ls "$WORK"/Image.gz "$WORK"/Image.lzma 2>/dev/null | head -1)
+	[ -n "$KIMG" ] || { echo "   包里没有 Image.gz / Image.lzma"; return 1; }
+	push "${KIMG##*/}" "$SCRATCH_KERNEL_GZ" || { echo "   内核推失败"; return 1; }
 	serial_uboot "unzip $SCRATCH_KERNEL_GZ \$kernel_addr_r" 120 >/dev/null || { echo "   unzip kernel 失败"; return 1; }
 fi
 

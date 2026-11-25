@@ -19,6 +19,9 @@ OUT=$REPO/out/xgs87-rescue.tar.zst
 BUSYBOX_DEB=
 KERNEL_DIR=
 MIRROR=http://deb.debian.org/debian
+# 内核用什么压缩进包。lzma 比 gzip 小 29%（实测 13.68 -> 9.76 MB），
+# 但 U-Boot 的 unzip 得认它 —— 换之前必须先在真机 U-Boot 里试一次。
+KERNEL_FMT=gz
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -27,6 +30,7 @@ while [ $# -gt 0 ]; do
 	--busybox-deb) BUSYBOX_DEB=$2; shift 2 ;;
 	--kernel) KERNEL_DIR=$2; shift 2 ;;
 	--mirror) MIRROR=$2; shift 2 ;;
+	--kernel-fmt) KERNEL_FMT=$2; shift 2 ;;
 	-h|--help) sed -n '2,16p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
@@ -121,25 +125,36 @@ mkdir -p "$R/dev" "$R/proc" "$R/sys"
 echo "== 4/6 打 cpio"
 ( cd "$R" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 ) >"$WORK/initramfs.gz"
 
-echo "== 5/6 内核准备成 U-Boot 能 unzip 的 Image.gz"
-if [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image.gz" ]; then
-	cp "$KERNEL_DIR/Image.gz" "$WORK/kernel.gz"
+echo "== 5/6 内核准备成 U-Boot 能 unzip 的 Image.$KERNEL_FMT"
+case "$KERNEL_FMT" in
+lzma) KCOMP="lzma -9 -c" ;;
+*)    KERNEL_FMT=gz; KCOMP="gzip -9 -c" ;;
+esac
+# 统一入口：给它「解压后的 Image」或者任何压缩过的内核，产出 kernel.$KERNEL_FMT
+pack_kernel() {
+	_src=$1
+	_raw=$WORK/Image.raw
+	case "$(file -b "$_src" 2>/dev/null)" in
+	*gzip*) gunzip -c "$_src" >"$_raw" ;;
+	*XZ*|*LZMA*) xz -dc "$_src" >"$_raw" 2>/dev/null || lzma -dc "$_src" >"$_raw" ;;
+	*) cp -f "$_src" "$_raw" ;;
+	esac
+	$KCOMP "$_raw" >"$WORK/kernel.$KERNEL_FMT"
+	rm -f "$_raw"
+}
+if [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image.$KERNEL_FMT" ]; then
+	cp "$KERNEL_DIR/Image.$KERNEL_FMT" "$WORK/kernel.$KERNEL_FMT"
+elif [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image.gz" ]; then
+	pack_kernel "$KERNEL_DIR/Image.gz"
 elif [ -f "$WORK/boot/Image" ]; then
-	cp "$WORK/boot/Image" "$WORK/Image"
-	gzip -9 -f "$WORK/Image"
-	mv "$WORK/Image.gz" "$WORK/kernel.gz"
+	pack_kernel "$WORK/boot/Image"
 else
-	k=$(ls "$WORK"/boot/vmlinuz-* | head -1)
-	if file "$k" | grep -qi 'gzip'; then
-		cp "$k" "$WORK/kernel.gz"
-	else
-		cp "$k" "$WORK/Image"; gzip -9 -f "$WORK/Image"; mv "$WORK/Image.gz" "$WORK/kernel.gz"
-	fi
+	pack_kernel "$(ls "$WORK"/boot/vmlinuz-* | head -1)"
 fi
 
 echo "== 6/6 打包"
 mkdir -p "$WORK/out"
-cp "$WORK/kernel.gz" "$WORK/out/Image.gz"
+cp "$WORK/kernel.$KERNEL_FMT" "$WORK/out/Image.$KERNEL_FMT"
 cp "$WORK/initramfs.gz" "$WORK/out/initramfs.gz"
 cp "$REPO"/out/cn9130-sophos-xgs87w-sfp10g.dtb "$WORK/out/" 2>/dev/null || true
 [ -f "$WORK/out/cn9130-sophos-xgs87w-sfp10g.dtb" ] || {
@@ -151,5 +166,5 @@ ls -lh "$OUT"
 tar --zstd -tvf "$OUT" | sed 's/^/   /'
 echo
 echo "急救包好了。U 盘上它会在 /opt/xgs87/payload/xgs87-rescue.tar.zst 里，"
-echo "菜单 2 的最后一级会用它：串口推 Image.gz + initramfs.gz，"
+echo "菜单 2 的最后一级会用它：串口推 Image.$KERNEL_FMT + initramfs.gz，"
 echo "起来后把 p2 的整盘影像走 HTTP 写进去。"
