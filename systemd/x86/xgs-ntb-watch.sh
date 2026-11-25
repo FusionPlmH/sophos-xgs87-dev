@@ -99,6 +99,18 @@ while :; do
 		keep_local_plumbing
 	else
 		miss=$((miss + 1))
+		# 最便宜的那种故障：端点已经枚举、ntb_hw_epf 也 bind 了，但
+		# ntb_transport/ntb_netdev 没起来（开机时 xgs-ntb 等不到设备就先失败
+		# 退出了 —— 2026-11-25 上电后 x86 就是这个状态：lspci 有 1957:0809，
+		# 却没有 eth0）。重跑 xgs-ntb-up.sh 只加载模块 + 重配 VLAN，**不碰 PCIe**，
+		# 所以可以放心反复试。
+		if epf_present && ! is_ntb_eth0; then
+			log "端点在、但没有 ntb netdev；重跑 xgs-ntb-up.sh"
+			/usr/local/sbin/xgs-ntb-up.sh >>/var/log/xgs-ntb-watch.log 2>&1 || true
+			miss=0
+			sleep "$INTERVAL"
+			continue
+		fi
 		if [ "$miss" -ge "$LIMIT" ]; then
 			miss=0
 			if [ "$AUTO_RECOVER" = 1 ] && [ "$recover_count" -lt "$MAX_RECOVER" ]; then

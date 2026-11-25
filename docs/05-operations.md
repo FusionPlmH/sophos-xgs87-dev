@@ -95,7 +95,8 @@ ssh admin@10.234.56.1 'uptime'                     # x86 → NPU 那一跳
 | 现象 | 原因 / 处理 |
 |---|---|
 | x86 上 `eth0` 不存在，dmesg 刷 `endpoint unreachable, dropping doorbell` | BIOS 没在 POST 枚举到 endpoint。**重启一次 x86**（NPU 保持开机）。刷屏会冲掉串口控制台，先 `dmesg -n 1` |
-| 上电后 x86 彻底没网、NPU 侧 `/sys/class/net/eth0` 的 `carrier` 是 **0** | 这是**链路没 train 起来**，和上面那条不是一回事：BIOS 扫总线时 NPU 的端点还没武装（NPU 从上电到 vNTB 就绪要 ~12 秒），host 侧根本看不到设备，`rescan` 也找不到"电上不存在的功能"。要在 **host** 上 toggle 根端口的 Link Disable：`xgs-ntb-up.sh --retrain`（`AUTO_RECOVER=1` 的 watcher 会自己做，但那一版要装到 x86 上）。NPU 侧怎么看：`pci-vntb` 已 bind、`start=1` 而 `eth0 carrier=0` 就是这种情况 |
+| 上电后 x86 完全没网 | 看 `lspci -nn \| grep 1957` —— **分三种，处理完全不同**：<br>① 有 `1957:0809`、`/sys/bus/ntb/devices/*` 也在、就是没有 `eth0` → 端点已枚举且 bind，只是 `ntb_transport`/`ntb_netdev` 没起来（开机时 `xgs-ntb` 等不到设备先失败退出了）。重跑 `xgs-ntb-up.sh`（**不碰 PCIe**，可以反复试；watcher 现在自动做这件事）<br>② 什么都没有，NPU 侧 `cat /sys/class/net/eth0/carrier` 是 0 → **链路没 train**（BIOS 扫总线时 NPU 端点还没武装，NPU 从上电到 vNTB 就绪要 ~12 秒），`rescan` 找不到"电上不存在的功能"：在 **host** 上 `xgs-ntb-up.sh --retrain`（toggle 根端口 Link Disable）<br>③ 有设备但 ID 是 `11ab:7080` → 枚举时读到的还是固件出厂身份，被内核缓存了：`xgs-ntb-up.sh --force-rescan` |
+| 现在这套是怎么自愈的 | 2026-11-25 补的：`xgs-ntb-watch` 每轮先看"端点在但没 netdev"（→ 重跑 `xgs-ntb-up.sh`，最便宜），攒够 5 分钟再看 `AUTO_RECOVER=1` 就 `--force-rescan`，还不行再 `--retrain` |
 | NPU 重启/重装后 vNTB 回不来 | 同上：重启 x86。想不重启就复位 NPU 见 [06](06-rescue.md) 的 secondary bus reset |
 | `bootcmd_emmc3` 起 p3 → `No working init found` | p3 是只读的原厂系统，没有可用 init。别用这个 bootcmd |
 | U-Boot 里 `ping`/`tftpboot` 不动 | 已知：U-Boot 的网络完全不通（ARP 都收不到）。只能走串口/急救 |
