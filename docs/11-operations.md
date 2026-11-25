@@ -229,6 +229,32 @@ e2fsprogs，而是 initramfs-tools 的 stock `fsck` hook 有个反直觉的分�
 连续 5 分钟不通就主动跑一次 `xgs-ntb-up.sh --force-rescan`，之后冷却 10 分钟。5 分钟
 的延迟是为了不打断正在启动的 NPU（它的 Linux 只要 11 秒）。
 
+**但 `--force-rescan` 只治一半（2026-11-25 实测）**：主机侧确实能拿回 `eth0`，打出
+`qp 0: Link Up`、`carrier=1`，NPU 侧却始终是 `<NO-CARRIER>`（`operstate down`），
+包还是过不去；这时在 NPU 上重载 `ntb_netdev` + `ntb_transport`（日志里能看到 QP
+`freed` 再 `created`）也**不会**重新握手。验证过能真正恢复的只有一条：**重启 x86** ——
+它顺带用 PERST# 把 NPU 复位，两边按正常顺序重新枚举，10 秒后链路自己回来
+（`ntb_hw_epf 0000:03:00.0: eth0 created` → `qp 0: Link Up`）。
+
+所以开机看到 `endpoint unreachable, dropping doorbell` 刷屏时，不要指望等 5 分钟自愈，
+直接规划一次 x86 重启。刷屏还会把串口控制台冲掉，先 `dmesg -n 1` 再说。
+
+### 11.2.7 「用 USB 给 NPU 写系统」到底有哪几种
+
+这个问题有六种理解方式，按**验证程度**排：
+
+| 想干的事 | 做法 | 状态 |
+|---|---|---|
+| 把新镜像写进 NPU 的 eMMC | 维护 U 盘启动 x86 → 菜单 `2` → **ssh+dd**（走 vNTB，1.5 GiB 用了 45 s） | ✅ 唯一在真机上跑通的路径 |
+| NPU 起来了但网络坏了 | 同一条路，安装脚本自己退到 `/dev/ttyS2` 串口去修它的 br-lan | ⚠️ 逻辑在，`serial_run` 结束标记的 bug 2026-11-25 才修（见 [10](10-console.md) §10.5），**还没在真机上完整跑过一遍** |
+| NPU 卡在 U-Boot | x86 插一块 **USB 网卡** → U-Boot 里 `tftpboot` + `mmc write` | ❌ 一次都没跑过，手头没有 USB 网卡 |
+| NPU 彻底变砖（U-Boot 都没了） | x86 的 **MCP2210（USB→SPI）** 写那 4 MiB SPI NOR | ✅ 实测能救，见 [14](14-rescue.md) §14.7 |
+| 一根 USB 线把 x86 和 NPU 直连 | —— | ❌ 不存在。NPU 的 xHCI 在 DT 里是关的，面板上也没找到口（[01](01-hardware.md) §1.3） |
+| 把 x86 的 U 盘"共享 / 反射"给 NPU | usbip over vNTB | ❌ **明确不做**。要在两端各配一次、用完还得手动 detach，导出期间设备在本机消失。2026-11-25 试通之后已经从固件里删干净 |
+
+结论：**"用 USB 写 NPU" 现实里只有两种含义** —— U 盘启动 x86 再由它写 NPU（日常升级），
+或者 MCP2210 写 SPI NOR（救砖）。中间那条 U-Boot+tftp 只缺一块 USB 网卡，别的都齐了。
+
 ## 11.3 开机之后先看这五行
 
 ```sh

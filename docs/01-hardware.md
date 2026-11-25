@@ -56,7 +56,9 @@ Bus 002  xHCI 4 ports (USB 2.0)
 Bus 003  xHCI 4 ports (USB 3.0)
 ```
 
-- 前面板 USB-A 是 x86 的（EHCI 高速）。
+- 前面板 USB-A 接在 x86 上（EHCI，USB 2.0）：维护 U 盘插那儿时 x86 认成 `/dev/sda`，
+  并且就是用它启动的（`sda 58.6G HIKSEMI`）。NPU 也有两个 xHCI，但面板上找不到对应
+  的口（见 §1.3 的 USB 行）。
 - **MCP2210** 是 USB→SPI 主控，原厂用来从 x86 更新 NPU 的 SPI NOR（U-Boot）。接在内部 hub 上，
   不需要开盖就能摸到。
 - 设备节点：`/dev/hidraw0`（内核只绑了 `hid-generic`，没有专用驱动）。
@@ -95,7 +97,7 @@ Bus 003  xHCI 4 ports (USB 3.0)
 | 主存储 | eMMC **H8G4a2** 7.28 GiB（4 分区，见 [05](05-storage.md)） |
 | 以太网 | `mvpp2` eth0，10GBase-KR，Comphy lane 4 = SFI0 10.3125 Gbps |
 | 交换机 | **88E6193X**，MDIO addr 2（`mdio@12a200`） |
-| USB | 2× xHCI（`f2500000`, `f2510000`）+ UTMI PHY0/1，VBUS 由 CP GPIO1.9 / GPIO2.21 控制 |
+| USB | 2× xHCI（`f2500000`, `f2510000`）+ UTMI PHY0/1，VBUS 由 CP GPIO1.9 / GPIO2.21（= 全局 GPIO 41/85）控制。**DT 里三个节点全是 `status = "disabled"`**；打开后能注册 4 个 root hub / 2 个物理口，但面板上找不到对应的口，所以固件不启用 |
 | 串口 | `ttyS0` @ `0xf0512000`，115200 8N1（earlycon 同址） |
 | I²C | i2c-0：0x20 PCA9555（LED）、0x57 EEPROM、0x64；i2c-1：SFP EEPROM 0x50/0x51 |
 | GPIO | **3 个** `gpiochip0`(base 0, AP `f06f4000`)、`gpiochip1`(base 32, CP0 `f2440000` @0x100)、`gpiochip2`(base 64, CP0 @0x140) |

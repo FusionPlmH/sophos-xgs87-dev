@@ -28,7 +28,8 @@
 | I2C | ✅ | `cp0_i2c1`，SFP cage EEPROM |
 | 加密引擎 EIP197 | ⛔ **不启用** | 镜像不带微码，驱动 probe 失败，已 blacklist；见 14.4、14.13 |
 | `cpufreq` | ❌ | DT 没有 `operating-points-v2`，`cpufreq-dt` 无表可读；见 14.13 |
-| USB / SATA | — | 板上 USB 和 SATA 都没引出，不追 |
+| USB | ⛔ **不启用** | SoC 有两个 xHCI（`f2500000`/`f2510000`）+ UTMI，DT 里 `usb@500000`、`usb@510000`、`utmi@580000` 三个节点全是 `status = "disabled"`。打开后内核正常注册 4 个 root hub / 2 个物理口，vNTB 和交换口毫无影响，但**找不到面板上哪个口接的是它们** —— 验证不了就不进固件。见 [01](01-hardware.md) §1.3 |
+| SATA | — | 板上没有接 SATA 盘；原厂 x86 侧那路 AHCI 是空的 |
 
 ---
 

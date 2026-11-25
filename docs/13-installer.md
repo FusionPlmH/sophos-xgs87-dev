@@ -69,6 +69,9 @@ lsblk; sfdisk -d /dev/mmcblk0
    U-Boot 的 `bootcmd` 指向 p3，改过 `bootcmd` 的机器要确认它指向你装的那个分区。
 5. 装完重启，x86 首次开机自动扩分区，NPU 由 U-Boot 拉起。
 
+> 这几条路各自验证到什么程度（哪条真机跑通过、哪条一次没跑过），见
+> [11](11-operations.md) §11.2.7。**没有"用 USB 线直连 NPU"这条路**。
+
 ## 13.4 没有 U 盘启动时
 
 BIOS 不认 U 盘（或者手头没有 U 盘）时，只能先换 NPU，x86 留在 SFOS：

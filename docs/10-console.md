@@ -145,6 +145,22 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
     remove/rescan，再用 `npu-uboot.py` 一行一行敲。**不要因为一次 `Unknown command` 就断定
     命令集缺失** —— `bootcmd` 里的 `run`/`ext4load` 能跑，就说明命令是有的。
 
+11. **"等一个结束标记"的写法，标记必须由发送端生成**（2026-11-25 修，影响面最大的一条）：
+    `installer/payload/serial.sh` 的 `serial_run()` 原来是本地拼好 `XGS87DONE$$` 去等，
+    发出去的却是 `echo XGS87$(echo DONE)$$` —— 那个 `$$` 由**远端** shell 展开成**它自己**
+    的 PID，两边永远不相等。于是每次调用都耗满超时、返回失败：维护盘在明明停在登录提示符
+    的 NPU 上报告"NPU 没起来"，一路退到急救包。修法是本地先算出标记、再用 `printf` 传过去：
+    `serial_send "…; printf 'XGS87%s%s\n' DONE <tag>"`，等 `XGS87DONE<tag>`。
+
+    同一个坑的另一种形态：**等待的字符串出现在"命令回显"里**。串口默认回显你敲的每一个
+    字节，所以 `echo READY-1` 这一行本身就含 `READY-1`，读者立刻"匹配成功"，拿到的是空输出。
+    让标记只出现在输出里的写法：`printf 'READY%s\n' -1`（回显里是 `READY%s`，输出里才是
+    `READY-1`）。
+
+12. **U-Boot 不是 shell**：给它发 `命令; echo done` 一定回 `Unknown command`。U-Boot 命令
+    是同步的、没有退出码，只能"发完等 N 秒再读"，靠 `bytes read` / `Uncompressed size`
+    这类输出判断成败（`serial.sh` 里另有一个 `serial_uboot()` 就是干这个的）。
+
 ## 10.6 备份与救砖
 
 | 场景 | 手段 |
