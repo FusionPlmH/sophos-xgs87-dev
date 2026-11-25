@@ -103,8 +103,17 @@ while :; do
 			miss=0
 			if [ "$AUTO_RECOVER" = 1 ] && [ "$recover_count" -lt "$MAX_RECOVER" ]; then
 				recover_count=$((recover_count + 1))
-				log "link unhealthy for $((LIMIT * INTERVAL))s; one forced rescan (attempt $recover_count/$MAX_RECOVER)"
+				log "link unhealthy for $((LIMIT * INTERVAL))s; recovery $recover_count/$MAX_RECOVER"
+				# 两步。只做 remove/rescan 是不够的：BIOS 若在 NPU 端点武装之前
+				# 就扫完了总线，链路根本没有 train 起来，rescan 是在找"电上并不
+				# 存在的功能"，什么也找不到 —— 而 x86 自己重启一次就能造出这个
+				# 状态（重启会先拉 PERST# 把 NPU 也复位掉，两边一起起来）。
+				# 这时候要动的是根端口的 Link Disable，让 LTSSM 重新训练。
 				/usr/local/sbin/xgs-ntb-up.sh --force-rescan >>/var/log/xgs-ntb-watch.log 2>&1 || true
+				if ! epf_present; then
+					log "no endpoint after rescan; toggling Link Disable on the root port"
+					/usr/local/sbin/xgs-ntb-up.sh --retrain >>/var/log/xgs-ntb-watch.log 2>&1 || true
+				fi
 				sleep "$COOLDOWN"
 			elif [ "$warned" = 0 ]; then
 				log "link unhealthy; no automatic PCIe rescan (AUTO_RECOVER=$AUTO_RECOVER, attempts=$recover_count/$MAX_RECOVER). Run: sudo xgs-ntb-up.sh --force-rescan"

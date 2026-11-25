@@ -50,10 +50,12 @@ SRC=/mnt/usb/p2.img NPU=10.234.56.1 sh installer/payload/npu-sshdd.sh   # 写现
 
 ### 第 2 级：串口急救 + 面板口（最后手段）
 
-p2 起不来、sshd 没有、x86 只剩串口时用这条。**U 盘在这里帮不上忙**（NPU 的 xHCI 在 DT 里
-是关的，面板上也没有 USB 口），完整 runbook 见 [06 救砖](06-rescue.md) §"最后手段"。
-一句话版本：x86 上 `relay.py` 把 PC 的 COM5 变成 NPU 的 UART → YMODEM 推 15.9 MB 进 RAM →
-急救系统起来后走面板口按 1 Gb/s 从 PC 拉整盘 → `dd` 进 `/dev/mmcblk0p2` → 校验 → 重启。
+p2 起不来、sshd 没有、x86 只剩串口时用这条。**U 盘在这里只能帮一半**：从 U 盘启动的
+x86 可以直接在 `/dev/ttyS2` 上敲 NPU 的 U-Boot、把急救内核推进去（不用另一个人敲串口），
+但**镜像得由一台带网口的机器提供** —— x86 自己没有网口（`lspci` 里没有任何 Ethernet 控制器）。
+完整 runbook 见 [06 救砖](06-rescue.md) §"第 2 级"。
+一句话版本：x86（或 PC）推 3.1 MB 进 RAM（YMODEM，约 6 分钟）→ 急救系统起来后走面板口按
+1 Gb/s 拉整盘 → `dd` 进 `/dev/mmcblk0p2` → 校验 → 重启。
 
 ## 装完必须确认的三件事
 

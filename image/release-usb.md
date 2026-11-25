@@ -69,7 +69,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 选项 | 做什么 | 风险 |
 |---|---|---|
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + dd**（NPU 只要 sshd 和 busybox `dd`，原厂系统也成立；但**写的时候 p2 不能正是 NPU 的根**，否则脚本直接拒绝）→ **急救 initramfs**（串口推 15.9 MB，起来后走面板口按 1 Gb/s 喂整盘）。写之前会先回读校验 | 目标分区被整个重写 |
+| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + dd**（NPU 只要 sshd 和 busybox `dd`，原厂系统也成立；但**写的时候 p2 不能正是 NPU 的根**，否则脚本直接拒绝）→ **急救 initramfs**（串口推 3.1 MB、约 6 分钟，起来后走面板口按 1 Gb/s 喂整盘）。写之前会先回读校验 | 目标分区被整个重写 |
 | `3` 查看状态 / 备份 | 子菜单：`1` 看状态，`2` 备份 x86 内置盘，`3` 备份 NPU 分区 | 只读 |
 | `4` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，**115200**；老 image 内核 57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
 | `5` shell | 直接进 root shell（U 盘系统） | — |
@@ -80,14 +80,23 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 办法 | 数据通道 | NPU 需要活着到什么程度 | 190 MB 大约要 | 适合 |
 |---|---|---|---|---|
 | **ssh + dd**（菜单 `2` 第 1 步） | vNTB，TCP | 只要 sshd + busybox `dd` | 1–2 分钟 | ✅ **首选，也是唯一实战验证过的**：整块 ext4 镜像灌进 p2，装完回读校验 |
-| **急救 initramfs + 面板口**（菜单 `2` 第 2 步） | 串口推 15.9 MB → NPU 在内存里跑急救系统 → 面板口 1 Gb/s 从 PC 拉整盘 | U-Boot 还在即可 | 串口约 27 分钟 + 写盘 1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，**2026-11-25 实战把一台 p2 救回来过**，见 `docs/06-rescue.md` |
+| **急救 initramfs + 面板口**（菜单 `2` 第 2 步） | 串口推 3.1 MB → NPU 在内存里跑急救系统 → 面板口 1 Gb/s 从 PC 拉整盘 | U-Boot 还在即可 | 串口约 6 分钟 + 写盘 1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，**2026-11-25 实战把一台 p2 救回来过**，见 `docs/06-rescue.md` |
 | U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
 | ~~U-Boot `tftpboot`~~ | ~~网口~~ | — | — | ❌ **已证伪并删除**：2026-11-25 实测 U-Boot 里 ARP/TFTP 完全不通（面板口 link/VLAN/PVID 全对也没用），脚本已从仓库移除 |
 | U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
 | 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、手动 `wget`/`dd` |
 
 **结论**：先试 **ssh + dd**（不动 NPU、不需要插网卡，原厂系统也成立）；
-前提不成立（p2 正是根 / 连 sshd 都没有）时走**急救 initramfs：串口推 15.9 MB，起来后用面板口按 1 Gb/s 喂整盘**——2026-11-25 实战救回一台。U-Boot+tftp 已证伪删除。
+前提不成立（p2 正是根 / 连 sshd 都没有）时走**急救 initramfs：串口推 3.1 MB，起来后用面板口按 1 Gb/s 喂整盘**——2026-11-25 实战救回一台。U-Boot+tftp 已证伪删除。
+
+**"U 盘一个够不够"要分清三种前提**（2026-11-25 逐条核对）：
+
+| NPU 的状态 | U 盘（x86 从它启动）能做 | 还要什么 |
+|---|---|---|
+| 用户态活着 | ✅ 整盘重写 p2（vNTB + ssh + dd，实测 1.6 GiB / 45 秒） | 无 |
+| 只剩 U-Boot | ⚠️ 能把急救系统推进内存（`/dev/ttyS2` 就在 x86 上，不用第二个人敲串口） | **一台带网口的机器接面板口**：x86 自己**没有网口**（`lspci` 里没有任何 Ethernet 控制器，`eth0` 是 vNTB 虚拟网卡），所以它没法同时当"串口驱动方"和"HTTP 服务方" |
+| U-Boot 也没了 | ✅ x86 上的 MCP2210 直接写 SPI NOR | 无 |
+
 "ssh + tar 流式解包"和 NBD 这两级已经删除：前者要在 NPU 正挂着的根分区上 `mkfs`，内核必拒，
 永远不可能成功（docs/11 §11.2.1）；后者两个镜像都没带 `nbd-client`/`nbd-server`，也从未跑通。
 U-Boot 还能做 ssh 路径做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、

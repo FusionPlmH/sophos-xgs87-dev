@@ -49,9 +49,20 @@ sudo ./installer/mkusb.sh --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.
      --out out/debian-usb.img
 ```
 
-急救包只有 ~15.9 MB：`Image.gz`(13.7 MB) + `initramfs.gz`(2.2 MB) + DTB。它小是因为
-用户态只有一个静态 busybox，模块只挑了急救要用的那一圈（eMMC + 面板口 + vNTB）。
-**两条硬要求，少一条就起不来**（都是实测踩过的）：
+急救包现在有两条路，默认第一条：
+
+| 做法 | 包大小 | 串口推完 | 说明 |
+|---|---|---|---|
+| **自编精简内核** | **3.1 MB** | ~5 分钟 | 驱动全编进内核，initramfs 里只有 busybox（`board/rescue-kernel.config`） |
+| Debian 内核 + 挑模块 | 15.9 MB | ~27 分钟 | `Image.gz`(13.7 MB) + `initramfs.gz`(2.2 MB) + DTB |
+
+```sh
+# 默认：自编内核（不需要 debian-npu.tar.zst）
+./tools/build/build-rescue-kernel.sh --src /path/linux-6.12 --out out/rescue-kernel
+./tools/build/build-rescue.sh --kernel out/rescue-kernel --out out/xgs87-rescue.tar.zst
+```
+
+走 Debian 内核那条路时**两条硬要求，少一条就起不来**（都是实测踩过的）：
 
 1. initramfs 里必须有 `/bin/sh` 符号链接 —— `/init` 第一行是 `#!/bin/sh`，没有它内核
    exec 失败、一路退到 `/sbin/init`，最后 `No working init found`（日志里连 `Run /init` 都没有）。
@@ -59,22 +70,32 @@ sudo ./installer/mkusb.sh --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.
    `dsa_core` 要 `selftests`+`hsr`；eMMC 要 `sdhci-xenon-driver`。`build-rescue.sh` 现在用
    `depmod` 的闭包，不是手写清单。
 
-## 急救包还能不能更小（2026-11-26 实测）
+## 精简内核：怎么裁、裁到多少（2026-11-25 真机验证）
 
-15.9 MB 里 **86% 是内核**，所以只有裁内核才有意义。同一份 37.7 MB 的 Image：
+15.9 MB 里 86% 是内核，所以只有裁内核才有意义。同一份 37.7 MB 的 Debian Image 做对照：
 
-| 做法 | 结果 | 代价 |
+| 做法 | 结果 | 说明 |
 |---|---|---|
-| gzip -9（现状） | 13.68 MB | — |
-| `--kernel-fmt lzma` | **9.76 MB**（−29%） | 只要 U-Boot 的 `unzip` 认 lzma；换之前**必须先在真机 U-Boot 里试一次** |
-| zstd -19 | 11.37 MB | 同上，且 U-Boot 未必有 zstd |
-| `make tinyconfig` + 逐项加回（~200 项） | 预计 1.5–3 MB | 每轮都要真机验证能不能起；现在这份 `board/rescue-kernel.config` **不是**这种写法 |
-| ~~defconfig + 关几十项~~ | **40.6 MB / gz 12.3 MB —— 反而更大** | 已试过，别再来一遍 |
-| initramfs 换 `xz -9` | 2.24 → 2.01 MB | 内核要 `CONFIG_RD_XZ`（Debian 的内核有）；省 0.23 MB，可以一起做 |
-| 自编一个精简 busybox | initramfs 再省 ~1 MB | 得编 busybox；收益仍被内核压着 |
+| ~~defconfig 打底再关几十项~~ | **40.6 MB / gz 12.3 MB —— 反而更大** | arm64 defconfig 自带 2800 多个 `=y`，关 35 个等于没关。已试过，别再来 |
+| **`tinyconfig` + `board/rescue-kernel.config`** | **Image 5.36 MB ｜ gz 2.14 MB ｜ lzma -9 1.63 MB** | 小 8.4 倍；包 15.9 → 3.1 MB，27 → 5 分钟。**这条是现行默认** |
+| 同上 + `--fmt lzma` | 1.63 MB | 再省 0.5 MB（~1 分钟），但 U-Boot 的 `unzip` 认不认 lzma **还没在真机上验过** |
+| initramfs 换 `xz -9` | 1.04 → 0.93 MB | 要 `CONFIG_RD_XZ`（已经在配置里） |
+| 自编一个精简 busybox | 还能再省 ~1 MB | 得编 busybox；现在 busybox 是 initramfs 的唯一大头（1.98 MB → gz 里 ~1 MB） |
 
-结论：`--kernel-fmt lzma` 是唯一"不重编内核也能省 7 分钟"的路（15.9 MB→11.8 MB，27→20 分钟）；
-想进到 5 MB 以内（~10 分钟）必须做 tinyconfig 内核，而且**没有真机验证不能当默认**。
+`tinyconfig` = `allnoconfig` + `EXPERT`，也就是**所有 `default y` 的东西全被关掉**。
+踩过的四个坑（每一个都表现为"QEMU 里能跑、真机上死"或"死得没声音"）：
+
+1. **全部 CPU errata 被关掉**，包括 `CONFIG_ARM64_ERRATUM_843419`（Cortex-A53/A72 的
+   ADRP 链接期修正）。QEMU 的 `-cpu max` 没这个 erratum，所以 QEMU 永远测不出来；
+   真机上内核在打印任何东西之前就死了，`pstore` 也是空的。
+2. **`CONFIG_BLOCK` 被关掉**（它带 `if EXPERT`），于是 `CONFIG_MMC_BLOCK` 这个符号
+   根本不存在 —— 一个 `/dev/mmcblk0` 都不会有。
+3. **`CONFIG_PSTORE` 被静默丢弃**：`fs/pstore/Kconfig` 在 `if MISC_FILESYSTEMS` 里面。
+   `merge_config.sh` 不会报错，`build-rescue-kernel.sh` 现在逐行核对并打印丢弃项。
+4. **交换机内部 PHY 退化成 "Generic PHY"**：缺少 `CONFIG_MARVELL_PHY` 时 88E6393 的口起不来。
+
+顺带：`kernel/npu/` 的 `ntb_*` 模块**编不进** vanilla 内核（依赖 Marvell 厂商 API
+`ntb_get_dma_dev`），所以精简内核里没有 PCI/vNTB —— 急救走面板口，本来也不需要它。
 
 ## 其他构建脚本
 

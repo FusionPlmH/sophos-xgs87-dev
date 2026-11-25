@@ -35,7 +35,10 @@ while [ $# -gt 0 ]; do
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
 done
-[ -n "$NPU" ] || { echo "--npu <debian-npu.tar.zst> is required" >&2; exit 1; }
+if [ -z "$NPU" ] && { [ -z "$KERNEL_DIR" ] || [ ! -f "$KERNEL_DIR/drivers-builtin" ]; }; then
+	echo "--npu <debian-npu.tar.zst> is required（除非 --kernel 是自编精简内核）" >&2
+	exit 1
+fi
 mkdir -p "$(dirname "$OUT")"
 
 WORK=$(mktemp -d)
@@ -43,14 +46,27 @@ trap 'rm -rf "$WORK"' EXIT
 R=$WORK/root
 mkdir -p "$R"/{bin,sbin,proc,sys,dev,run,tmp,lib/modules}
 
-echo "== 1/6 从 NPU 的 tar 里取内核和模块"
+echo "== 1/6 取内核和模块"
+# 两条路：
+#   * --kernel 是自编的精简内核（目录里有 drivers-builtin）：串口/eMMC/面板口
+#     全编进内核了，initramfs 里**一个模块都不放**，也不需要用 NPU 的 tar。
+#   * 否则退回"用 NPU tar 里那个 Debian 内核 + 挑几个模块"，那要求 vermagic 一致。
+KERNEL_BUILTIN=0
+if [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/drivers-builtin" ]; then
+	KERNEL_BUILTIN=1
+fi
+KEEP=
+if [ "$KERNEL_BUILTIN" = 1 ]; then
+	KVER=$(cat "$KERNEL_DIR/kver")
+	echo "   自编精简内核 $KVER：驱动全内置，initramfs 不带模块"
+else
 # Debian 是 merged-/usr：模块在 ./usr/lib/modules，/lib 是个符号链接。
 # 新镜像的 setup.sh 会补 /boot/Image，但这里仍优先用 vmlinuz-<kver>，两者都在时
 # 取哪个都行。分开解：一个通配符没匹配到不该让整条命令失败。
 tar --zstd -xf "$NPU" -C "$WORK" --wildcards './boot/*' 2>/dev/null || true
 tar --zstd -xf "$NPU" -C "$WORK" --wildcards './usr/lib/modules/*' 2>/dev/null || true
 KRUN=
-for k in "$WORK"/boot/vmlinuz-* "$WORK/boot/Image"; do
+for k in "$WORK"/boot/vmlinuz-* "$WORK"/boot/Image; do
 	[ -f "$k" ] && { KRUN=$k; break; }
 done
 [ -n "$KRUN" ] || { echo "tar 里没有内核" >&2; exit 1; }
@@ -66,11 +82,7 @@ else
 	done
 fi
 [ -n "$KVER" ] || { echo "读不出内核版本" >&2; exit 1; }
-if [ -n "$KERNEL_DIR" ]; then
-	SRC_MODS="$KERNEL_DIR/modules/lib/modules/$KVER"
-else
-	SRC_MODS="$WORK/lib/modules/$KVER"
-fi
+SRC_MODS="$WORK/lib/modules/$KVER"
 [ -d "$SRC_MODS" ] || { echo "找不到 $SRC_MODS" >&2; exit 1; }
 echo "   kernel $KVER"
 
@@ -96,6 +108,7 @@ if command -v depmod >/dev/null 2>&1; then
 	depmod -b "$R" "$KVER" 2>/dev/null || echo "   depmod 失败，退化成按名字 insmod"
 fi
 echo "   模块 $(find "$R/lib/modules" -name '*.ko*' | wc -l) 个，$(du -sh "$R/lib/modules" | cut -f1)"
+fi
 
 echo "== 2/6 取 arm64 的静态 busybox"
 if [ -z "$BUSYBOX_DEB" ]; then
@@ -144,6 +157,9 @@ pack_kernel() {
 }
 if [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image.$KERNEL_FMT" ]; then
 	cp "$KERNEL_DIR/Image.$KERNEL_FMT" "$WORK/kernel.$KERNEL_FMT"
+elif [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image" ]; then
+	# 自编内核目录里通常有一份原始 Image，按要的格式再压一次
+	pack_kernel "$KERNEL_DIR/Image"
 elif [ -n "$KERNEL_DIR" ] && [ -f "$KERNEL_DIR/Image.gz" ]; then
 	pack_kernel "$KERNEL_DIR/Image.gz"
 elif [ -f "$WORK/boot/Image" ]; then

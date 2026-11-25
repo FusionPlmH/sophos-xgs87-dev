@@ -32,11 +32,65 @@ URL2=$(sed -n 's/.*rescue\.url2=\([^ ]*\).*/\1/p' /proc/cmdline)
 PART=$(sed -n 's/.*rescue\.part=\([^ ]*\).*/\1/p' /proc/cmdline)
 IP=$(sed -n 's/.*rescue\.ip=\([^ ]*\).*/\1/p' /proc/cmdline)
 SHA=$(sed -n 's/.*rescue\.sha256=\([^ ]*\).*/\1/p' /proc/cmdline)
+DEV=$(sed -n 's/.*rescue\.dev=\([^ ]*\).*/\1/p' /proc/cmdline)
+MODE=$(sed -n 's/.*rescue\.mode=\([^ ]*\).*/\1/p' /proc/cmdline)
+AUTO=$(sed -n 's/.*rescue\.auto=\([^ ]*\).*/\1/p' /proc/cmdline)
 URL=${URL:-http://10.234.56.10:8080/p2.img}
 PART=${PART:-/dev/mmcblk0p2}
 IP=${IP:-10.234.56.11/24}
+DEV=${DEV:-p1}
+MODE=${MODE:-write}
+ONESHOT=$(sed -n 's/.*rescue\.oneshot=\([^ ]*\).*/\1/p' /proc/cmdline)
+LOGDEV=$(sed -n 's/.*rescue\.log=\([^ ]*\).*/\1/p' /proc/cmdline)
+LOGF=/tmp/rescue.log
+
+# rescue.log=<dev>:<4K-block> —— 这台机器没有自己的控制台（UART 只接在 x86 的
+# ttyS2 上），所以"出问题时看一眼日志"必须换个通道：整份日志写到 eMMC 的空闲
+# 块里，重启后从正常系统 dd 出来。
+if [ -n "$LOGDEV" ]; then
+	exec >>"$LOGF" 2>&1
+	echo "rescue: log 写到 $LOGDEV"
+fi
+
+flush_log() {
+	[ -n "$LOGDEV" ] || return 0
+	sync
+	dd if="$LOGF" of="${LOGDEV%%:*}" bs=4096 seek="${LOGDEV##*:}" conv=notrunc 2>/dev/null
+	sync
+}
+
+# 重启必须绕开 device_shutdown()。
+# 2026-11-25 真机实测：面板口 link 拉起来之后，`reboot -f` 会卡在 mvpp2/DSA 的
+# shutdown 里 —— 机器停在急救系统不回来，而 ICMP 还通，看起来像"什么都没发生"。
+# sysrq-b 走 emergency_restart()，不碰任何驱动。
+hard_reboot() {
+	flush_log
+	if [ -w /proc/sysrq-trigger ]; then
+		echo "rescue: sysrq-b 硬重启"
+		echo b >/proc/sysrq-trigger
+	fi
+	echo "rescue: 退回 reboot -f"
+	sync
+	sleep 1
+	reboot -f
+}
+
+# rescue.oneshot=<dev>:<4K-block> —— "只启动一次"入口的自毁开关，也是急救系统
+# 到底有没有跑起来的铁证（没有控制台的机器上就靠它）。放在最前面：只要 /init
+# 被执行到，这个扇区就会被清零，之后的 U-Boot booti 一定失败、回落到正常系统。
+if [ -n "$ONESHOT" ]; then
+	echo "rescue: oneshot 清除 ${ONESHOT%%:*} 块 ${ONESHOT##*:}"
+	dd if=/dev/zero of="${ONESHOT%%:*}" bs=4096 seek="${ONESHOT##*:}" count=1 conv=notrunc 2>/dev/null
+	sync
+fi
+
+# 内核自己带驱动时（build-rescue-kernel.sh 产的那个），initramfs 里没有
+# /lib/modules，也没必要 modprobe —— 这里静默跳过，不然日志里全是假失败。
+have_mods() { [ -d /lib/modules ] && [ -n "$(ls -A /lib/modules 2>/dev/null)" ]; }
 
 modprobe_() {
+	have_mods || return 0
+	command -v modprobe >/dev/null 2>&1 || return 0
 	if ! modprobe "$1" 2>/tmp/moderr; then
 		echo "rescue: modprobe $1 失败: $(cat /tmp/moderr 2>/dev/null)"
 	fi
@@ -74,17 +128,22 @@ for m in libphy mdio acpi_mdio fwnode_mdio of_mdio mdio_devres fixed_phy \
 done
 
 # ---- 1b. vNTB 端点（和 /usr/local/sbin/xgs-vntb.sh 同样的顺序）----
+# 精简内核里没有 PCIe endpoint（那些 ntb_* 是 Marvell 厂商树的东西，编不进
+# vanilla 内核），configfs 的 pci_ep 目录就不存在 —— 直接跳过，别干等 20 秒。
+if [ -d /sys/kernel/config/pci_ep ] || have_mods; then
 echo "rescue: 拉起 vNTB 端点"
 modprobe_ configfs
 for m in pci_ep_cfs pcie_dw_plat ntb_core pci_epf_vntb; do
 	modprobe_ "$m"
 done
+fi
 
 EPC=f2600000.pcie
 i=0
-while [ ! -d "/sys/class/pci_epc/$EPC" ] && [ "$i" -lt 20 ]; do
+while [ -d /sys/class/pci_epc ] && [ ! -d "/sys/class/pci_epc/$EPC" ] && [ "$i" -lt 20 ]; do
 	i=$((i + 1)); sleep 1
 done
+[ -d /sys/class/pci_epc ] || echo "rescue: 内核没有 pci_epc（精简内核正常），vNTB 这条路没有"
 if [ -d "/sys/class/pci_epc/$EPC" ]; then
 	C=/sys/kernel/config/pci_ep
 	F=$C/functions/pci_epf_vntb/func1
@@ -109,33 +168,68 @@ for m in ntb_core ntb_transport ntb_netdev; do
 	modprobe_ "$m"
 done
 
-# ---- 2. 网络：给面板口 p1 配地址 ----
+# ---- 2. 网络：给面板口配地址 ----
 # 2026-11-25 实测：DSA 的用户口 p1 是独立网口，PC 插上去直接配地址就能通，
 # **不需要桥**（bridge.ko 只是 dsa_core/mv88e6xxx 的加载依赖）。所以这里不建
 # br0：少一层，少一个坏点。CPU 口 eth0（mvpp2）必须 up，否则 p1 收了包也上不来。
+# DEV 默认 p1（面板口 1）；p2 是 WAN 口，那条线通常直接通到家里的交换机，
+# 所以"从 U 盘救 NPU、镜像放在局域网某台机器上"这条路用 DEV=p2。
 i=0
 while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 25 ]; do
 	i=$((i + 1)); sleep 1
 done
 i=0
-while [ ! -e /sys/class/net/p1 ] && [ "$i" -lt 25 ]; do
+while [ ! -e "/sys/class/net/$DEV" ] && [ "$i" -lt 25 ]; do
 	i=$((i + 1)); sleep 1
 done
 echo "rescue: 网络设备: $(ls /sys/class/net | tr '\n' ' ')"
-if [ ! -e /sys/class/net/p1 ]; then
-	echo "rescue: 面板口 p1 没出来，dmesg 尾巴："
+if [ ! -e "/sys/class/net/$DEV" ]; then
+	echo "rescue: 面板口 $DEV 没出来，dmesg 尾巴："
 	dmesg | tail -15
 fi
 ip link set eth0 up 2>/dev/null
-if [ -e /sys/class/net/p1 ]; then
+if [ -e "/sys/class/net/$DEV" ]; then
 	ip link set eth0 up 2>/dev/null
 	# 急救 shell 里的 busybox ip 有时不认 "ip addr add"，ifconfig 一定行。
-	ip addr add "$IP" dev p1 2>/dev/null ||
-		ifconfig p1 "${IP}" up 2>/dev/null ||
-		ifconfig p1 "${IP%%/*}" netmask 255.255.255.0 up 2>/dev/null
-	ifconfig p1 2>/dev/null | head -3
+	ip addr add "$IP" dev "$DEV" 2>/dev/null ||
+		ifconfig "$DEV" "${IP}" up 2>/dev/null ||
+		ifconfig "$DEV" "${IP%%/*}" netmask 255.255.255.0 up 2>/dev/null
+	# 光配地址不算数：接口可能还是 DOWN —— 那样 /sys/class/net/$DEV/carrier
+	# 读不出来，ICMP 直接 "Network is unreachable"（2026-11-25 实测踩过：
+	# `ip addr add` 成功返回，于是下面那个 ifconfig ... up 的兜底永远不执行）。
+	ip link set "$DEV" up 2>/dev/null || ifconfig "$DEV" up 2>/dev/null
+	i=0
+	while [ "$(cat "/sys/class/net/$DEV/carrier" 2>/dev/null)" != 1 ] && [ "$i" -lt 15 ]; do
+		i=$((i + 1))
+		sleep 1
+	done
+	echo "rescue: $DEV link=$(cat "/sys/class/net/$DEV/carrier" 2>/dev/null) state=$(cat "/sys/class/net/$DEV/operstate" 2>/dev/null)"
+	ifconfig "$DEV" 2>/dev/null | head -3
 fi
 ip -br a 2>/dev/null
+
+# ---- 2b. probe：只验证"面板口通不通 / HTTP 能不能拉"，一个字节都不写盘 ----
+if [ "$MODE" = probe ]; then
+	PING=$(sed -n 's/.*rescue\.ping=\([^ ]*\).*/\1/p' /proc/cmdline)
+	echo "rescue: probe 模式，从 $URL 取数据到 /dev/null"
+	for d in $(ls /sys/class/net); do
+		[ "$d" = lo ] && continue
+		printf '  %-6s link=%s state=%s\n' "$d" \
+			"$(cat "/sys/class/net/$d/carrier" 2>/dev/null)" \
+			"$(cat "/sys/class/net/$d/operstate" 2>/dev/null)"
+	done
+	if [ -n "$PING" ]; then
+		echo "rescue: ping $PING"
+		ping -c 2 -W 2 "$PING" 2>&1 | tail -3
+	fi
+	n=$(wget -q -T 10 -O - "$URL" 2>/dev/null | wc -c)
+	echo "rescue: probe 收到 $n 字节"
+	echo "rescue: dmesg 尾巴"
+	dmesg | grep -iE 'comphy|mvpp2|mv88e|dsa|link is|error|fail' | tail -25
+	flush_log
+	[ "$AUTO" = reboot ] && { echo "rescue: probe 结束，重启"; hard_reboot; }
+	exec sh
+fi
 # ---- 3. 拉影像 + 写盘 ----
 [ -b "$PART" ] || { echo "rescue: $PART 不存在"; exec sh; }
 
@@ -145,7 +239,9 @@ fetch() {
 	RC=/tmp/wget.rc
 	rm -f "$RC"
 	# 别信管道的退出码：dd 在下载被截断时也可能返回 0。
-	( wget -q -O - "$url"; echo $? >"$RC" ) | dd of="$PART" bs=1M 2>/dev/null
+	# -T：busybox wget 默认超时 900 秒，对端接了连接却不发数据时会干等 15 分钟
+	# （2026-11-25 实测：probe 卡在 wget 上，整台机器停在急救系统里不重启）。
+	( wget -T 20 -q -O - "$url"; echo $? >"$RC" ) | dd of="$PART" bs=1M 2>/dev/null
 	dd_rc=$?
 	wget_rc=$(cat "$RC" 2>/dev/null || echo 1)
 	rm -f "$RC"
@@ -167,13 +263,15 @@ if [ "$wrote" = 1 ]; then
 		echo "rescue: p2 sha256 $got / 期望 $SHA"
 		if [ "$got" != "$SHA" ]; then
 			echo "rescue: 校验不过，不重启，给你一个 shell"
-			exec sh
+			[ "$AUTO" = reboot ] || exec sh
 		fi
 	fi
 	echo "rescue: 写完了，重启"
-	sleep 2
-	reboot -f
+	hard_reboot
 fi
 
-echo "rescue: 下载/写入失败 —— 检查 br0 的地址和 HTTP 服务；给你一个 shell"
+echo "rescue: 下载/写入失败 —— 检查 $DEV 的地址和 HTTP 服务；给你一个 shell"
+flush_log
+# rescue.auto=reboot：无人值守时别停在 shell 里，直接回正常系统
+[ "$AUTO" = reboot ] && { echo "rescue: auto=reboot，重启"; hard_reboot; }
 exec sh

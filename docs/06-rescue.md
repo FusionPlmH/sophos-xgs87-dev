@@ -5,11 +5,19 @@
 | 级 | 前提 | 做法 | 耗时 |
 |---|---|---|---|
 | 1 | NPU 用户态还活着（sshd 或串口 shell） | x86 上 `npu-sshdd.sh`（ssh + dd 写 p2） | 1–2 分钟 |
-| 2 | **只剩 U-Boot**，PC 手里有整盘镜像，x86 能敲字 | **串口推 15.9 MB → RAM 急救系统 → 面板口 1 Gb/s 喂整盘** | ~30 分钟 |
+| 2 | **只剩 U-Boot**，手里有整盘镜像，能连面板口 | **串口推 3.1 MB → RAM 急救系统 → 面板口 1 Gb/s 喂整盘** | ~10 分钟 |
 | 3 | U-Boot 也没了（SPI NOR 里的 BL31/U-Boot 坏了） | x86 上的 MCP2210 直接写 SPI NOR | 十几分钟 |
 
-**U 盘只能救 x86。** NPU 的 xHCI 在 DT 里是关的、面板上也没有 USB 口，U-Boot 的
-`usb start` 只枚举到 root hub —— 所以"拿 U 盘救 NPU"这条路不存在，U 盘走到头之后接着走第 2 级。
+**U 盘对 NPU 到底能做什么**（2026-11-25 在真机上逐条核对过）：
+
+| NPU 的状态 | 从 U 盘启动的 x86 能做的事 | 还需要什么 |
+|---|---|---|
+| 用户态活着（sshd 在） | `npu-sshdd.sh` 走 vNTB 整盘重写 p2 —— 实测 1.6 GiB / 45 秒 | 无 |
+| 只剩 U-Boot（第 2 级） | 经 x86 的 `/dev/ttyS2` 直接敲 U-Boot、用 YMODEM 推急救内核，全程不需要另一个人敲串口 | **一台能接面板口的机器**：x86 自己**没有网口**（`lspci` 里一个 Ethernet 控制器都没有，`eth0` 是 vNTB 虚拟网卡），所以镜像得由另一台机器（或 x86 上插 USB 网卡）提供 |
+| U-Boot 也没了（第 3 级） | x86 上的 MCP2210 直接写 SPI NOR | 无 |
+
+NPU 自己的 USB：两个 xHCI 在 DT 里是 `disabled`，面板上也没有确认过的 USB 口，
+所以"把 U 盘插到 NPU 上"这条路不存在。
 
 ## 第 1 级：ssh + dd
 
@@ -75,26 +83,29 @@ sudo -n python3 installer/payload/relay.py /dev/ttyS2
 跑起来后 PC 的 COM5 就等于直接插在 NPU 的 U-Boot 上。**不要**走"先传给 x86、再由 x86
 推给 NPU"：同一条 115200 要走两遍（21.5 MB 的 base64 光第一遍就 31 分钟，这次事故里白扔过）。
 
-### 第 3 步：三样东西推进 RAM（约 27 分钟）
+### 第 3 步：三样东西推进 RAM（约 6 分钟）
 
 ```sh
 # PC 上；每个文件都会核对 U-Boot 打的 "## Total Size"
-python installer/payload/ymodem-com.py COM5 send 0x06f00000 xgs87.dtb      #   21 KB, 几秒
-python installer/payload/ymodem-com.py COM5 send 0x0A000000 initramfs.gz   #  2.2 MB, 约 4 分钟
+python installer/payload/ymodem-com.py COM5 send 0x06f00000 xgs87.dtb      #    21 KB, 几秒
+python installer/payload/ymodem-com.py COM5 send 0x0A000000 initramfs.gz   #  1.04 MB, 约 2 分钟
 python installer/payload/ymodem-com.py COM5 cmd  'unzip 0x0A000000 0x20000000'
-python installer/payload/ymodem-com.py COM5 send 0x02000000 Image.gz       # 13.7 MB, 约 23 分钟
+python installer/payload/ymodem-com.py COM5 send 0x02000000 Image.gz       #  2.14 MB, 约 3.7 分钟
 python installer/payload/ymodem-com.py COM5 cmd  'unzip 0x02000000 0x07000000'
 ```
+
+（`Image.gz`/`initramfs.gz` 是 `build-rescue.sh` 从自编精简内核打出来的那一版；
+换成 Debian 内核那一版就是 13.7 MB / 2.2 MB，时间翻五倍。）
 
 地址**必须写死**（factory env 里没有 `loadaddr`；initramfs 也不能原地解压）：
 
 | 用途 | 地址 | 大小 |
 |---|---|---|
 | DTB | `0x06F00000` | 21 KB |
-| Image.gz（临时落脚） | `0x02000000` | 13.7 MB |
-| Image 解压后 | `0x07000000` | 37.7 MB |
-| initramfs.gz | `0x0A000000` | 2.2 MB |
-| initramfs 解压后 | `0x20000000` | 3.4 MB |
+| Image.gz（临时落脚） | `0x02000000` | 2.1 MB |
+| Image 解压后 | `0x07000000` | 5.4 MB |
+| initramfs.gz | `0x0A000000` | 1.04 MB |
+| initramfs 解压后 | `0x20000000` | 2.0 MB |
 
 ### 第 4 步：起急救系统，让它自己写 p2
 
@@ -118,6 +129,33 @@ rescue: 写完了，重启
 任何一步不对，init 会**落到一个 shell 里**（不是死机），可以在里面手动重来：
 `ifconfig p1 …`、`wget -O - … | dd of=/dev/mmcblk0p2`、`dmesg` 都在。
 
+### 急救系统的开关（都是内核 cmdline 参数）
+
+| 参数 | 默认 | 干什么 |
+|---|---|---|
+| `rescue.url` / `rescue.url2` | `http://10.234.56.10:8080/p2.img` | 从哪拉整盘镜像；第一个失败换第二个 |
+| `rescue.part` | `/dev/mmcblk0p2` | 写到哪个块设备 |
+| `rescue.ip` | `10.234.56.11/24` | 给面板口配的地址 |
+| `rescue.dev` | `p1` | 用哪个面板口。`p2` 是 WAN 口，线通常直接通家里交换机，所以"镜像放在局域网某台机器上"时用 `rescue.dev=p2` |
+| `rescue.sha256` | 空 | 写完回读校验，不符就不重启 |
+| `rescue.mode` | `write` | `probe` = 只验网络通不通，一个字节都不写盘 |
+| `rescue.ping` | 空 | probe 模式下顺带 ping 一个地址 |
+| `rescue.auto` | 空 | `reboot` = 无人值守，结束时（含失败）自己重启 |
+| `rescue.log` | 空 | `<dev>:<4K块>`，把整份日志写到那块空闲区 |
+| `rescue.oneshot` | 空 | `<dev>:<4K块>`，进 /init 就先清掉那个扇区（见下） |
+
+### 没有控制台时怎么拿日志、怎么重启
+
+这台机器的 UART 只接到 x86 的 `ttyS2` 上，x86 自己又是"没有网口、得靠 NPU 才有网"的
+—— 一旦 NPU 起不来，**串口和网络会同时消失**，等于瞎了。2026-11-25 就是在这种条件下
+把精简内核调通的，靠的就是下面两条：
+
+| 需求 | 做法 |
+|---|---|
+| 看日志 | `rescue.log=/dev/mmcblk0p1:127000` —— 日志写到 p1 尾部 4 MB（p1 是原厂分区，有备份，本系统不用）。重启后从正常系统 `dd if=/dev/mmcblk0p1 bs=4096 skip=127000 count=8` |
+| 确认"用户态到底跑没跑" | `rescue.oneshot=/dev/mmcblk0p2:<Image 的起始块>`（`filefrag -v Image` 第 4 行的第三个字段）。/init 一执行就清掉镜像头 → U-Boot 的 `booti` 必然失败 → 回落到正常系统，**永远不会卡在试验内核里**；而镜像头是不是 0，在正常系统里 `dd | od` 一看就知道 |
+| 重启 | `hard_reboot()`：优先 `echo b > /proc/sysrq-trigger`（`emergency_restart()`，不碰驱动），退回 `reboot -f` |
+
 ### 第 5 步：收尾
 
 1. NPU 自己从 p2 起 Debian（`xgs-debian-npu login:`）；
@@ -134,6 +172,8 @@ rescue: 写完了，重启
 | `/dev/mmcblk*` 不存在 | eMMC 归 **`sdhci-xenon-driver`**（驱动名 `xenon-sdhci`）。`sdhci-of-dwcmshc` 只认 `snps,dwcmshc-sdhci`，加载"成功"但永不 bind（`Error: No device match data found`）；还不出就手动 `echo f06e0000.mmc > /sys/bus/platform/drivers/xenon-sdhci/bind` |
 | 只有 `eth0`（CPU 口），没有 `p1` | 模块顺序：MDIO 那层（`mdio/acpi_mdio/fwnode_mdio/of_mdio/phylink`）必须**先于** `mvmdio`；`bridge` 要 `llc`+`stp`；`dsa_core` 要 `selftests`+`hsr` |
 | `ip addr add` 被拒 | 急救 shell 的 busybox 不认，用 `ifconfig p1 10.234.56.11/24 up`。**不需要建桥**：DSA 的用户口 p1 是独立网口 |
+| **地址配上了、`ping` 却报 `Network is unreachable`** | `ip addr add` 成功返回时接口还是 **DOWN** —— 那个 `ifconfig … up` 的兜底根本不会执行，`/sys/class/net/p2/carrier` 也读不出来（空值）。必须再 `ip link set $DEV up`，然后等 carrier=1（2026-11-25 实测踩过） |
+| **写完了却永远不重启，ICMP 还通** | `reboot -f` 会走 `device_shutdown()`，面板口 link 起来之后 mvpp2/DSA 的 shutdown 会卡住。用 `echo b > /proc/sysrq-trigger`（`CONFIG_MAGIC_SYSRQ`）|
 | x86 的 console 彻底哑掉 | 透传进程在写方向死等（NPU panic 后不再读串口）。`relay.py` 现在两个方向都封 5 s、超时丢字节，信号也恢复 tty；真卡死就 serial SysRq：`send_break()` 后写 `b` |
 | NPU 的 console 一片安静、`cat /dev/ttyS2` 没反应 | 有没有别的读者；或者 NPU 停在 panic。上面第 1 步的 SBR 复位能把它弄回 U-Boot |
 
