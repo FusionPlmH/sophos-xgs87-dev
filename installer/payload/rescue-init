@@ -36,25 +36,40 @@ URL=${URL:-http://10.234.56.10:8080/p2.img}
 PART=${PART:-/dev/mmcblk0p2}
 IP=${IP:-10.234.56.11/24}
 
-modprobe_() { modprobe "$1" 2>/dev/null || echo "rescue: modprobe $1 失败"; }
+modprobe_() {
+	if ! modprobe "$1" 2>/tmp/moderr; then
+		echo "rescue: modprobe $1 失败: $(cat /tmp/moderr 2>/dev/null)"
+	fi
+}
 
 # ---- 0. eMMC：没有它 /dev/mmcblk0p2 根本不存在 ----
-# Debian 的 arm64 内核把这些编译成模块，而 initramfs 里没有 udev 帮你按需加载，
-# 所以必须手点。顺序：sdhci（控制器核心）→ sdhci-of-dwcmshc（这颗 SoC 的粘合层）
-# → mmc_block（块设备层，没有它出不来 /dev/mmcblk*）。
-echo "rescue: 载入 eMMC 驱动"
-for m in sdhci sdhci-of-dwcmshc mmc_block; do
+# 这颗 SoC（AP807）的 eMMC 归 Marvell 的 **Xenon** 驱动管：模块叫
+# sdhci-xenon-driver，注册出来的驱动名是 xenon-sdhci。Debian 内核里的
+# sdhci-of-dwcmshc 只认 snps,dwcmshc-sdhci —— 对着 marvell,armada-ap807-sdhci
+# 加载会"成功"但永远不 bind（dmesg 只留一句 "Error: No device match data found"），
+# 2026-11-25 在这上面绕了很久。
+echo "rescue: 载入 eMMC 驱动（Xenon）"
+for m in sdhci sdhci-pltfm cqhci sdhci-xenon-driver; do
 	modprobe_ "$m"
 done
+if [ ! -e /dev/mmcblk0 ] && [ -d /sys/bus/platform/drivers/xenon-sdhci ]; then
+	echo f06e0000.mmc >/sys/bus/platform/drivers/xenon-sdhci/bind 2>/dev/null &&
+		echo "rescue: 手动 bind 了 f06e0000.mmc"
+fi
 sleep 1
 echo "rescue: 块设备: $(ls /dev/mmcblk* 2>/dev/null | tr '\n' ' ')"
 
-# ---- 1a. 面板网口：mvpp2（CPU 口 end0）+ DSA 交换机（p1..p8）----
-# 顺序有讲究：libphy 先来，mdio/mvmdio 才能探到交换机的 MDIO 总线，
-# mv88e6xxx 绑上之后 DSA 才会生成 p1..p8。
+# ---- 1a. 面板网口：mvpp2（CPU 口 eth0）+ DSA 交换机（p1..p8）----
+# 顺序是实测出来的，不能乱：
+#   * MDIO 那几层（mdio/acpi_mdio/fwnode_mdio/of_mdio/phylink）必须在 mvmdio
+#     之前，否则 mvmdio 直接因为 __acpi_mdiobus_register 缺符号加载失败，
+#     交换机就不会出现；
+#   * bridge 要 llc + stp；
+#   * dsa_core 要 selftests + hsr。
 echo "rescue: 载入面板网口驱动"
-for m in libphy fixed_phy mdio_devres mvmdio phy-mvebu-cp110-comphy mvpp2 \
-	dsa_core tag_dsa mv88e6xxx bridge; do
+for m in libphy mdio acpi_mdio fwnode_mdio of_mdio mdio_devres fixed_phy \
+	phylink sfp phy-mvebu-cp110-comphy mvpp2 \
+	llc stp bridge selftests hsr dsa_core tag_dsa mv88e6xxx; do
 	modprobe_ "$m"
 done
 
@@ -94,30 +109,33 @@ for m in ntb_core ntb_transport ntb_netdev; do
 	modprobe_ "$m"
 done
 
-# ---- 2. 网络：vNTB 的 eth0 和面板 p1 桥在一起 ----
+# ---- 2. 网络：给面板口 p1 配地址 ----
+# 2026-11-25 实测：DSA 的用户口 p1 是独立网口，PC 插上去直接配地址就能通，
+# **不需要桥**（bridge.ko 只是 dsa_core/mv88e6xxx 的加载依赖）。所以这里不建
+# br0：少一层，少一个坏点。CPU 口 eth0（mvpp2）必须 up，否则 p1 收了包也上不来。
 i=0
-while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 20 ]; do
+while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 25 ]; do
 	i=$((i + 1)); sleep 1
 done
 i=0
-while [ ! -e /sys/class/net/p1 ] && [ "$i" -lt 20 ]; do
+while [ ! -e /sys/class/net/p1 ] && [ "$i" -lt 25 ]; do
 	i=$((i + 1)); sleep 1
 done
 echo "rescue: 网络设备: $(ls /sys/class/net | tr '\n' ' ')"
-
-ip link add br0 type bridge 2>/dev/null && echo "rescue: br0 建好了"
-for d in end0 p1 p2 p3 p4 eth0 sfp; do
-	[ -e "/sys/class/net/$d" ] || continue
-	ip link set "$d" up 2>/dev/null
-done
-for d in p1 p2 p3 p4 eth0; do
-	[ -e "/sys/class/net/$d" ] || continue
-	ip link set "$d" master br0 2>/dev/null && echo "rescue: $d -> br0"
-done
-ip link set br0 up 2>/dev/null
-ip addr add "$IP" dev br0 2>/dev/null && echo "rescue: br0 = $IP"
+if [ ! -e /sys/class/net/p1 ]; then
+	echo "rescue: 面板口 p1 没出来，dmesg 尾巴："
+	dmesg | tail -15
+fi
+ip link set eth0 up 2>/dev/null
+if [ -e /sys/class/net/p1 ]; then
+	ip link set eth0 up 2>/dev/null
+	# 急救 shell 里的 busybox ip 有时不认 "ip addr add"，ifconfig 一定行。
+	ip addr add "$IP" dev p1 2>/dev/null ||
+		ifconfig p1 "${IP}" up 2>/dev/null ||
+		ifconfig p1 "${IP%%/*}" netmask 255.255.255.0 up 2>/dev/null
+	ifconfig p1 2>/dev/null | head -3
+fi
 ip -br a 2>/dev/null
-
 # ---- 3. 拉影像 + 写盘 ----
 [ -b "$PART" ] || { echo "rescue: $PART 不存在"; exec sh; }
 

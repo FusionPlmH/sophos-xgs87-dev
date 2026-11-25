@@ -332,6 +332,31 @@ python ymodem-com.py COM5 cmd 'booti 0x07000000 0x20000000:${rd_size} 0x06f00000
 vNTB（PCIe）。vNTB 只通到 x86，而 x86 上没有那份镜像（要塞进去还是同一条 115200）。
 所以"PC 插在面板口上、由 PC 直接喂整盘"是唯一能把 1.5 GB 灌进去的路。
 
+#### 实测结果（2026-11-25 深夜，全程真机）
+
+按上面流程把 p2 救回来了，最终 sha256 与 PC 上的镜像**逐字节一致**，NPU 正常起 Debian。
+下面这些是**当时才搞清楚、§11.2.8 上面的文字还没提到**的：
+
+| 事情 | 事实 |
+|---|---|
+| 面板口能不能从急救系统起来 | ✅ 能。`mvpp2` 给出 CPU 口 `eth0`，`mv88e6xxx` 把交换机带起来后出现 `p1..p8 sfp`；PC 插 p1 直接 1 Gb/s |
+| 需要桥吗 | ❌ 不需要。`ifconfig p1 10.234.56.11/24 up` 就能 `wget`，`bridge.ko` 只是 dsa_core/mv88e6xxx 的**加载依赖** |
+| eMMC 用哪个驱动 | ⚠️ **`sdhci-xenon-driver`**（驱动名 `xenon-sdhci`），不是 `sdhci-of-dwcmshc`。Debian 的 dwcmshc 只认 `snps,dwcmshc-sdhci`，对着 `marvell,armada-ap807-sdhci` 加载"成功"但永不 bind，只在 dmesg 留一句 `Error: No device match data found` |
+| 手动 bind | `echo f06e0000.mmc > /sys/bus/platform/drivers/xenon-sdhci/bind` |
+| 模块顺序 | MDIO 那层（`mdio/acpi_mdio/fwnode_mdio/of_mdio/phylink`）**必须**先于 `mvmdio`，否则 `mvmdio` 因 `__acpi_mdiobus_register` 缺符号加载失败；`bridge` 要 `llc`+`stp`；`dsa_core` 要 `selftests`+`hsr` |
+| busybox 的 `ip` | `ip addr add` 会被拒，用 `ifconfig` |
+| 写盘 | `wget -q -O - http://10.234.56.10:8080/p2.img \| dd of=/dev/mmcblk0p2 bs=1M` → 1.6 GB 在一分钟内写完；`dd if=/dev/mmcblk0p2 bs=1M count=1524 \| sha256sum` 校验 |
+| 复位 NPU（不进机房） | x86 上 `setpci -s 00:03.1 BRIDGE_CONTROL=40:40` 再 `00:40` + `rescan`（secondary bus reset）。只 `remove/rescan` 不够 |
+| x86 自己的 console 卡死 | SysRq over serial：`send_break()` 后写 `b`（`relay.py` 输出阻塞时唯一出路） |
+| NPU 重启后 vNTB 不回来 | 老规律，见 §11.2.6：x86 重启一次就好了 |
+
+两个把时间浪费掉的坑，现在的 `ymodem-com.py` 已经堵上：U-Boot 上一轮 `loady` 超时退出后
+串口里还留着 `'C'`，一看到旧 `'C'` 就发文件头，数据会落到**上一次 loady 的地址**
+（表现为 `unzip` 报 "Bad gzipped data"、`md.b` 读到全 0）；所以发送端必须等 U-Boot 打出
+`download to 0x...` 并核对地址。另外 `booti ... 0x20000000:${rd_size}` 里的 `${…}` 别在
+别处展开过，直接写死大小（`0x341a00`）；写错成空值会让 U-Boot 把 initrd 放到
+`0x80000000`（DRAM 之外），内核在打印任何东西之前就死。
+
 #### 反过来的教训：别拿交互式 shell 传二进制
 
 试过在 x86 的 console 上 `cat > /tmp/x.b64 <<'EOF'` 灌 21.5 MB base64：31 分钟传完，

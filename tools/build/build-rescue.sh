@@ -74,9 +74,10 @@ echo "   kernel $KVER"
 # （mvpp2 + DSA + mv88e6xxx + bridge）是 2026-11-25 加的 —— 有了它，急救系统
 # 可以直接从插在面板口上的 PC 拉镜像，不需要 x86 参与。
 KEEP="pci_ep_cfs pcie_dw_plat pci_epf_vntb ntb_core ntb_transport ntb_netdev
-      sdhci sdhci-of-dwcmshc mmc_block dw_mmc
-      libphy fixed_phy mdio_devres mvmdio phy-mvebu-cp110-comphy mvpp2
-      dsa_core tag_dsa mv88e6xxx bridge sfp"
+      sdhci sdhci-pltfm cqhci sdhci-xenon-driver mmc_block
+      libphy mdio acpi_mdio fwnode_mdio of_mdio mdio_devres fixed_phy phylink
+      sfp phy-mvebu-cp110-comphy mvpp2 llc stp bridge selftests hsr
+      dsa_core tag_dsa mv88e6xxx"
 mkdir -p "$R/lib/modules/$KVER"
 for m in $KEEP; do
 	f=$(find "$SRC_MODS" -name "$m.ko*" | head -1)

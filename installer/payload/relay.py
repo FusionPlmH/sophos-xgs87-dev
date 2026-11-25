@@ -81,6 +81,10 @@ try:
             d = os.read(0, 4096)
             if not d:
                 break
+            # 退出信号从 PC 打过来，所以要在**输入**方向查；只查 NPU 回来的数据是
+            # 不够的 —— NPU 一挂就不再回显，那样这个进程就永远退不掉了。
+            if MAGIC in d:
+                break
             write_all(fd, d, 'ttyS2')
         if fd in r:
             try:

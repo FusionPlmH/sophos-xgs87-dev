@@ -76,6 +76,19 @@ class Tx:
                 raise SystemExit('ymodem: 收到 CAN -> %r' % self.log[-200:])
         return False
 
+    def read_text_until(self, pred, timeout):
+        """读到满足条件为止，返回文本。U-Boot 的提示行是 ASCII，逐字节拼就行。"""
+        end = time.time() + timeout
+        s = ''
+        while time.time() < end:
+            b = self.read1(0.25)
+            if b is None:
+                continue
+            s += chr(b)
+            if pred(s):
+                break
+        return s
+
     def send_packet(self, payload, blk, what='data'):
         fill = 0x1A
         if len(payload) <= 128 and blk != 0:
@@ -164,9 +177,24 @@ def main():
         tx.drain(0.3)
         if verb == 'send':
             addr, path = sys.argv[3], sys.argv[4]
+            # 上一次 loady 可能已经超时退出，串口里还留着它打的 'C'。要是不清掉，
+            # 一看到旧 'C' 就发文件头，U-Boot 那边其实还在命令行上 —— 头里的文件名
+            # 会被当成命令执行，数据落到**上一次 loady 的地址**去（踩过一次）。
+            tx.drain(0.5)
+            p.write(b'\x18\x18\r')
+            p.flush()
+            time.sleep(0.4)
+            tx.drain(0.8)
             p.write(('loady %s\r' % addr).encode())
             p.flush()
-            sys.stderr.write('== 已输入: loady %s\n' % addr)
+            banner = tx.read_text_until(
+                lambda s: 'download to' in s or 'Marvell>>' in s or 'Unknown command' in s, 15)
+            if 'download to' not in banner:
+                raise SystemExit('loady 没起来，U-Boot 说: %r' % banner[-300:])
+            want = addr.lower().replace('0x', '').lstrip('0')
+            if want not in banner.lower().replace('0x', ''):
+                raise SystemExit('loady 的地址不对: %r' % banner[-300:])
+            sys.stderr.write('== loady 已就绪: %s\n' % banner.strip().splitlines()[-1][:120])
             tx.send_file(path)
             got = tx.drain(6.0)
             sys.stderr.write('== 回复: %r\n' % got[-300:])
