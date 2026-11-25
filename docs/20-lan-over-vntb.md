@@ -207,6 +207,17 @@ x86 的 uptime 全程连续（没有 panic、没有重启），NPU 侧 `eth0` �
 按在启动里，正是 2026-11-25 的 3.2 s 复位循环。所以现在默认关闭，改由人确认 NPU
 已经起来后再执行 `sudo /usr/local/sbin/xgs-ntb-up.sh --force-rescan`。
 
+### 20.7.1 rescan 也不是万能的：链路得在 POST 时训练过
+
+`--force-rescan` 只是让主机重新读配置空间。如果 `03:00.0` 在 rescan 之后**始终
+不出现**，说明主机侧从来没枚举到过这个端点 —— 常见于"x86 先开机、NPU 后来才部署
+（或换镜像重装）"。这时 rescan 写多少次都没用，唯一可靠的办法是**让 x86 重启一次，
+NPU 保持开机**，由 BIOS 在 POST 阶段重新训练 PCIe 链路。
+
+2026-11-25 装完新镜像后就是这样：NPU 侧端点已 armed（`0x1957:0x0809`、`start=1`），
+NPU 自己 `eth0` 有 MAC 但 `NO-CARRIER`，而 x86 上 `ip a` 只有 `lo`（x86 本身没有
+物理网口，它的唯一网口就是 vNTB 的 `eth0`），rescan 也不产生设备 → 需要重启 x86。
+
 ## 20.8 重启的真实代价（一次完整实测）
 
 x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal recovery），启动 38 → 26 秒：

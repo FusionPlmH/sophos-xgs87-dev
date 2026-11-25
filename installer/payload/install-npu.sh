@@ -182,6 +182,15 @@ if [ -e /sys/class/net/eth0 ]; then
 	echo "   eth0 就位：$(cat /sys/class/net/eth0/operstate)"
 else
 	echo "   ⚠️ eth0 还是没有；下面的网络办法会失败，会走串口/急救"
+	# rescan 只有在 PCIe 链路本身已经训练起来时才有用。如果 03:00.0 在
+	# rescan 之后仍然不出现，说明主机侧从来没有枚举过这个端点（典型是
+	# x86 先开机、NPU 后部署，POST 时链路上什么都没有）。这种情况下唯一
+	# 可靠的办法是重启 x86，让 BIOS 在 POST 里重新训练链路。
+	if [ ! -e /sys/bus/pci/devices/0000:03:00.0 ]; then
+		echo "      03:00.0 依然不存在 → 主机侧没枚举过这个端点。"
+		echo "      重启一次 x86（NPU 保持开机），让 BIOS 在 POST 时训练 PCIe 链路，"
+		echo "      再回来重跑本菜单的 2 就会走网络这条路。"
+	fi
 fi
 
 # 维护盘是另一个系统（U 盘上的 root），它的 networkd 不一定给 eth0.200 配上
