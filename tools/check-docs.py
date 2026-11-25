@@ -39,6 +39,8 @@ for p in glob.glob('*.md') + glob.glob('docs/**/*.md', recursive=True) + \
         glob.glob('image/*.md') + glob.glob('systemd/*.md') + glob.glob('tools/*.md'):
     d = os.path.dirname(p)
     for i, line in enumerate(open(p, encoding='utf-8'), 1):
+        # a link inside `backticks` is an example, not a link
+        line = re.sub(r'`[^`]*`', '', line)
         for m in re.finditer(r'\[[^\]]*\]\(([^)]+)\)', line):
             t = m.group(1).split('#')[0].strip()
             if not t or t.startswith(('http', 'mailto:', '#')):
