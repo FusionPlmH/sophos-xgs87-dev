@@ -137,6 +137,27 @@ rescue: 写完了，重启
 | x86 的 console 彻底哑掉 | 透传进程在写方向死等（NPU panic 后不再读串口）。`relay.py` 现在两个方向都封 5 s、超时丢字节，信号也恢复 tty；真卡死就 serial SysRq：`send_break()` 后写 `b` |
 | NPU 的 console 一片安静、`cat /dev/ttyS2` 没反应 | 有没有别的读者；或者 NPU 停在 panic。上面第 1 步的 SBR 复位能把它弄回 U-Boot |
 
+## 出厂数据备份（做一次，之后一直有用）
+
+机器上真正**不可再生**的只有四样：`p1`（原厂 Marvell rootfs）、`p3`（原厂 Sophos 系统）、
+`p4`（VPD：序列号 + MAC）、SPI NOR 整片（TF-A + U-Boot + env）。其余都能从仓库重建。
+
+```sh
+# 在 PC 上直接拉（NPU 的 br-wan 在家里 LAN 上，1 Gb/s）：
+#   sudo dd if=/dev/mmcblk0pN bs=1M | ssh 传回来，或在本机 dd 到文件后 zstd
+# 四个分区的字节数和 sha256 记在 MANIFEST.txt 里，两边对过才算数
+```
+
+- 现成的归档：`xgs87-factory-2026-11-26.tar.zst`（2.23 GB → **390 MB**，sha256
+  `39f7036b…ef869`），放在**本机/私有位置**。
+- 公开的 GitHub release `factory-backup` 里只有 `MANIFEST.txt` 和
+  `uboot-env.redacted.txt`（env 的 MAC 和 partno 已打码）。**原厂镜像和 VPD 不上去**：
+  p1/p3 是厂商代码，p4 和 NOR 里有这台设备的身份 —— 要放云端就开**私有**仓库。
+- 恢复：把镜像 `dd` 回对应分区即可（写的时候那个分区不能挂载；p1/p3/p4 平时就不挂载，
+  所以从急救系统里写最稳）。
+
+
+
 ## 第 3 级：MCP2210 写 SPI NOR
 
 只有当**串口连 TF-A 的 `NOTICE:` 都没有**（SPI NOR 里的 BL31/U-Boot 坏了）才用这一级。
