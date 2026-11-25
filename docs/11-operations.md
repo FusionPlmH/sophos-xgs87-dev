@@ -247,13 +247,97 @@ e2fsprogs，而是 initramfs-tools 的 stock `fsck` hook 有个反直觉的分�
 |---|---|---|
 | 把新镜像写进 NPU 的 eMMC | 维护 U 盘启动 x86 → 菜单 `2` → **ssh+dd**（走 vNTB，1.5 GiB 用了 45 s） | ✅ 唯一在真机上跑通的路径 |
 | NPU 起来了但网络坏了 | 同一条路，安装脚本自己退到 `/dev/ttyS2` 串口去修它的 br-lan | ⚠️ 逻辑在，`serial_run` 结束标记的 bug 2026-11-25 才修（见 [10](10-console.md) §10.5），**还没在真机上完整跑过一遍** |
-| NPU 卡在 U-Boot | x86 插一块 **USB 网卡** → U-Boot 里 `tftpboot` + `mmc write` | ❌ 一次都没跑过，手头没有 USB 网卡 |
+| NPU 卡在 U-Boot | x86 插一块 **USB 网卡** → U-Boot 里 `tftpboot` + `mmc write` | ❌ 一次都没跑过，手头没有 USB 网卡；而且 U-Boot 自己的网络**实测完全不通**（面板口 link/VLAN/PVID 全对，就是收不到 ARP、收不到 TFTP RRQ），所以这条路基本作废 —— 真要往 p2 写整盘，走 §11.2.8 |
 | NPU 彻底变砖（U-Boot 都没了） | x86 的 **MCP2210（USB→SPI）** 写那 4 MiB SPI NOR | ✅ 实测能救，见 [14](14-rescue.md) §14.7 |
 | 一根 USB 线把 x86 和 NPU 直连 | —— | ❌ 不存在。NPU 的 xHCI 在 DT 里是关的，面板上也没找到口（[01](01-hardware.md) §1.3） |
 | 把 x86 的 U 盘"共享 / 反射"给 NPU | usbip over vNTB | ❌ **明确不做**。要在两端各配一次、用完还得手动 detach，导出期间设备在本机消失。2026-11-25 试通之后已经从固件里删干净 |
 
 结论：**"用 USB 写 NPU" 现实里只有两种含义** —— U 盘启动 x86 再由它写 NPU（日常升级），
 或者 MCP2210 写 SPI NOR（救砖）。中间那条 U-Boot+tftp 只缺一块 USB 网卡，别的都齐了。
+
+### 11.2.8 p2 被写坏之后：面板口急救（2026-11-25 实测走通）
+
+那天 `xgs87-reflash.sh install` 的 `dd` 在冻结的根上失败了，报错又被 `2>/dev/null` 吞掉，
+p2 的 ext4 只剩 `e2fsck` 捞出来的 11 个文件 —— 也就是**根分区彻底没了**，而当时 NPU 上、
+x86 上、U 盘上都没有一份完整的 p2 镜像（详见 §11.2.1）。下面是把机器救回来的完整流程，
+也是以后"p2 起不来 + x86 的 Debian 还在 + PC 手里有整盘镜像"时的标准动作。
+
+拓扑是三段，每段各有一个坑：
+
+```
+PC ──USB 串口 (COM5)──→ x86 控制台 /dev/ttyS0
+PC ──网口 (Ethernet 2)─→ NPU 面板口 p1（1 Gb/s，走 DSA）
+        x86 /dev/ttyS2 ─→ NPU 的 UART / U-Boot（115200，硬上限）
+```
+
+#### 第一步：把 PC 的 COM5 变成 NPU 的 UART（`relay.py`）
+
+NPU 的串口只接在 x86 上，PC 摸得到的只有 x86 的控制台。**不要**走"先传给 x86、
+再由 x86 推给 NPU"：同一条 115200 要走两遍（实测 base64 灌 21.5 MB 花了 31 min，
+推完还要再来 23 min）。让 x86 做字节透传，PC 的 COM5 就等于插在 NPU 上，一遍走完。
+
+```sh
+# x86：必须 root（/dev/ttyS2 是 root:dialout 660），前台跑
+sudo -n python3 /tmp/relay.py          # 打印 RELAY-READY
+# PC：此刻在 COM5 上敲回车，看到的就是 NPU 的 U-Boot
+python ymodem-com.py COM5 cmd 'printenv filesize'
+# 收工：发 \x18\x18XGS87QUIT\r，x86 恢复 tty，shell 立刻能用
+```
+
+#### 第二步：按顺序把三样东西推进 RAM
+
+```sh
+python ymodem-com.py COM5 send 0x06f00000 xgs87.dtb        #   21 KB，几秒
+python ymodem-com.py COM5 send 0x0A000000 initramfs.gz     #  2.2 MB，约 4 min
+python ymodem-com.py COM5 cmd  'unzip 0x0A000000 0x20000000; setenv rd_size ${filesize}'
+python ymodem-com.py COM5 send 0x02000000 Image.gz         # 13.7 MB，约 23 min
+python ymodem-com.py COM5 cmd  'unzip 0x02000000 0x07000000'
+```
+
+四个必须知道的点：
+
+- **factory env 里没有 `loadaddr`** —— `loady $loadaddr` 直接报 `"loadaddr" not defined`。
+  地址全部写死（DRAM 0x0–0x80000000，2 GB）：
+
+  | 用途 | 地址 | 大小 |
+  |---|---|---|
+  | DTB（`fdt_addr_r`） | `0x06F00000` | 21 KB |
+  | Image.gz（临时落脚） | `0x02000000` | 13.7 MB |
+  | Image 解压后（`kernel_addr_r`） | `0x07000000` | 37.7 MB |
+  | initramfs.gz（`ramdisk_addr_r`） | `0x0A000000` | 2.2 MB |
+  | initramfs 解压后 | `0x20000000` | 3.4 MB |
+
+- **initramfs 不能原地解压**：`unzip $ramdisk_addr_r $ramdisk_addr_r` 看着省事，其实
+  gzip 的输出涨得比输入消费得快，会用输出踩掉还没读的输入。必须解到另一个地址。
+- **`## Total Size` 是唯一凭证**：每次 push 完 U-Boot 会打
+  `## Total Size = 0x... = N Bytes`，N 必须和本地文件大小逐字节相等。
+- 实测 **9.9 KiB/s**（115200 的 86%），2298 块里重传 112 块（5%）。U-Boot 在块之间会
+  补发 `'C'` 当重传请求，所以发送端每一帧前都要排空残留字节，否则会把上一个 `'C'`
+  当成失败。
+
+#### 第三步：让急救系统自己把镜像写进 p2
+
+```sh
+python ymodem-com.py COM5 cmd "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.10:8080/p2.img rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.11/24 rescue.sha256=<p2.img 的 sha256>'"
+python ymodem-com.py COM5 cmd 'booti 0x07000000 0x20000000:${rd_size} 0x06f00000'
+```
+
+急救 init（[rescue-init](../../installer/payload/rescue-init)）只干三件事：装
+`libphy/mvmdio/mvpp2/dsa_core/tag_dsa/mv88e6xxx/bridge` 把面板口 p1 拉起来；把 vNTB 的
+`eth0` 和 `p1..p4` 一起塞进 `br0`（`10.234.56.11/24`）；然后 `wget | dd` 写整盘、
+比 sha256、`reboot -f`。PC 侧只要 `python -m http.server 8080 --bind 10.234.56.10`
+—— 1 Gb/s，1.5 GB 一两分钟，和串口那 15.9 MB 完全不是一个量级。
+
+**为什么非得走面板口**：NPU 在急救 initramfs 里只有两个网口来源 —— 面板口（DSA）和
+vNTB（PCIe）。vNTB 只通到 x86，而 x86 上没有那份镜像（要塞进去还是同一条 115200）。
+所以"PC 插在面板口上、由 PC 直接喂整盘"是唯一能把 1.5 GB 灌进去的路。
+
+#### 反过来的教训：别拿交互式 shell 传二进制
+
+试过在 x86 的 console 上 `cat > /tmp/x.b64 <<'EOF'` 灌 21.5 MB base64：31 分钟传完，
+`Ctrl-C` 一按**整个文件都不存在** —— bash 先把 heredoc 收进临时文件、收完才执行 `cat`，
+中途中断等于白传；而且它给每行打的 PS2 提示会让读的人卡在 ~1 KB/s，没人排空就是静默丢
+字节。二进制过串口只走 YMODEM：有 CRC16、有重传、结尾有 `## Total Size` 可以逐字节对。
 
 ## 11.3 开机之后先看这五行
 

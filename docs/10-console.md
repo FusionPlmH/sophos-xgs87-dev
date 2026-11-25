@@ -88,6 +88,23 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 维护 U 盘的 **菜单 4（NPU 串口）** 会跑 `installer/payload/npu-console.sh`：
 `picocom -b 115200 /dev/ttyS2`（老内核用 `BAUD=57600`；没有 picocom 就用 `cat` 双向中继，按 Ctrl-D 退出）。
 
+### 反过来：让 PC 直接接到 NPU 的 UART 上（`relay.py`）
+
+上面都是"在 x86 上"操作 NPU。可有时候只有 PC 手里有东西要送（例如 p2 的整盘镜像），
+这时候让 x86 做透传：[relay.py](../installer/payload/relay.py) 把 x86 的两个串口接成一根线，
+PC 的 COM5 就等于直接插在 NPU 的 UART 上。区别很大 —— 文件只走一遍 115200，
+而不是"PC→x86 一遍、x86→NPU 再一遍"：
+
+```sh
+# x86：必须 root（/dev/ttyS2 是 root:dialout 660），前台跑，打印 RELAY-READY
+sudo -n python3 installer/payload/relay.py /dev/ttyS2
+# PC：pyserial 版的 YMODEM 发送器
+python installer/payload/ymodem-com.py COM5 cmd 'printenv filesize'
+```
+
+发 `\x18\x18XGS87QUIT\r` 退出，退出时会把 x86 的 tty 恢复成 sane，shell 马上能用。
+完整流程（推内核 + initramfs 起急救系统）见 [11](11-operations.md) §11.2.8。
+
 > 不需要 chroot 进内置盘的系统：`/dev/ttyS2` 属于 x86 这块板子，U 盘系统、装好的 Debian、
 > 甚至 BIOS 之后任何跑在 x86 上的系统都能开它。**唯一限制是同一时刻只能有一个读者**（见 8.5）。
 

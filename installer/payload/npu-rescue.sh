@@ -16,6 +16,16 @@ BAUD=${BAUD:-115200}
 IMG_NAME=p2.img
 PORT=${PORT:-8080}
 
+# 这台 U-Boot 的 factory env 里**没有** loadaddr（`loady $loadaddr` 直接报
+# "not defined"），另外 initramfs 不能原地解压 —— gzip 的输出涨得比输入消费得
+# 快，`unzip $ramdisk_addr_r $ramdisk_addr_r` 会用输出踩掉还没读的输入。
+# 所以三个地址写死，都是 2026-11-25 在真机上跑通的（DRAM 0x0–0x80000000，
+# kernel_addr_r=0x07000000 / ramdisk_addr_r=0x0A000000 / fdt_addr_r=0x06F00000）：
+#   Image.gz    0x02000000（13.7 MB）→ 解压到 kernel_addr_r（37.7 MB）
+#   initramfs.gz ramdisk_addr_r（2.2 MB）→ 解压到 0x20000000（3.4 MB）
+SCRATCH_KERNEL_GZ=0x02000000
+INITRD_RAW=0x20000000
+
 [ -f "$RESCUE" ] || { echo "没有 $RESCUE（构建 U 盘时要带 --rescue）"; return 1; }
 [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; return 1; }
 
@@ -67,8 +77,8 @@ if [ -n "$KVER" ]; then
 		echo "   p2 里有 $KVER 的模块，可以少推 13.7 MB"
 		if serial_uboot 'ext4load mmc 0:2 $kernel_addr_r /boot/Image' 120 | grep -q 'bytes read'; then
 			USE_P2_KERNEL=1
-		elif serial_uboot 'ext4load mmc 0:2 $loadaddr /boot/vmlinuz-'$KVER 60 | grep -q 'bytes read' &&
-			serial_uboot 'unzip $loadaddr $kernel_addr_r' 120 | grep -q 'Uncompressed size'; then
+		elif serial_uboot "ext4load mmc 0:2 $SCRATCH_KERNEL_GZ /boot/vmlinuz-$KVER" 60 | grep -q 'bytes read' &&
+			serial_uboot "unzip $SCRATCH_KERNEL_GZ \$kernel_addr_r" 120 | grep -q 'Uncompressed size'; then
 			USE_P2_KERNEL=1
 		fi
 	fi
@@ -90,16 +100,16 @@ push xgs87.dtb '$fdt_addr_r' || { echo "   DTB 推失败"; return 1; }
 # initramfs 放最后：booti 要的 $filesize 是它的大小
 push initramfs.gz '$ramdisk_addr_r' || { echo "   initramfs.gz 推失败"; return 1; }
 serial_uboot 'setenv rd_size ${filesize}' 3 >/dev/null || true
-serial_uboot 'unzip $ramdisk_addr_r $ramdisk_addr_r; setenv rd_size ${filesize}' 90 >/dev/null ||
+serial_uboot "unzip \$ramdisk_addr_r $INITRD_RAW; setenv rd_size \${filesize}" 90 >/dev/null ||
 	{ echo "   unzip initramfs 失败"; return 1; }
 if [ "$USE_P2_KERNEL" != 1 ]; then
-	push Image.gz '$loadaddr' || { echo "   Image.gz 推失败"; return 1; }
-	serial_uboot 'unzip $loadaddr $kernel_addr_r' 120 >/dev/null || { echo "   unzip kernel 失败"; return 1; }
+	push Image.gz "$SCRATCH_KERNEL_GZ" || { echo "   Image.gz 推失败"; return 1; }
+	serial_uboot "unzip $SCRATCH_KERNEL_GZ \$kernel_addr_r" 120 >/dev/null || { echo "   unzip kernel 失败"; return 1; }
 fi
 
 echo "== 6/6 启动"
 serial_uboot "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.2:$PORT/$IMG_NAME rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.1/24'" 15 >/dev/null || true
-serial_uboot "booti \$kernel_addr_r \$ramdisk_addr_r:\${rd_size} \$fdt_addr_r" 20 >/dev/null || true
+serial_uboot "booti \$kernel_addr_r $INITRD_RAW:\${rd_size} \$fdt_addr_r" 20 >/dev/null || true
 
 echo "== 等急救系统把 eth0 拉起来，然后喂它整盘影像"
 # vNTB 起来之前 x86 是没有地址的；先等 NTB netdev 出现，再给裸 eth0 配一个。
