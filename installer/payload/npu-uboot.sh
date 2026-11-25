@@ -1,11 +1,11 @@
 #!/bin/sh
-# 让 NPU 停在它自己的 U-Boot 提示符上（"=> "）。
+# 让 NPU 停在它自己的 U-Boot 提示符上（"Marvell>> "，主线是 "=> "，两种都认）。
 #
 # U-Boot 的 bootdelay 只有 3 秒，而且必须"一边重启一边敲空格"—— 串口只有一个读者，
 # 所以这件事得一个脚本干完：自己发 reboot，然后连续敲空格 20 秒，最后把串口交给
 # picocom 交互。docs/03 §3.4 里说的"小脚本"就是这个。
 #
-# 到了 "=> " 之后能做的事（板上 U-Boot 2019.10，原厂环境变量都在）：
+# 到了提示符之后能做的事（板上 U-Boot 2019.10，原厂环境变量都在）：
 #   mmc dev 0; ext4load mmc 0:2 $kernel_addr_r /boot/Image      # 验证分区可读
 #   setenv bootcmd 'run bootcmd_emmc1'; saveenv                  # 换回 p1 上的系统
 #   setenv bootcmd 'run bootcmd_deb10g'; saveenv                 # 换回 p2 上的 Debian
@@ -15,6 +15,7 @@ set -u
 
 TTY=${TTY:-/dev/ttyS2}
 BAUD=${BAUD:-115200}
+NPU_USER=${NPU_USER:-admin}
 NPU_PASS=${NPU_PASS:-P@ssw0rd}
 SPAM_SECS=${SPAM_SECS:-20}
 INTERACTIVE=${INTERACTIVE:-1}
@@ -55,28 +56,66 @@ restore_ntb() {
 
 stty -F "$TTY" "$BAUD" raw -echo -crtscts -hupcl 2>/dev/null || true
 
-# 它现在可能停在 shell 上，也可能已经停在 "=> "。前者要 sudo 密码（从 tty 读）。
-printf 'sudo -S systemctl reboot\r' >"$TTY"
-sleep 1
-printf '%s\r' "$NPU_PASS" >"$TTY"
+# 整段会话只 open 一次。每次 `printf > "$TTY"` 都会重新 open，而内核在 open 时会
+# 把 DTR+RTS 都拉高 —— 这台板子的 UART 收发器拿 RTS 当方向控制，RTS 高就把 x86 的
+# TX 关掉了：读得到、一个字节都写不进去（2026-11-25 实测，U-Boot 也因此从来没被
+# 空格拦住过）。所以：一个 fd 撑住 + 开完就把 RTS 清掉。
+exec 4<>"$TTY" || { echo "打不开 $TTY" >&2; exit 1; }
+python3 -c 'import fcntl, os, struct, sys
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY)
+fcntl.ioctl(fd, 0x5417, struct.pack("i", 0x004))
+os.close(fd)' "$TTY" 2>/dev/null || true
 
-i=0
-n=$(( SPAM_SECS * 7 ))
-while [ "$i" -lt "$n" ]; do
-	printf ' ' >"$TTY"
-	i=$((i + 1))
-	sleep 0.15 2>/dev/null || sleep 1
-done
-printf '\r' >"$TTY"
+# 它现在可能在 shell 上，也可能停在 login:。后者必须先登录 —— 否则
+# `sudo -S systemctl reboot` 会被 getty 当成用户名敲进去，什么都不会发生
+# （2026-11-25 实测：脚本"跑完了"但 NPU 根本没重启，也就没机会停在 U-Boot）。
+login_if_needed() {
+	_drain=$1
+	# getty 只在收到输入时才会重新打 "login:"，所以先敲一个回车再听
+	printf '\r' >&4
+	sleep 1
+	BUF=
+	end=$(( $(date +%s) + _drain ))
+	while [ "$(date +%s)" -lt "$end" ]; do
+		BUF="$BUF$(timeout 1 dd bs=1 count=4096 <&4 2>/dev/null | tr -d '\r')"
+	done
+	case "$BUF" in
+	*"login:"*)
+		echo "   停在 login:，先登录"
+		printf '%s\r' "$NPU_USER" >&4
+		sleep 1
+		printf '%s\r' "$NPU_PASS" >&4
+		sleep 2
+		;;
+	esac
+}
 
-# 确认真的停在 => 上；没有就再来一轮（systemd 关机慢的时候第一轮会敲早了）
+# 它现在可能在 shell 上，也可能已经停在 U-Boot 里。
+reboot_and_spam() {
+	login_if_needed 1
+	printf 'sudo -S systemctl reboot\r' >&4
+	sleep 1
+	printf '%s\r' "$NPU_PASS" >&4
+	i=0
+	n=$(( SPAM_SECS * 7 ))
+	while [ "$i" -lt "$n" ]; do
+		printf ' ' >&4
+		i=$((i + 1))
+		sleep 0.15 2>/dev/null || sleep 1
+	done
+	printf '\r' >&4
+}
+
+reboot_and_spam
+
+# 确认真的停在提示符上；没有就再来一轮（systemd 关机慢的时候第一轮会敲早了）
 try=0
 while [ "$try" -lt 2 ]; do
 	try=$((try + 1))
 	BUF=
 	end=$(( $(date +%s) + 3 ))
 	while [ "$(date +%s)" -lt "$end" ]; do
-		BUF="$BUF$(timeout 1 dd bs=1 count=4096 <"$TTY" 2>/dev/null | tr -d '\r')"
+		BUF="$BUF$(timeout 1 dd bs=1 count=4096 <&4 2>/dev/null | tr -d '\r')"
 	done
 	case "$BUF" in
 	*"$UBOOT_PROMPT"*) break ;;
@@ -84,22 +123,13 @@ while [ "$try" -lt 2 ]; do
 	esac
 	[ "$try" -lt 2 ] || break
 	echo "   还没看到 U-Boot 提示符（关机慢？），再来一轮"
-	printf 'sudo -S systemctl reboot\r' >"$TTY"
-	sleep 1
-	printf '%s\r' "$NPU_PASS" >"$TTY"
-	i=0
-	n=$(( SPAM_SECS * 7 ))
-	while [ "$i" -lt "$n" ]; do
-		printf ' ' >"$TTY"
-		i=$((i + 1))
-		sleep 0.15 2>/dev/null || sleep 1
-	done
-	printf '\r' >"$TTY"
+	reboot_and_spam
 done
 restore_ntb
 echo "== 空格敲完，串口交给你（看到 'Marvell>> ' 或 '=> ' 就是停住了；U-Boot 里 Ctrl-C 之类不走本地信号）"
 
-[ "$INTERACTIVE" = 1 ] || exit 0
+[ "$INTERACTIVE" = 1 ] || { exec 4<&-; exit 0; }
+exec 4<&-
 if command -v picocom >/dev/null 2>&1; then
 	exec picocom -q -b "$BAUD" "$TTY"
 fi

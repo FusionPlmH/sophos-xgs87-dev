@@ -67,11 +67,28 @@ sudo -n sh -c 'echo 1 > /sys/bus/pci/rescan'
 # 几秒后 NPU 打 TF-A/U-Boot 出来，p2 空/坏时会自己落到：
 #   Bad Linux ARM64 Image magic!
 #   Marvell>>
-sudo -n sh -c 'printf "\r" > /dev/ttyS2; timeout 25 cat /dev/ttyS2'
+# 注意：写之前必须清 RTS，所以这里不能 `printf > /dev/ttyS2`（见 05「控制台」）
+. installer/payload/serial.sh
+serial_raw_open                # 常开 fd 3 + 清 RTS，不登录
+printf '\r' >&3
+serial_drain 25
+printf '%s\n' "$_SERIAL_BUF"
 ```
 
 `00:03.1` 是那个端点的上游 root port（`lspci -tv` 里 `03.1-[03]----00.0`）。
 只 `echo 1 > .../remove` + `rescan` **不够**，实测复位不了 NPU。
+
+> ⚠️ **2026-11-25 复查：这一步没跑通，别当成可用手段。** 复查时串口只能读不能写
+> （RTS 的坑，见 [05](05-operations.md)「控制台」），`npu-uboot.sh` 敲下去的空格
+> 根本到不了 NPU；两次都没拦住 autoboot，其中一次还把 NPU 留在了一个"网不通、串口
+> 25 秒零输出"的状态里，最后靠**重启 x86**（PERST# 把 NPU 一起复位）才恢复。
+> 提示符匹配已经改成同时认 `Marvell>> ` 和 `=> `，但"读到 U-Boot 提示符"这件事
+> 仍旧**没有任何一次成功实测**。动手之前先用
+> `serial_raw_open; printf '\r' >&3; serial_drain 5` 确认真的能拿到提示符，
+> 否则只做 PCIe 复位、别去敲空格。
+>
+> 也因为这样，`--fmt lzma` 那个"再省 0.5 MB"的问题**仍然没有答案**（U-Boot 的
+> `unzip` 认不认 lzma 没人验过），所以默认还是 gz。
 
 ### 第 2 步：把 x86 变成 NPU 的串口线
 

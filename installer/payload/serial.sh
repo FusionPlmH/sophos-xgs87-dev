@@ -72,13 +72,27 @@ serial_send() {
 # 丢了。实测（2026-11-25，机器刚装好）：NPU 明明停在 `xgs-debian-npu login:`，
 # serial_login 连发 5 次回车都读不到它，安装器的串口兜底因此直接判"NPU 没起来"。
 # 改成一直开着同一个 fd，读写都走它，并在 stty 里加 -hupcl。
-serial_open() {
+# 只把端口打开（常开 fd 3 + 关掉 RTS），不发任何东西、不登录。
+# 给"对面不是 Linux"的场合用：U-Boot 提示符、刚复位完还没起系统的 NPU。
+serial_raw_open() {
 	[ -e "$TTY" ] || { echo "serial: 没有 $TTY" >&2; return 1; }
-	if [ "$_serial_open" != 1 ]; then
-		stty -F "$TTY" "$BAUD" raw -echo -crtscts clocal -hupcl 2>/dev/null || true
-		exec 3<>"$TTY" || { echo "serial: 打不开 $TTY" >&2; return 1; }
-		_serial_open=1
-	fi
+	[ "$_serial_open" = 1 ] && return 0
+	stty -F "$TTY" "$BAUD" raw -echo -crtscts clocal -hupcl 2>/dev/null || true
+	exec 3<>"$TTY" || { echo "serial: 打不开 $TTY" >&2; return 1; }
+	_serial_open=1
+	# 这块板子的 UART 收发器拿 RTS 当方向控制：RTS 拉低才把 x86 的 TX 放出去。
+	# 不清掉的话只能读不能写（2026-11-25 实测，见 docs/05「控制台」）。
+	# stty 表达不了 RTS 引脚，只能 ioctl；fd 3 已经开着了，这里再用一个 fd
+	# 清一次不会把端口的调制解调器线重置掉。
+	python3 -c 'import fcntl, os, struct, sys
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY)
+fcntl.ioctl(fd, 0x5417, struct.pack("i", 0x004))
+os.close(fd)' "$TTY" 2>/dev/null || true
+	return 0
+}
+
+serial_open() {
+	serial_raw_open || return 1
 	# 一直按回车直到看见 login:（NPU 可能已经在提示符上，也可能刚重启）
 	i=0
 	while [ $i -lt 5 ]; do

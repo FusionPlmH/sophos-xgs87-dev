@@ -40,12 +40,29 @@
 
 ```sh
 # x86 上开 NPU 串口（同一时刻只能有一个读者！）
-picocom -b 115200 /dev/ttyS2
-timeout 5 cat /dev/ttyS2                     # 只看一眼
+. installer/payload/serial.sh                # serial_open 会登录，也负责清 RTS
+timeout 5 cat /dev/ttyS2                     # 只看（读不需要任何准备）
 
 # 不带交互地敲 U-Boot / shell 命令
 . installer/payload/serial.sh                # serial_run / serial_uboot / serial_read_until
 ```
+
+⚠️ **要往 NPU 写，必须先把这个串口的 RTS 拉低**（2026-11-25 实测）。这块板子的
+UART 收发器拿 RTS 当方向控制：RTS 高的时候 x86 的 TX 是关着的 —— **读得到、一个
+字节都写不进去**，而且不会报错，看起来就像线只接了单向。把 RTS 清掉立刻就通
+（NPU 上一个 `echo X > /dev/ttyS0`、x86 上 `cat /dev/ttyS2`，25 行一字不差；
+反过来清 RTS 之后 getty 也马上回 `login:`）。
+
+`stty` 表达不了 RTS 引脚，所以：
+
+- `serial.sh` 的 `serial_open` 打开端口后会 ioctl 清一次 RTS（`TIOCMBIC`,
+  `TIOCM_RTS`=0x004），之后所有读写都走同一个常开的 fd 3；
+- `ymodem.py`（串口推文件）和 `relay.py`（把 COM5 变成 NPU 的串口）打开端口后
+  也各清一次；
+- **别用 `printf ... > /dev/ttyS2`**：每次重定向都是一次新的 `open`，内核在 open 时
+  会把 DTR+RTS 重新拉高，于是这一条命令又写不动了。`npu-uboot.sh` 里所有写操作
+  因此改成写同一个常开 fd（`>&4`）；
+- `picocom` 之类的交互终端同理：进去了先确认 RTS 状态，否则只有收、发不出去。
 
 ## ssh（装完就能用，不需要先交换钥匙）
 
@@ -74,7 +91,10 @@ ssh-copy-id admin@10.234.56.2   # 从 NPU 到 x86
 ## 控制台的坑
 
 - **两个读者会把串口字节流切成乱码**。看到乱码先 `pgrep -af ttyS2`。
+- **写不动先看 RTS**（见上）：RTS 高 = TX 关着，读得到写不进去。`printf > /dev/ttyS2`
+  这种"每次 open"的写法一定会踩到，用 `serial.sh` 或常开 fd。
 - 登录要状态机，不能靠固定 `sleep`：等 `login:` 发用户名、等 `Password:` 发密码。
+  getty 只在收到输入时才重打 `login:`，所以探测前要先敲一个回车。
 - 115200 是硬上限，别想提速（见 [01](01-hardware.md)）。
 - PC 想直接接到 NPU 的 UART 上：x86 上跑 `installer/payload/relay.py`（见 [06](06-rescue.md)）。
 
