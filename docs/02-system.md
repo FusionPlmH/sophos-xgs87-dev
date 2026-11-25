@@ -60,9 +60,8 @@ bootargs_deb=console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 \
 x86 ↔ NPU 只有一条 10 Gb/s 的 vNTB，上面跑两条 VLAN，两边各是一座桥：
 
 ```
-        x86                                    NPU
- eth0.100 ─ DHCP ◄──────────────────► br-wan = p2 + eth0.100   VLAN 100  上游 / WAN
- eth0.200 ─ 10.234.56.2/24 ─────────► br-lan = p1 + eth0.200   VLAN 200  10.234.56.1/24
+x86 eth0.100  ── DHCP ─────────────→  NPU br-wan（p2 + eth0.100）
+x86 eth0.200  ── 10.234.56.2/24 ──→  NPU br-lan（p1 + eth0.200）
 ```
 
 | 段 | VLAN | 谁 | 地址 | 说明 |

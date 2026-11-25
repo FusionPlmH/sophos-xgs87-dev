@@ -29,9 +29,9 @@ p3 原厂或急救 initramfs 起来，那时根不是 p2，脚本自动放行。
 ### 拓扑
 
 ```
-PC ──USB 串口 COM5──────→ x86 控制台 /dev/ttyS0
-PC ──网口──────────────→ NPU 面板口 p1（1 Gb/s，走 DSA）
-        x86 /dev/ttyS2 ─→ NPU 的 UART / U-Boot（115200）
+PC  ──USB 串口 COM5──→  x86 控制台 /dev/ttyS0
+PC  ──网口──────────→  NPU 面板口 p1（1 Gb/s，走 DSA）
+x86 /dev/ttyS2 ─────→  NPU 的 UART（TF-A / U-Boot / Linux，115200）
 ```
 
 x86 自己**没有任何物理网口**（`ip -br a` 只有 `lo`），它在这条路上只干一件事：
