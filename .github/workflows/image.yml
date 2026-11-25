@@ -24,10 +24,10 @@ on:
         options: [all, x86, npu, usb]
         default: all
       variant:
-        description: 'full (DKMS toolchain in the image), lean (modules built, no compiler) or base'
-        default: full
+        description: 'lean is the published configuration (modules built, no compiler)'
+        default: lean
       size:
-        description: 'x86 disk image size; auto = rootfs + 5% + 256 MiB + 476 MiB ESP'
+        description: 'x86 disk image size; auto = rootfs + 5% + 256 MiB + 128 MiB ESP'
         default: auto
 
 permissions:
