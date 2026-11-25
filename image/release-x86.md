@@ -4,7 +4,7 @@
 
 | 资产 | 是什么 | 实测 |
 |---|---|---|
-| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(128 MiB FAT32) + ext4 root + GRUB EFI | 解开 **727 MiB**（`lean`，2026-11-25 实测 762,314,752 B；ESP 从 476 MiB 降到 128 MiB 后小了约 350 MiB，见 docs/07 §7.3） |
+| `debian-x86.img.zst` | **整盘镜像**：GPT + ESP(128 MiB FAT32) + ext4 root + GRUB EFI | 解开 **727 MiB**（`lean`，2026-11-25 实测 762,314,752 B；ESP 从 476 MiB 降到 128 MiB 后小了约 350 MiB，见 docs/05 §5.3） |
 
 ## 为什么这个镜像比 `debian-npu` 大好几倍
 

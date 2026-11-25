@@ -4,16 +4,16 @@
 > p8 做成共享管理口那一版（`br-mgmt` + `192.168.100.0/24`）；2026-11-24 之后管理并进了
 > WAN（`br-wan`，VLAN 100，DHCP），面板 `1/LAN` 是独立的静态 LAN 段（`10.234.56.0/24`），
 > `br-mgmt` 已经删掉。**而且本机 XGS 87 的面板只引出 p1–p4 + sfp，p5–p8 根本没接线**
-> （docs/06），所以 p8 这个方案在这台机器上无法复现。
+> （docs/04），所以 p8 这个方案在这台机器上无法复现。
 > 留在文档里只是因为硬件事实和踩过的坑仍然有效：PCIe 链路、四个真实 bug 的修法、
-> x86 侧模块构建。现在的网络形态看 [20](20-lan-over-vntb.md)，安装步骤看 [21](21-reproduce.md)。
+> x86 侧模块构建。现在的网络形态看 [09](../09-vntb.md)，安装步骤看 [12](../12-images.md)。
 
 目标：前面板 **p8** 同时作为 NPU（Debian）和 x86（Debian）的管理口——两台机器在同一个二层、
 各拿一个地址，机箱上只占一个口。
 
 > **本文是方案推演 + 实施结果**：17.1–17.5 是当时的计划（保留下来是因为里面有硬件事实），
 > 17.6 是实际跑通后的结论。现在的网络形态与安装步骤请直接看
-> [20](20-lan-over-vntb.md) 和 [systemd/README.md](../systemd/README.md)。
+> [09](../09-vntb.md) 和 [systemd/README.md](../../systemd/README.md)。
 
 ---
 
@@ -159,7 +159,7 @@ ping 192.168.100.1 -> 0% loss, rtt 1.7-11 ms
 ```
 
 两侧都是 oneshot systemd 服务，重启自动恢复：
-`xgs-vntb.service`（NPU，见 [xgs-vntb.sh](../systemd/npu/xgs-vntb.sh)）、`xgs-ntb.service`（x86，见 [xgs-ntb-up.sh](../systemd/x86/xgs-ntb-up.sh)）。
+`xgs-vntb.service`（NPU，见 [xgs-vntb.sh](../../systemd/npu/xgs-vntb.sh)）、`xgs-ntb.service`（x86，见 [xgs-ntb-up.sh](../../systemd/x86/xgs-ntb-up.sh)）。
 
 ### 真正踩到的四个坑（按发现顺序）
 

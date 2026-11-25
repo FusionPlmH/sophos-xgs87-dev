@@ -28,7 +28,7 @@ sudo systemctl enable xgs87-growroot
 `image/setup.sh` 另外做了几件"减负"的事，不在这个目录里：
 
 - `/etc/systemd/journald.conf.d/xgs87.conf`：`SystemMaxUse=64M`、`SystemKeepFree=256M`。
-  journal 是唯一的现场取证材料（见 [20](../docs/20-lan-over-vntb.md) §20.8），不能关，
+  journal 是唯一的现场取证材料（见 [11](../docs/11-operations.md) §11.1），不能关，
   但要封顶 —— 真机上一度攒到 248 MB。
 - `systemctl mask getty@tty1.service man-db.timer dpkg-db-backup.timer e2scrub_all.timer
   xfs_scrub_all.timer`：没有显示器/键盘、没有 man 页、没有 LVM/XFS，dpkg 的每日备份
@@ -47,7 +47,7 @@ sudo systemctl enable xgs87-growroot
 | `xgs-net-up.service` | `xgs-net-up.sh` | 按 **`/etc/xgs87/net.conf`** 把面板口分成两个桥：`br-wan`（`p2` = 面板 `2/WAN`）+ `eth0.100`，`br-lan`（`p1` = 面板 `1/LAN`）+ `eth0.200`。两个桥各用一条 VLAN（100/200），谁都不用默认 VLAN 1 |
 | `xgs-dhcp.service` | `xgs-dhcp.sh` | 在 `net.conf` 里选 `dhcp` 的桥上跑**一个** `dhcpcd`。默认只有 `br-wan` 是 `dhcp`；`br-lan` 默认 `static`（`10.234.56.1/24`，**不跑 DHCP 服务**）。也可以 `none` |
 | `xgs-nat.service` | `xgs-nat.sh` | LAN → WAN 的转发 + `masquerade`（`inet xgs87` 表，子网从 `LAN_ADDR` 推）。`net.ipv4.ip_forward=1` 由 `/etc/sysctl.d/60-xgs87-nat.conf` 一起保证 |
-| `xgs-netconsole.service` | —（`modprobe netconsole`） | 把内核 console 推给 x86 和操作者的 PC，两个目标都走 `br-lan`。**这是崩溃取证的主要手段**，见 [docs/20](../docs/20-lan-over-vntb.md) §20.8 |
+| `xgs-netconsole.service` | —（`modprobe netconsole`） | 把内核 console 推给 x86 和操作者的 PC，两个目标都走 `br-lan`。**这是崩溃取证的主要手段**，见 [docs/11](../docs/11-operations.md) §11.1 |
 
 启动顺序由 `After=`/`Wants=` 串好，一次性 `enable --now` 全部即可：
 
@@ -91,7 +91,7 @@ WAN / LAN 怎么分全在这个文件里（镜像里由 `image/overlay/npu` 带�
 
 | unit | 脚本 | 干什么 |
 |---|---|---|
-| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`；**先按 `1957:0809` 找端点（BDF 由 BIOS 分配，`03:00.0` 只是初始猜测），发现内核缓存的是固件出厂身份就 `remove`+`rescan` 一次**（普通 rescan 不会重读 ID，见 [docs/20](../docs/20-lan-over-vntb.md) §20.7.5），再等 netdev。建 `eth0.100`（WAN）/`eth0.200`（LAN）并**把 MAC 钉死** |
+| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`；**先按 `1957:0809` 找端点（BDF 由 BIOS 分配，`03:00.0` 只是初始猜测），发现内核缓存的是固件出厂身份就 `remove`+`rescan` 一次**（普通 rescan 不会重读 ID，见 [docs/09](../docs/09-vntb.md) §9.3.5），再等 netdev。建 `eth0.100`（WAN）/`eth0.200`（LAN）并**把 MAC 钉死** |
 | `xgs-ntb-watch.service` | `xgs-ntb-watch.sh` | 每 15 s 查 `carrier` + `ping 10.234.56.1`（NPU 的 `br-lan`）；异常时先只重建本地 VLAN/地址。`/etc/default/xgs-ntb-watch` 里默认 `AUTO_RECOVER=1`：连续 5 分钟不通就跑一次 `xgs-ntb-up.sh --force-rescan`，然后冷却 10 分钟（5 分钟是为了不打断正在启动的 NPU） |
 | `xgs-ntb-stop.service` | `xgs-ntb-stop.sh` | 关机前把 `ntb_hw_epf` 卸掉 → 它往端点控制区写 `COMMAND_LINK_DOWN`，NPU 才不会拿着悬空指针 |
 | `xgs-npu-console.service` | —（`cat /dev/ttyS2`） | **可选**：把 NPU 控制台连续录到 `/var/log/npu-console.log`。它会**独占** ttyS2，交互式调试前要先停 |

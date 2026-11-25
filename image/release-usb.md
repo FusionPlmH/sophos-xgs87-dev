@@ -89,7 +89,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 **结论**：先试 **ssh + dd**（不动 NPU、不需要插网卡，原厂系统也成立）；
 失败了才轮到 **U-Boot（tftpboot + mmc write，需要插 USB 网卡做物理旁路）**，最后是**急救包**。
 "ssh + tar 流式解包"和 NBD 这两级已经删除：前者要在 NPU 正挂着的根分区上 `mkfs`，内核必拒，
-永远不可能成功（docs/20 §20.11.1）；后者两个镜像都没带 `nbd-client`/`nbd-server`，也从未跑通。
+永远不可能成功（docs/11 §11.2.1）；后者两个镜像都没带 `nbd-client`/`nbd-server`，也从未跑通。
 U-Boot 还能做 ssh 路径做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、
 修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
 
@@ -127,7 +127,7 @@ TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 �
 串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。
 要提速就改 U-Boot 的 `baudrate`：**在 NPU 的 Linux 里用 `fw_setenv baudrate 460800`**（它会先擦后写），
 x86 侧相应把 `BAUD=460800`。别在 U-Boot 提示符下反复 `saveenv` —— 那颗 NOR 的 env 写入不先擦除，
-连续写会把 env 写成半截（[docs/23](../docs/23-mcp2210-spi-nor.md) §23.7）。
+连续写会把 env 写成半截（[docs/14](../docs/14-rescue.md) §14.7）。
 （U-Boot 自己配置这个速率；老 image 内核的 2x 分频问题不适用于 U-Boot。）
 
 ## 备份区（`/media/xgs87-bak`）
@@ -155,7 +155,7 @@ U 盘和镜像一样大（没有剩余空间）时它只会打一行提示，菜
 
 SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先备份（SPI 的 `mtd0`/`mtd1` 和 eMMC），
 再从 U 盘启动重装。SFOS 高级 shell、备份、串口波特率的细节见
-[docs/22-from-sfos.md](../docs/22-from-sfos.md)。
+[docs/13-installer.md](../docs/13-installer.md)。
 
 ## 自己构建
 

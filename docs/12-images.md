@@ -3,7 +3,7 @@
 这一页回答一个问题：**拿到这个仓库（和历史里没有的真机标识），怎么在另一台机器上把
 x86 / NPU 两套系统重新做出来。** 下面每一步都在 2026-11-23 用 Debian trixie 实跑过。
 
-## 21.1 先分清哪些是"源码"，哪些是"产物"
+## 12.1 先分清哪些是"源码"，哪些是"产物"
 
 | 路径 | 性质 | 换机器后 |
 |---|---|---|
@@ -16,7 +16,7 @@ x86 / NPU 两套系统重新做出来。** 下面每一步都在 2026-11-23 用 
 （或者 GitHub 的 `ubuntu-24.04-arm` runner）。mmdebstrap 需要 `debian-archive-keyring`
 不早于 trixie——Ubuntu 24.04 自带的太旧，`image/` 的 workflow 里有一段专门先装新 keyring。
 
-## 21.2 rootfs
+## 12.2 rootfs
 
 ```sh
 sudo ./image/build.sh --arch amd64 --variant full   # x86
@@ -35,7 +35,7 @@ sudo ./image/build.sh --arch arm64 --variant full   # NPU（在 arm64 上跑）
 锁 root、清 apt 缓存。它要求 `sudo` 这个包（提供 `sudo` 组）已经在
 `image/packages-common.list` 里——漏了就会在 `useradd --groups sudo` 这一步失败。
 
-## 21.3 x86 整盘镜像
+## 12.3 x86 整盘镜像
 
 ```sh
 sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.img
@@ -44,7 +44,7 @@ sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst --out out/debian-x86.
 默认 `--size auto`：rootfs 实际大小 + 5% + 192 MiB，再加 128 MiB 的 ESP。**不要**再传 `--size 4G`，
 镜像大小跟着内容走，首次开机由 `xgs87-growroot.service` 把 `p2` 扩到盘尾。
 
-## 21.4 设备树和模块
+## 12.4 设备树和模块
 
 ```sh
 ./tools/build/build-dtb.sh                     # board/*.dts -> out/cn9130-sophos-xgs87w-sfp10g.dtb
@@ -59,7 +59,7 @@ DTB 是 NPU 启动必需：U-Boot 的 `bootcmd` 从 root 分区 `ext4load` 它�
 > 真正的 35 键版本在设备上/整片 dump 里。做写 env 的操作时以 `mcp2210-nor.py` 的 dump
 > 为准，不要拿这个文本直接刷。
 
-## 21.5 仓库里的占位符（把真值放回去）
+## 12.5 仓库里的占位符（把真值放回去）
 
 仓库不保存这台机器的身份信息，下面这些值在源码里是占位符：
 
@@ -89,7 +89,7 @@ DTB 是 NPU 启动必需：U-Boot 的 `bootcmd` 从 root 分区 `ext4load` 它�
 要再做一次就用 `python3`：读出 gzip → 等长替换 → `struct.pack_into("<I", buf, 0,
 zlib.crc32(buf[4:]))` → 用 `gzip.GzipFile(..., mtime=0)` 写回。
 
-## 21.6 发布前检查
+## 12.6 发布前检查
 
 ```sh
 ./tools/check-hygiene.sh          # 真实 MAC / 内网地址 / 用户路径 / 序列号
@@ -108,7 +108,7 @@ tar --zstd -xOf out/xgs87-x86-full.tar.zst ./etc/group   | grep '^sudo:'
 
 期望：`admin` 有口令哈希（`$y$…`），`root` 是 `!*`，`sudo:x:27:admin`。
 
-## 21.7 CI 与 release
+## 12.7 CI 与 release
 
 只有一个 workflow（`.github/workflows/image.yml`），手动触发，用 `target` 选要出哪个产物；
 每个目标维护一个**固定 tag**（每次覆盖，说明见 `image/release-*.md`）：

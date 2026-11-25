@@ -4,7 +4,7 @@
 > NPU SPI NOR 的 `C2 20 16`（MX25L3205D）、SR=0x00，能读出并校验 64 KiB U-Boot env。
 > 工具在 [tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)。
 
-## 23.1 为什么需要它
+## 14.1 为什么需要它
 
 NPU 从 **SPI NOR flash 0** 启动：BootROM → TF-A → U-Boot → Linux。SPI NOR 里是
 **TF-A + U-Boot + U-Boot env**（mtd0/mtd1），eMMC（p1–p4）不在这条 SPI 总线上。
@@ -16,7 +16,7 @@ U-Boot 刷坏或 env 写坏时，NPU 可能连控制台都进不去；x86 板载
 而且只重写与镜像不同的 64 KiB 块。这不是建议，是代码里的硬约束：`dump` 必须先做整片双遍读；
 `env-write` 没有已验证的整片备份、没有通过 U-Boot 参考镜像对拍、没有 `--commit`，都不会动 flash。
 
-## 23.2 实测硬件事实
+## 14.2 实测硬件事实
 
 | 项目 | 值 |
 |---|---|
@@ -45,9 +45,9 @@ NPU 被复位、总线切给 MCP2210；操作完再写 **release**（`0xFFFF`）
 > 工具在 `SpiNor.close()` 里**无论成功失败都会 release**；如果进程被 SIGKILL 或断电，
 > 下次运行 `npu release`（或给 MCP2210 断电/重启 x86）即可恢复。
 
-## 23.3 MCP2210 命令集（DS22288A，实测）
+## 14.3 MCP2210 命令集（DS22288A，实测）
 
-> 早期 [05](05-x86-system.md) 里写的 “0x10 get GPIO / 0x20 SPI settings / 0x30 cancel /
+> 早期 [06](06-x86-system.md) 里写的 “0x10 get GPIO / 0x20 SPI settings / 0x30 cancel /
 > 0x40 transfer” 是错的（少了一组）。以本表和 datasheet 为准。
 
 | 命令 | 作用 | 备注 |
@@ -75,7 +75,7 @@ GPIO chip settings 的 14 字节结构（`0x20` 响应的 `[4:18]`，`0x21` 请�
 `0x21` 写入 direction 后**会立即改变 live direction**（原厂 `gpio_write` 就靠这一点），
 不需要再发 `0x32`。
 
-## 23.4 SPI 传输引擎
+## 14.4 SPI 传输引擎
 
 `0x40` 的 17 字节设置：
 
@@ -111,7 +111,7 @@ engine_status: 0x20=已开始无数据, 0x30=未结束有数据, 0x10=结束
 - 打开设备后的第一条命令经常丢，重发即可。
 - 1 MHz 下实测整片读约 **10–15 KiB/s**（瓶颈是 HID 轮询，不是 SPI）；4 MiB 单遍约 6–7 分钟。
 
-## 23.5 安全模型（代码强制）
+## 14.5 安全模型（代码强制）
 
 `dump`：
 
@@ -146,9 +146,9 @@ engine_status: 0x20=已开始无数据, 0x30=未结束有数据, 0x10=结束
 6. 全部写完再整段回读一次，SHA-256 必须等于镜像。
 
 > 这条命令的存在理由是"把刷坏的 U-Boot 救回来"，不是日常操作。
-> 现状：mtd0 与参考逐字节一致，**没有运行它的必要**（见 §23.7）。
+> 现状：mtd0 与参考逐字节一致，**没有运行它的必要**（见 §14.7）。
 
-## 23.6 用法（在 x86 上）
+## 14.6 用法（在 x86 上）
 
 ```sh
 # 0) 先停掉会刷屏的 PCIe watcher
@@ -192,7 +192,7 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
 没有 CS 被设为 CS 时，`--cs-pin 0` 会把 GP0 临时设为 CS；工具退出时恢复原 GPIO/SPI 设置，
 并按 23.2 的 hold/release 把 NPU 放回 release。
 
-## 23.7 2026-11-24 这台砖机的实测
+## 14.7 2026-11-24 这台砖机的实测
 
 - `info --cs-pin 0`：JEDEC `C2 20 16`、SR `0x00`（无 BP 保护），1 MHz。
 - 当前 env：CRC **OK**，35 项；`bootcmd=run bootcmd_deb10g`，`bootcmd_deb` 从
@@ -201,7 +201,7 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
 - **flash 开头没坏**：0x000000 起 4 KiB 的 SHA-256 是
   `855cafb74e480f6d554bb6b3c0cd4f3bf310747b5e26b47909ce9354c6e09c72`，与
   `reference/mtd/npu-mtd0-uboot.bin.gz` 的前 4 KiB **完全一致**。
-- 第一次整片 dump 两遍在 0x000000.. 不一致，是 0x42 陈旧响应的跨事务错位（见 §23.4）；
+- 第一次整片 dump 两遍在 0x000000.. 不一致，是 0x42 陈旧响应的跨事务错位（见 §14.4）；
   加上每条命令前 drain 后，同一 4 KiB 连读 5 次 SHA 全部一致。**修复版整片双遍 dump 已完成，
   两遍一致**：备份 `/var/backups/npu-nor.bin`，4 MiB，SHA-256
   `406776183588cb26d476d9d95c70ec6438fd731afd6e01846f110433720057de`，manifest `verified: true`；
@@ -217,10 +217,10 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
   `bootargs_deb` = `root=/dev/mmcblk0p2 rootwait rw`；`bootcmd=run bootcmd_deb10g` 的 10G 分支
   （`mvswitch 2 write 9 0 0xd` + `dev_write … f002/2000`）原样保留。
 - ⚠️ `bootcmd_deb` 引用的两个文件名在 `p2.img` 里原本不存在（镜像只有 `board.dtb` /
-  `initrd.img-<ver>`），已在镜像侧用 hardlink 补齐，见 [07](07-storage.md) §7.4。
+  `initrd.img-<ver>`），已在镜像侧用 hardlink 补齐，见 [05](05-storage.md) §5.4。
 - ⚠️ **x86 的 `ttyS2` 是干净的**（2026-11-24 复核）：以 host `115200` 抓，TF-A 全程可读。
   之前判成“乱码/通路不可靠”是 host 侧波特率设错（230400/57600）造成的采样错。
-  详见 [08](08-console-access.md) §8.3。
+  详见 [10](10-console.md) §10.3。
 - **当时的“BL31→BL33 复位”结论已在 2026-11-25 被推翻**：停掉 x86 侧
   `xgs-ntb-up.sh` 的 remove/rescan 循环后，U-Boot 正常跑到 `Marvell>>`；
   `l` 不是 U-Boot 的第一个字节，而是下一条 `NOTICE` 的首字符被 UART 重配吃掉。
@@ -232,9 +232,9 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
   [03](03-boot-chain.md) §3.6。
 - p2 上 `bootcmd=run bootcmd_deb10g` 已经固定下来；vNTB 也不再需要人去手动
   `--force-rescan`（脚本会自己发现"内核缓存的是固件出厂身份"并重枚举一次，见
-  [20](20-lan-over-vntb.md) §20.7.5）。p3 原厂槽随时可回滚。
+  [09](09-vntb.md) §9.3.5）。p3 原厂槽随时可回滚。
 
-## 23.8 mtd0 组件表与"心跳桩"诊断
+## 14.8 mtd0 组件表与"心跳桩"诊断
 
 U-Boot 不是独立文件，而是 **Marvell BIN**（BIN 头 + TF-A + BL33）里的一段。实测布局
 （`reference/mtd/npu-mtd0-uboot.bin.gz`，0x3F0000 字节）：
@@ -310,12 +310,12 @@ Setting up Comphy lane 0 as PCIe …  NOTICE:  SVC: DEV ID: CN913x, FREQ Mode: 0
 即：**镜像照样被判定有效、TF-A 照常运行**。所以
 
 - **没有签名/校验和检查**，改字节是被接受的（我先前穷举 CRC/求和/SHA 全部对不上，是因为那个字段根本不是校验和）；
-- **0x5E000 不是 BL1/BL2/BL31 的入口**（桩在那里从未被执行；§23.8 上表的"BL31 入口"标注是错的，
+- **0x5E000 不是 BL1/BL2/BL31 的入口**（桩在那里从未被执行；§14.8 上表的"BL31 入口"标注是错的，
   它更可能是 BIN 头 `0x04` 字段所记的"prologue 大小 0x5E000"的边界）；
 - 那次 `error = 0x018` 的真实原因是**我们自己的工具把 GP0(flash CS) 留在驱动状态**，
   BootROM 读 flash 时总线被 MCP2210 抢着 → 读到垃圾 → 判定镜像无效。
 
-> ⚠️ **教训（已写进 §23.9）**：`env-write`/`mtd0-restore` 退出时必须确认 MCP2210 恢复了 GPIO
+> ⚠️ **教训（已写进 §14.9）**：`env-write`/`mtd0-restore` 退出时必须确认 MCP2210 恢复了 GPIO
 > designation（`npu status` 里 `live_dir` 应该是全输入的上拉值）；否则 BootROM 会在下一次启动时
 > 读到垃圾并显示成"镜像错误"，极易误判。写完不要立刻抓串口下结论，先做一次干净的上电。
 >
@@ -326,7 +326,7 @@ Setting up Comphy lane 0 as PCIe …  NOTICE:  SVC: DEV ID: CN913x, FREQ Mode: 0
 
 镜像无效时 BootROM 会 `Trying Uart..`，协议就是 Marvell 的
 `u-boot/tools/mrvl_uart.sh`：主机连发 `BB 11 22 33 44 55 66 77`，BootROM 锁定后要求 XMODEM。
-实测（x86 的 `/dev/ttyS2`，纯 Python 实现，见 §23.10 的 `mrvl-uart.py`）：
+实测（x86 的 `/dev/ttyS2`，纯 Python 实现，见 §14.10 的 `mrvl-uart.py`）：
 
 ```
 phase1 handshake 0x15 after 4352 pattern bytes
@@ -361,7 +361,7 @@ phase1 handshake 0x15 after 4352 pattern bytes
 真正的复位源是主机侧的 PERST#。保留这张表是为了记住：**在抖动窗口里看到的"稳定周期"
 不一定属于被测对象**，先把自己的干扰源停掉再下结论。
 
-## 23.9 故障排查
+## 14.9 故障排查
 | 现象 | 处理 |
 |---|---|
 | RDID 全 `FF` | hold 没生效 / CS 不是 GP0 / NPU 正在驱动总线。先 `npu status`，确认 live `0x0029` 是 HOLD 还是 RELEASE；`info --cs-pin 0` 会自动 hold |
@@ -374,11 +374,11 @@ phase1 handshake 0x15 after 4352 pattern bytes
 | `BP=111` / 写失败 | flash 块保护；`env-write --clear-bp`（先确认 WP# 为高） |
 | 控制台被 PCIe 日志刷屏 | `sudo systemctl stop xgs-ntb-watch`，`sudo dmesg -n 1` |
 
-## 23.10 参考
+## 14.10 参考
 
 - Microchip **DS22288A**（MCP2210 datasheet），第 3 章命令集。
 - os-xgs-npu 参考仓库：`src/opnsense/scripts/npuctl/mcp2210.py`、
   `docs/npuep/npu-bring-up.md`（GP0/3/5、hold/release 表、HID 队列坑）。
 - 本仓库：[tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)、
   [test_mcp2210_nor.py](../tools/on-x86/test_mcp2210_nor.py)（无硬件模拟测试）、
-  [07-storage.md](07-storage.md) §7.1、[05-x86-system.md](05-x86-system.md) §5.3。
+  [05-storage.md](05-storage.md) §5.1、[06-x86-system.md](06-x86-system.md) §6.3。

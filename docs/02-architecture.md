@@ -9,7 +9,7 @@
 | | x86（AMD RX-216TD） | NPU（CN9130） |
 |---|---|---|
 | 角色 | 控制面 + 应用 | 数据面 |
-| 跑什么 | SFOS 主系统、Web 管理、Wi-Fi 驱动、日志、DPI 管理 | **原厂**：极小的 Buildroot，只做包收发和交换机管理<br>**现在**：Debian 13（见 [14](14-npu-debian-hardware.md)） |
+| 跑什么 | SFOS 主系统、Web 管理、Wi-Fi 驱动、日志、DPI 管理 | **原厂**：极小的 Buildroot，只做包收发和交换机管理<br>**现在**：Debian 13（见 [07](07-npu-system.md)） |
 | 网络 | **没有自己的网口** | 4×1G + 1×SFP，全部挂在 88E6193X 上 |
 | 与对方 | PCIe 端点 + 串口 | PCIe 端点 + 串口 |
 
@@ -48,7 +48,7 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
               ── BAR4=memory(1 MiB) ─────► ntb_netdev  → ntb0
 ```
 
-性能：**本机实测单流 TCP 1.20 Gbit/s、ping RTT 0.6 ms**（改 hrtimer 轮询后，见 [20](20-lan-over-vntb.md) §20.5）。
+性能：**本机实测单流 TCP 1.20 Gbit/s、ping RTT 0.6 ms**（改 hrtimer 轮询后，见 [09](09-vntb.md) §9.1）。
 参考项目自报的数字是 630 Mbit/s / 1.7 Gbit/s，与本机不同批次测法，不直接可比。
 
 ### 三个必须注意的坑
@@ -61,12 +61,12 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
 
 > **更正（2026-11-23）**：本机 Debian 内核确实没有 NTB（`CONFIG_NTB` 未编），但**不需要换内核** ——
 > 这套 NTB 全是**外挂模块**（`ntb_core` / `ntb_transport` / `ntb_netdev` / `pci_epf_vntb` / `pcie_dw_plat`），
-> 对着现成 headers 编出来 `insmod` 就能跑。构建见 [tools/](../tools/)，四个真实 bug 见 [17](17-x86-npu-shared-mgmt.md) §17.6。
+> 对着现成 headers 编出来 `insmod` 就能跑。构建见 [tools/](../tools/)，四个真实 bug 见 [档案](archive/p8-shared-mgmt.md) §17.6。
 
 ## 2.4 通路三：串口（永远可用）
 
 x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1。当前 Debian 的 host 侧也设 115200；
-只有老 `image/` 内核是 2x 分频，才需要 host 57600（见 [08](08-console-access.md) §8.3）。
+只有老 `image/` 内核是 2x 分频，才需要 host 57600（见 [10](10-console.md) §10.3）。
 
 - 用途：救砖、看 boot log、进 U-Boot、在 NPU 没网时下命令。
 - 带宽：~11.5 KB/s，只适合控制，不适合传数据。
@@ -119,6 +119,6 @@ x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1。当前 Debian 的 host �
 2. **面板口只能由 NPU 驱动**，x86 无法直接收发包（除非 NTB 转发）。
 3. ~~交换芯片没有 mainline 驱动~~ **已解决**：Debian 自带 `mv88e6xxx` + DSA，9 个 netdev（p1–p8 + sfp）
    全部出现；本机面板只引出了 p1–p4 + sfp，面板口之间由硬件转发。TCAM 越权补丁要自己编，
-   见 [20](20-lan-over-vntb.md) §20.9。
+   见 [15](15-modules-and-kernel.md) §15.5。
 4. **x86 只有 2 核 4 GB**，适合轻量服务，不适合重计算。
 5. **串口是唯一可靠的带外通道**，设计升级/回滚流程时一定要留着它。

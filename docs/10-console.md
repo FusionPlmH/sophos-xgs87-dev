@@ -5,7 +5,7 @@
 > （host 57600 = 线上 115200），只适用于那套内核。2026-11-24 那个"BL31→BL33 复位"是 x86 的
 > remove/rescan 风暴造成的，已推翻；见 [03 §3.6](03-boot-chain.md)。
 
-## 8.1 物理口
+## 10.1 物理口
 
 | 口 | 用途 | 速率 |
 |---|---|---|
@@ -19,7 +19,7 @@
 > 插上 micro-USB 时 RJ45 那路就没有输出。两者都是 **115200**（早期记的 38400 是错的）。
 > RJ45 是 Cisco 交叉线序。
 
-## 8.2 登录
+## 10.2 登录
 
 | 目标 | 方法 | 账号 |
 |---|---|---|
@@ -33,7 +33,7 @@
 > `image/` 里 `root` 是 `passwd -l` 锁死的，sshd 也 `PermitRootLogin no`，登录一律走 `admin` + `sudo`
 > （`sudo` 要密码）。见 [image/release-x86.md](../image/release-x86.md)。
 
-## 8.3 NPU 控制台的波特率：三段都是 115200
+## 10.3 NPU 控制台的波特率：三段都是 115200
 
 **线上**三个阶段的速率不同：
 
@@ -56,7 +56,7 @@ PC 侧工具：[tools/on-pc/npu-console.py](../tools/on-pc/npu-console.py)（`--
 > 插上 CH340 的瞬间 MCP2210 会被 disconnect（`usb 1-1.3: USB disconnect`），救砖工具直接失联。
 > NPU 控制台统一走 x86 的 `/dev/ttyS2`。
 
-## 8.4 从 x86 操作 NPU 控制台
+## 10.4 从 x86 操作 NPU 控制台
 
 TF-A 阶段（当前 Debian，host 115200）：
 
@@ -91,7 +91,7 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 > 不需要 chroot 进内置盘的系统：`/dev/ttyS2` 属于 x86 这块板子，U 盘系统、装好的 Debian、
 > 甚至 BIOS 之后任何跑在 x86 上的系统都能开它。**唯一限制是同一时刻只能有一个读者**（见 8.5）。
 
-## 8.5 自动化时的坑（全部踩过）
+## 10.5 自动化时的坑（全部踩过）
 
 1. **`/dev/ttyS2` 同一时刻只能有一个读者**。两个 `cat` 会把字节流切成乱码 —— 这是最容易
    浪费时间的一条，看到"全是乱码"先查 `ps aux | grep ttyS2`。
@@ -145,16 +145,7 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
     remove/rescan，再用 `npu-uboot.py` 一行一行敲。**不要因为一次 `Unknown command` 就断定
     命令集缺失** —— `bootcmd` 里的 `run`/`ext4load` 能跑，就说明命令是有的。
 
-## 8.6 网络怎么来的（现状）
-
-不是临时 `ifconfig` 了，全部由 systemd 单元管，细节见 [20](20-lan-over-vntb.md)：
-
-| 位置 | 单元 |
-|---|---|
-| NPU | `xgs-ports-up` → `xgs-vntb` → `xgs-net-up` → `xgs-dhcp` |
-| x86 | `xgs-ntb` → `xgs-ntb-watch`，地址由 `systemd-networkd` 的 `100-wan.network`（DHCP）/ `200-lan.network`（静态）给 |
-
-## 8.7 备份与救砖
+## 10.6 备份与救砖
 
 | 场景 | 手段 |
 |---|---|
@@ -162,5 +153,5 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 | NPU U-Boot 坏了 | x86 的 MCP2210（USB-SPI）写 SPI NOR，或 JTAG |
 | x86 系统坏了 | UEFI 启动菜单，或换 eMMC / U 盘启动 |
 | x86 卡在 GRUB 命令行 | 串口发 ESC 逼回 `grub>`，再发 `normal` + 回车 |
-| 交换机模块改坏了 | 面板口全消失但 NPU 还活着 → 用 `.ko.orig` 回滚（别手工 `xz -9` 压，见 20 §20.9） |
+| 交换机模块改坏了 | 面板口全消失但 NPU 还活着 → 用 `.ko.orig` 回滚（别手工 `xz -9` 压，见 20 §15.5） |
 | 两台都失联 | 断电源 5 秒。注意**只有一条电源线**，断电两台一起下 |

@@ -4,7 +4,7 @@
 
 > ⚠️ **本文是历史档案**：这里的 Buildroot 系统在 2026-11-22 已被 Debian 13 替换。
 > 保留它是因为原厂的初始化顺序、驱动清单和 VPD 布局仍然是排查硬件问题的唯一参考。
-> 当前系统见 [14-npu-debian-hardware.md](14-npu-debian-hardware.md)，网络与自启见 [20](20-lan-over-vntb.md)。
+> 当前系统见 [07-npu-system.md](../07-npu-system.md)，网络与自启见 [09](../09-vntb.md)。
 
 ## 4.1 概况
 
@@ -123,14 +123,14 @@ xgs_dt1_startup.sh
 即使用手工补跑把 `usfp` 拉起来（内存分配、MQA 表初始化都成功），它还会卡在第二道
 `pf#0: Wait till Host change the status to 'Host Management Ready'`；**配交换机的代码在第二道之后**，
 所以 `eth0` 恒 `NO-CARRIER`。这就是"前面板口不通"的原厂原因，也是本仓库改走 vNTB 的理由
-（[17](17-x86-npu-shared-mgmt.md)、[20](20-lan-over-vntb.md)）。
+（[档案](../archive/p8-shared-mgmt.md)、[09](../09-vntb.md)）。
 
 顺带两条常被误判的线索：
 
 - 内核那条 `mdio@12a200/switch@2 has invalid PHY address` **不是硬件故障**：DT 里用的是自定义
   属性 `phy-addr`，标准 `of_mdio` 只认 `reg`，所以报"无效地址"；交换机本来就由用户态
   （`mdio_uio` → USFP/DPDK）配置。`gpioget 2 17` = `1` 也说明复位线没被按住。
-- `mvswitch` / `ext4ls` 这类命令"敲了没反应"先怀疑串口，别怀疑命令集（[08](08-console-access.md) §8.5 第 10 条）。
+- `mvswitch` / `ext4ls` 这类命令"敲了没反应"先怀疑串口，别怀疑命令集（[10](../10-console.md) §10.5 第 10 条）。
 
 
 ## 4.5 `/opt/sophos` —— 机型数据库
@@ -201,7 +201,7 @@ resource/
 （`cpss_agent`、`nwa_db_*.bin`、`mv_*` 驱动、各类闭源工具），公开分发有版权风险，
 因此本仓库只放**实测数据**（设备树、内核 config、U-Boot、日志）和文档。
 
-需要完整镜像时在自己机器上导出即可（命令见 [07-storage.md](07-storage.md)）：
+需要完整镜像时在自己机器上导出即可（命令见 [05-storage.md](../05-storage.md)）：
 
 ```sh
 # 在 NPU 上
@@ -229,13 +229,13 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 
 | 原厂能力 | 我们 | 说明 |
 |---|---|---|
-| MUSDK / CPSS 用户态数据面（`mv_pp_uio`、`mv_neta_uio`、`mvmdio_uio`、`usfp`、`NetAgent`、DPDK） | 没有，也不需要 | 只在 4.14 BSP 上；主线用 DSA，转发 2–4 Gbps 已经超过整机瓶颈（docs/20） |
+| MUSDK / CPSS 用户态数据面（`mv_pp_uio`、`mv_neta_uio`、`mvmdio_uio`、`usfp`、`NetAgent`、DPDK） | 没有，也不需要 | 只在 4.14 BSP 上；主线用 DSA，转发 2–4 Gbps 已经超过整机瓶颈（docs/09） |
 | `mvpp2x.ko`（多口驱动） | 没有 | 同上，被 `mvpp2` + `mv88e6xxx` 取代 |
-| EIP197 硬件加密（原厂走 MUSDK SAM + `ifpp.bin`） | 明确不用 | 固件不在镜像里，`crypto_safexcel` 已 blacklist；单核 AES-256-GCM 8.5 Gbps（docs/14 §14.4） |
+| EIP197 硬件加密（原厂走 MUSDK SAM + `ifpp.bin`） | 明确不用 | 固件不在镜像里，`crypto_safexcel` 已 blacklist；单核 AES-256-GCM 8.5 Gbps（docs/07 §7.4） |
 | 硬件看门狗（`S15watchdog` 跑 `watchdog -t 5 /dev/watchdog`） | **已补** | 新增 `xgs-watchdog.service` 喂 `/dev/watchdog0`。实测：没人喂狗时整机约 10–20 s 真复位 |
 | PPPoE（内核有 `pppoe.ko`，但原厂也没有 `pppd`） | 一样缺 userspace | 要拨号 WAN 得装 Debian 的 `pppoe` 包；原厂同样没有，不算丢功能 |
 | Wi-Fi（`wl18xx` / `wlcore` / `cfg80211`） | 无硬件 | 本机（XGS 87 非无线版）没有无线模块，`87w` 才有 |
 | USB 网卡驱动（`r8152`、`rtl8150`、`pegasus`） | 用不上 | NPU 没有 USB host；x86 侧有 USB 但不拿它上网 |
-| LED 控制（`xgs_dt1_startup.sh` 里的 gpioset / PHY LED） | 未实现 | 现在 LED 跟 PHY 走（docs/06 §6.7） |
+| LED 控制（`xgs_dt1_startup.sh` 里的 gpioset / PHY LED） | 未实现 | 现在 LED 跟 PHY 走（docs/04 §4.7） |
 | SFP+ 口只当 1G（原厂 `npu0.eth4.init_speed=1G`） | 更强 | DTS 改成 `10gbase-r`，实测 10G |
 | 日志转发（`xgs_log_fwd`） | 不需要 | 用 journald + netconsole 双目标 |

@@ -2,7 +2,7 @@
 
 > 🏷 **状态（2026-11-23 复核）**：✅ **实测**：`mtd0` = u-boot 4032 KiB、`mtd1` = env 64 KiB；eMMC 7.3 GiB 分 4 区（p1 500M/p2 1.5G 根/p3 1.5G/p4 100M persistent）。
 
-## 7.1 NPU：SPI NOR（4 MiB）
+## 5.1 NPU：SPI NOR（4 MiB）
 
 ```
 dev:    size   erasesize  name
@@ -16,7 +16,7 @@ mtd1: 00010000 00001000 "U-Boot-env"     64 KiB
 - 救砖工具：[tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)。在 x86 上通过
   `/dev/hidraw0` 操作；先 **hold NPU**（GP0/GP3/GP5）把总线切给 MCP2210，GP0 作 CS；
   先整片双遍 dump + manifest，`env-write` 只写 64 KiB env，失败自动回滚。
-  详见 [23-mcp2210-spi-nor.md](23-mcp2210-spi-nor.md)。
+  详见 [14-rescue.md](14-rescue.md)。
 - 备份：`reference/mtd/npu-mtd0-uboot.bin.gz`（解压 4 128 768 字节，已验证）。
 
 ```sh
@@ -28,7 +28,7 @@ dd if=/dev/mtd1 bs=65536 | gzip -1 > /tmp/uboot-env.gz
 flashcp -v uboot.bin /dev/mtd0
 ```
 
-## 7.2 NPU：eMMC（7.28 GiB）
+## 5.2 NPU：eMMC（7.28 GiB）
 
 ```
 mmcblk0       7 634 944 KiB   H8G4a2 (HS200)
@@ -70,11 +70,11 @@ mmcblk0p4  100M ext4  /persistent    UUID=d5d1be41-…
   `mbrfix` 已从启动路径移除（见 [03](03-boot-chain.md) §3.6）。
 - **2026-11-25 又补了三处**：p2 的 ext4 元数据损坏（inode checksum）用 `fsck.mode=force` 修好，
   状态从 `clean with errors` 变成 `clean`（fsck 需要 initramfs 里有 e2fsck，见
-  [14](14-npu-debian-hardware.md) §14.13）；一个被写坏的 dpkg 文件清单
+  [07](07-npu-system.md) §7.13）；一个被写坏的 dpkg 文件清单
   （`libseccomp2:arm64.list`）用 `--reinstall` 重新生成；DNS 从"完全不可用"修到 DHCP 下发即用。
 - 没有做 A/B：p3 就是天然的"另一套"，但它跑的是 4.14 原厂系统，不是同一代 Debian。
 
-## 7.3 x86：eMMC（16 GB）
+## 5.3 x86：eMMC（16 GB）
 
 ```
 mmcblk0      14.7 GiB
@@ -99,13 +99,13 @@ mmcblk0      14.7 GiB
 - 参考机型的 XGS 107 是 **64 GB SATA + MBR**，本机是 **16 GB eMMC + GPT/EFI**，
   两者装系统的方式完全不同。
 
-## 7.4 镜像与备份清单
+## 5.4 镜像与备份清单
 
 | 对象 | 大小 | 备份方式 | 本仓库 / 本地 |
 |---|---|---|---|
 | NPU U-Boot (mtd0) | 4 MiB | `dd` + gzip | `reference/mtd/npu-mtd0-uboot.bin.gz` |
 | NPU env (mtd1) | 64 KiB | `dd` + gzip | `reference/mtd/npu-mtd1-env.bin.gz` |
-| **NPU 整盘 eMMC** | **7.28 GiB** | `dd` 全盘 | 本地 `npu/backup/mmcblk0-full.img`（SHA256 记录在 [12](12-measurements.md)）**不可再生** |
+| **NPU 整盘 eMMC** | **7.28 GiB** | `dd` 全盘 | 本地 `npu/backup/mmcblk0-full.img`（SHA256 记录在 [档案](archive/measurements.md)）**不可再生** |
 | **NPU p2 根分区（救砖镜像）** | **1 524 MiB** | `dd` 到 `/dev/mmcblk0p2` | 本地 `p2.img`（仓库不放二进制），SHA256 `383cb3aee23d325a25340e8e045f81c7b667252a3a0cbf3ae203708afeafb6e4`（2026-11-24 修补后） |
 | x86 ESP | 128 MiB | `dd` 或 `rsync` | 未备份（重装即可再生） |
 
@@ -146,11 +146,11 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 - eMMC 的 `boot0/boot1` 全 0，说明 **不是** 从 eMMC 硬件分区启动，靠 SPI NOR 的 U-Boot。
 - 换 eMMC 后要先分好 p1-p4，再把 Debian 解到 p2，最后确认 `bootcmd`（见 [03](03-boot-chain.md) §3.3）。
 - **p4 是出厂的 VPD**（机型/序列号/MAC 基址），任何时候都不要格式化它。
-- **要替换 p2 的内容，先看 [20](20-lan-over-vntb.md) §20.11**：对着一个正在使用的根
+- **要替换 p2 的内容，先看 [11](11-operations.md) §11.2**：对着一个正在使用的根
   分区 `dd` 会把新镜像写坏（旧文件系统的脏页会继续落到新镜像的元数据区上），
   2026-11-25 就是这么坏的，症状是随机二进制 `Input/output error`、sshd 握手即断。
 
-## 7.5 容量规划
+## 5.5 容量规划
 
 | 用途 | 建议 |
 |---|---|
@@ -158,7 +158,7 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 | 大文件（备份、容器镜像） | 放 **x86 的 16 GB eMMC**，别占 NPU 的 1.5 GB |
 | 日志 | NPU 侧用 journald 限流（eMMC 写入寿命）；要长期留就把 `/var/log` 转去 x86 |
 
-## 7.6 镜像该写到哪儿：分区 vs 整盘（2026-11-24 的教训）
+## 5.6 镜像该写到哪儿：分区 vs 整盘（2026-11-24 的教训）
 
 这条规则是拿一台真砖机换来的，写在这里防止再犯。
 

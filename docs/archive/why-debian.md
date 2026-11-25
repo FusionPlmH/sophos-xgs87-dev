@@ -1,7 +1,7 @@
 # 13 · NPU 换系统：为什么是 Debian，以及 SFP+ 怎么跑 10G
 
 > 🏷 **状态（2026-11-23 复核）**：✅ **已落地** —— NPU 现在跑 Debian 13 + 6.12.117，SFP 实测 10G。
-> 本文记录**当时的选择过程和 DTS 那一行改动**，实施细节见 [14](14-npu-debian-hardware.md)、[20](20-lan-over-vntb.md)。
+> 本文记录**当时的选择过程和 DTS 那一行改动**，实施细节见 [07](../07-npu-system.md)、[09](../09-vntb.md)。
 
 本文回答两个问题：
 
@@ -35,7 +35,7 @@ mvpp2 eth0 ──10G KR/R──> 88E6193X port 0 ──> port 1..4 (RJ45, 内置
 | `phylink` + `sfp` | SFP 模块识别/限速/协商 | SFP 口不可用 |
 
 原厂 4.14 内核**一个交换机驱动都没有**——二层完全是 U-Boot 写死的寄存器状态
-（见 [12.12](12-measurements.md#1212)）。这正是"装了 Debian 也还是不通"的根因，
+（见 [12.12](../archive/measurements.md#1212)）。这正是"装了 Debian 也还是不通"的根因，
 也是我们后来必须自己编 `mv88e6xxx` 的原因。
 
 ## 13.2 mainline 支持到什么程度（已查源码确认）
@@ -63,7 +63,7 @@ mvpp2 eth0 ──10G KR/R──> 88E6193X port 0 ──> port 1..4 (RJ45, 内置
 | 当时状态（2026-11-23） | **已经在跑，9 个 netdev（面板 4 口 + SFP）+ 10G 实测通过**（2026-11-25 复测 p2 仍能启动） | 从未安装 |
 
 代价（自备 DTB、自编模块）**已经付完了**，没有回头换 OpenWrt 的理由。
-完整取舍见 [09 §9.0](09-remaining-work.md)。
+完整取舍见 [16 §16.0](../16-remaining-work.md)。
 
 ## 13.4 让 SFP+ 跑 10 Gbps：唯一必需的改动
 
@@ -99,7 +99,7 @@ port@9 {
 4. 端口 MAC 速率/流控同步
 
 **这四步缺一不可**——早期我们手写第 1 步（+ 一个通用 PCS 复位）的结果是：
-链路 `0x0F4D`（10 Gbps UP）但整机不转发（见 [12.11](12-measurements.md#1211)）。
+链路 `0x0F4D`（10 Gbps UP）但整机不转发（见 [12.11](../archive/measurements.md#1211)）。
 
 > **最终采用自适应**（2026-11-23 实测）：端口保留 **`1000base-x` 基线** +
 > `managed = "in-band-status"` + `sfp = <&sfp>`，由 phylink 按插入的模块切换接口模式。
@@ -121,7 +121,7 @@ port@9 {
 
 ## 13.5 我们实际怎么装的（Debian 落地记录）
 
-前置：eMMC 已整盘备份（[12.13](12-measurements.md#1213)），SPI `mtd0` 绝不写。
+前置：eMMC 已整盘备份（[12.13](../archive/measurements.md#1213)），SPI `mtd0` 绝不写。
 
 1. **DTB**：从 mainline 源码单独编（Debian 6.12 的包里没有这板）：
 
@@ -176,10 +176,10 @@ port@9 {
 | NPU 起不来 | U-Boot 3 秒 autoboot，串口可打断；`bootcmd_emmc3` 回原厂 |
 | 2 GB 内存 | Debian 最小安装实测常驻 ~200 MB，够用；不要装桌面 |
 | eMMC 寿命 | rootfs 开 `noatime`、日志限流；p2 只有 1.5 GB，实测用了 50% |
-| 散热 | 机箱**有**风扇但软件不可控（见 [19](19-module-vs-kernel-rebuild.md)）；10G 满速时留意 `tsen` |
-| PCIe EP | 端口/链路异常时先看 `pci_epf_vntb`，见 [17](17-x86-npu-shared-mgmt.md) |
-| x86 重启会复位 NPU | 已实测，是 `PERST#` 的硬件行为；见 [20 §20.8](20-lan-over-vntb.md) |
+| 散热 | 机箱**有**风扇但软件不可控（见 [15](../15-modules-and-kernel.md)）；10G 满速时留意 `tsen` |
+| PCIe EP | 端口/链路异常时先看 `pci_epf_vntb`，见 [档案](../archive/p8-shared-mgmt.md) |
+| x86 重启会复位 NPU | 已实测，是 `PERST#` 的硬件行为；见 [09 §11.1](../09-vntb.md) |
 
 ## 13.7 下一步
 
-没有"换系统"的下一步了 —— 这一步做完了。剩下的待办统一在 [09](09-remaining-work.md)。
+没有"换系统"的下一步了 —— 这一步做完了。剩下的待办统一在 [16](../16-remaining-work.md)。

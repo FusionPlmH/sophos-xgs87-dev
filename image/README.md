@@ -106,7 +106,7 @@ NPU 没有 ESP，是 U-Boot 从 eMMC 的一个分区里 `ext4load` 内核和 DTB
 mkfs.ext4 -L xgsroot /dev/mmcblk0pX
 mount /dev/mmcblk0pX /mnt
 zstd -dc debian-npu.tar.zst | tar -xpf - -C /mnt
-# fstab、/boot/Image、DTB 见 docs/07 与 docs/03
+# fstab、/boot/Image、DTB 见 docs/05 与 docs/03
 # tar 解包不会跑内核 postinst，必须补 /boot/Image 和 /boot/initrd.img；
 # installer/payload/*.sh 会自动做，手工装就自己 ln -f 或 cp。
 ```
@@ -132,7 +132,7 @@ sudo ./installer/mkusb.sh \
 ```
 
 刷入和菜单说明见 [release-usb.md](release-usb.md)；从原厂 SFOS 第一次换系统见
-[docs/22-from-sfos.md](../docs/22-from-sfos.md)。
+[docs/13-installer.md](../docs/13-installer.md)。
 
 ## GitHub Actions
 

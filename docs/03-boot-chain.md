@@ -125,7 +125,7 @@ partno=AMDA0200-0001
 
 > **2026-11-25 复测**：芯片上的 `bootcmd` 已是 `run bootcmd_deb10g`，p2 正常起 Debian 13.8。
 > 之前 p2 "像砖"只是因为 `/boot/initrd.img` 这个名字不存在（见 §3.6）；`/boot/Image` 和
-> `/boot/initrd.img` 都是固定文件名，安装 tar 时必须补齐（[07](07-storage.md) §7.4）。
+> `/boot/initrd.img` 都是固定文件名，安装 tar 时必须补齐（[05](05-storage.md) §5.4）。
 > 回原厂槽：`fw_setenv bootcmd 'run bootcmd_emmc3'`（用 `fw_setenv`，不要反复 `saveenv`）。
 
 - 原厂的 `bootcmd_emmc1/2/3`、`sw_init_*`、`fdt_set_partno` **都还在**，只是不再被 `bootcmd` 引用。
@@ -242,7 +242,7 @@ reboot
    64 KiB env 后 CRC 恢复。以后改 env 用 `fw_setenv`（先擦后写），不要反复 `saveenv`。
    ⚠️ NPU 镜像以前**没带 `/etc/fw_env.config`**，`fw_setenv` 直接报
    `Cannot initialize environment`；现在已经带上（[image/overlay/npu/etc/fw_env.config](../image/overlay/npu/etc/fw_env.config)），
-   顺带修好了"读不到 `ethaddr` 就不设端口 MAC"的问题（[06](06-switch-and-ports.md) §6.6）。
+   顺带修好了"读不到 `ethaddr` 就不设端口 MAC"的问题（[04](04-switch.md) §4.6）。
 2. **x86 的 remove/rescan 风暴** → 每 2 s 拉一次 PERST#，NPU 刚启动就被打断，表现为约 3.2 s
    一轮的"自复位"。停掉后 U-Boot 正常走到 `Marvell>>`。现在 `xgs-ntb-up.sh` 默认只等待。
 
@@ -261,8 +261,8 @@ env 里曾经是 `bootcmd=run mbrfix; run bootcmd_emmc3`。`mbrfix` 每步 `save
 | "CP0 MSS CPU 从来没被启动，是 CP 硬件/固件故障" | 同一轮 reset 风暴里 MSS 的打印被打断；没有独立证据表明 MSS 本身坏了 |
 | "3.2 s 周期复位是 NPU 自己的看门狗" | 周期与 x86 `xgs-ntb-up.sh` 的 2 s rescan 对齐；停掉后消失 |
 | "UART/XMODEM 通道在最后一块被复位，通道不可用" | 4 KiB 载荷的 XMODEM + EOT 实测成功；4 MiB 中断与同一轮 rescan 风暴重叠，不能归因于通道 |
-| "ramoops 能留下上一次的 panic" | 每次复位都重跑 `mv_ddr` 训练 + 全内存 scrub，保留区在 Linux 起来前就被清空（[20](20-lan-over-vntb.md) §20.8） |
-| "U-Boot 的 `help` 是假的，`mmc`/`ext4ls`/`run` 都不存在" | `bootcmd` 里这些命令一直在正常执行；那次是串口输入被复位风暴打断（[08](08-console-access.md) §8.5 第 10 条） |
+| "ramoops 能留下上一次的 panic" | 每次复位都重跑 `mv_ddr` 训练 + 全内存 scrub，保留区在 Linux 起来前就被清空（[11](11-operations.md) §11.1） |
+| "U-Boot 的 `help` 是假的，`mmc`/`ext4ls`/`run` 都不存在" | `bootcmd` 里这些命令一直在正常执行；那次是串口输入被复位风暴打断（[10](10-console.md) §10.5 第 10 条） |
 
 ### 操作红线
 
@@ -274,9 +274,9 @@ env 里曾经是 `bootcmd=run mbrfix; run bootcmd_emmc3`。`mbrfix` 每步 `save
 - **不要在 NPU 启动窗口里 remove/rescan**。判存在性用
   `[ -e /sys/bus/pci/devices/0000:03:00.0 ]`，不要用 `lspci`；端点抖动时读 config space
   会把 x86 直接搞重启（2026-11-25 实测 4~5 次）。
-- 救砖工具与安全模型见 [23](23-mcp2210-spi-nor.md)；U-Boot 控制脚本见
+- 救砖工具与安全模型见 [14](14-rescue.md)；U-Boot 控制脚本见
   [tools/on-x86/npu-uboot.py](../tools/on-x86/npu-uboot.py) 和
   [tools/on-pc/npu-uboot-run.py](../tools/on-pc/npu-uboot-run.py)。
-- 救砖工具与安全模型见 [23](23-mcp2210-spi-nor.md)；U-Boot 控制脚本见
+- 救砖工具与安全模型见 [14](14-rescue.md)；U-Boot 控制脚本见
   [tools/on-x86/npu-uboot.py](../tools/on-x86/npu-uboot.py) 和
   [tools/on-pc/npu-uboot-run.py](../tools/on-pc/npu-uboot-run.py)。

@@ -2,7 +2,7 @@
 
 > 🏷 **状态（2026-11-23 复核）**：✅ **实测**：分区、EFI、串口、MCP2210 均在现机上复核；`/dev/ttyS2` 的波特率坑见 08。
 
-## 5.1 现状
+## 6.1 现状
 
 | 项目 | 值 |
 |---|---|
@@ -27,7 +27,7 @@ mmcblk0boot1    4M disk
 
 `/etc/fstab` 用 UUID 挂载（`UUID=… / ext4` + `UUID=… /boot/efi vfat`），换盘/重装时注意。
 
-## 5.2 为什么没有网口，以及现在怎么上网
+## 6.2 为什么没有网口，以及现在怎么上网
 
 x86 侧完全没有 MAC/PHY：
 
@@ -45,12 +45,12 @@ eth0.200@eth0    UP       10.234.56.2/24           ← LAN，经 NPU 的 p1 到�
 ```
 
 - 这条虚拟网线两侧**只有 x86 和 NPU**，所以想上真正的内网必须让 NPU 把面板口桥进来
-  （现在是 `p2` 走 WAN、`p1` 走 LAN）。详见 [20](20-lan-over-vntb.md)。
+  （现在是 `p2` 走 WAN、`p1` 走 LAN）。详见 [09](09-vntb.md)。
 - 需要的模块都在 `/lib/modules/$(uname -r)/updates/`（`make modules_install` 放那儿，压成 `.ko.xz`）：`ntb_core` / `ntb_hw_epf` /
   `ntb_transport` / `ntb_netdev`（Debian 不自带 NTB 栈，见 [tools/build](../tools/build/)）。
 - 装机脚本在 [systemd/x86/](../systemd/x86/)，安装步骤见 [systemd/README.md](../systemd/README.md)。
 
-## 5.3 关键外设
+## 6.3 关键外设
 
 ### PCIe 上的 NPU 端点
 
@@ -72,7 +72,7 @@ eth0.200@eth0    UP       10.234.56.2/24           ← LAN，经 NPU 的 p1 到�
 ```
 
 x86 上跑 `ntb_hw_epf` + `ntb_transport` + `ntb_netdev`，端点由 NPU 的
-`pci_epf_vntb` 提供（BAR0 控制 / BAR2 门铃 / BAR4 共享内存，各 1 MiB）。见 [17](17-x86-npu-shared-mgmt.md)。
+`pci_epf_vntb` 提供（BAR0 控制 / BAR2 门铃 / BAR4 共享内存，各 1 MiB）。见 [档案](archive/p8-shared-mgmt.md)。
 
 > 原厂那个 BAR 布局和 `barmap` 结构现在用不上了。如果要做只读探测，
 > `setpci -s 03:00.0 COMMAND=0x2` 打开 MEM decode 后 mmap `resource0` 即可 —— 但**别写**。
@@ -89,7 +89,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
   `0x30/0x31` GPIO 值、`0x32/0x33` 方向、`0x40/0x41` SPI 设置、`0x42` SPI 传输、`0x80` 释放。
   （早先这里写的 “0x10 GPIO / 0x20 SPI / 0x30 cancel / 0x40 transfer” 少了一组，已更正。）
 - **救砖工具**：[tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)，
-  详见 [23-mcp2210-spi-nor.md](23-mcp2210-spi-nor.md)。实测：GP0 = flash CS；
+  详见 [14-rescue.md](14-rescue.md)。实测：GP0 = flash CS；
   GP0/GP3/GP5 = NPU hold/release（AMDA0200：hold `0xFFD7`、release `0xFFFF`）。
 - 这是**没有开盖时的最后救命通道**；日常只写 64 KiB env，mtd0 只有
   `mtd0-restore --unsafe-mtd0 --commit` 才会碰（只重写有差异的 64 KiB 块）。
@@ -99,7 +99,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 | 设备 | 用途 |
 |---|---|
 | `/dev/ttyS0` | x86 自己的控制台（COM5） |
-| `/dev/ttyS2` | **NPU 控制台**（0x3E8, irq 5）；当前 Debian 上 host 侧设 **115200** 即线上 115200（只有老 `image/` 内核才要 57600，见 08 §8.3） |
+| `/dev/ttyS2` | **NPU 控制台**（0x3E8, irq 5）；当前 Debian 上 host 侧设 **115200** 即线上 115200（只有老 `image/` 内核才要 57600，见 08 §10.3） |
 
 `/dev/ttyS1` 和 `/dev/ttyS3` 是 AMD FCH 的 MMIO UART（`FEDC6000/FEDC8000`），
 线路上没接东西，`rx:0`。
@@ -110,7 +110,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 - `gpiochip512`（只有一个）。
 - 温度：`k10temp` + `fam15h_power`。
 
-## 5.4 噪声与已知问题
+## 6.4 噪声与已知问题
 
 | 现象 | 说明 |
 |---|---|
@@ -120,7 +120,7 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
 | 内置网卡缺失 | 正常，本机设计如此 |
 | ~~系统时间不准且没有 NTP~~ | ✅ **已修（2026-11-23）**：装了 `systemd-timesyncd`，`timedatectl` 显示 `synchronized: yes`。之前比墙钟慢 1 小时，是 BIOS RTC 本来就不准 + 没有 NTP |
 
-## 5.5 如果要重装/换系统
+## 6.5 如果要重装/换系统
 
 1. **UEFI + GPT**：用 `x86_64` 的 EFI 镜像；ESP 128 MiB（shim + grub 实测只用 4.4 MiB，约 29 倍余量）。
 2. 建议保留一个"救援"启动项：Debian 的 shim/grub 或 systemd-boot。
@@ -130,12 +130,12 @@ ID 04d8:00de Microchip Technology, Inc. MCP2210 USB to SPI Master   (hidraw0)
    [systemd/x86/](../systemd/x86/) 的 4 个 unit + `100-wan.network` / `200-lan.network`、
    GRUB 的 `GRUB_TIMEOUT=2` / `GRUB_RECORDFAIL_TIMEOUT=2`（否则每次开机多等 30 s）。
 
-## 5.6 还能做什么
+## 6.6 还能做什么
 
-这一块统一记在 [09-remaining-work.md](09-remaining-work.md)，不在本文重复。
+这一块统一记在 [16-remaining-work.md](16-remaining-work.md)，不在本文重复。
 其中最相关的一条：
 
 - MCP2210 的 SPI NOR 读写工具（救砖用）**已完成**：
   [tools/on-x86/mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py)，见
-  [23-mcp2210-spi-nor.md](23-mcp2210-spi-nor.md)。
+  [14-rescue.md](14-rescue.md)。
 - `.ko` 之外的 x86 侧就没有别的欠账了 —— 剩下的都是 NPU 那边的。

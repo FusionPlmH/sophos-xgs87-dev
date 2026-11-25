@@ -5,7 +5,7 @@
 CPU 还没跑完固件时把代码塞进 RAM 并执行的手段。判据极简单——送一个只往串口
 死循环打 `X` 的桩（见 mk-hb.py），看得到 `X` 就说明通道可用。
 
-协议（与 u-boot/tools/mrvl_uart.sh 一致，见 docs/23 §23.10）：
+协议（与 u-boot/tools/mrvl_uart.sh 一致，见 docs/23 §14.10）：
 
   1. 主机连续发 pattern `BB 11 22 33 44 55 66 77`。BootROM 只在启动窗口
      内认这个（2026-11-24 的 rescan 风暴里约 3.2 s 一轮；正常启动窗口更短），

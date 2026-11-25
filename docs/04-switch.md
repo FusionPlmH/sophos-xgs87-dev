@@ -5,7 +5,7 @@
 > ⚠️ **本文所有命令都在 NPU 上执行**（`image/` 系统：`ssh admin@10.234.56.1`；p3 原厂：`root@…`）。
 > x86 没有交换机、看不到 `p1…p8`。
 
-## 6.1 芯片
+## 4.1 芯片
 
 ```
 Marvell>> mvswitch 2 info
@@ -48,7 +48,7 @@ mdio@12a200 {
 > 内核会重新配置端口；U-Boot 的 `mvswitch` 只负责让 SFP 在 boot 早期先 link。
 > 本文的 `mvswitch` 记录仍然有效，但它描述的是**原厂/U-Boot 阶段**。
 
-## 6.2 端口映射
+## 4.2 端口映射
 
 来自 `/opt/sophos/plt/AMDA0200-0001R00.txt`（原厂机型定义，实测一致）：
 
@@ -76,7 +76,7 @@ mdio@12a200 {
 
 **本机（rev 07）实测推翻了它**：把 PCA9555 的 16 个输出整体拉低 / 拉高，
 面板 LED 状态**没有任何变化**，只有插了网线的口（LAN1/LAN4）亮 —— 说明这些灯是
-**PHY 直接驱动**的，与 PCA9555 无关。详见 [12-measurements.md](12-measurements.md) §12.7。
+**PHY 直接驱动**的，与 PCA9555 无关。详见 [archive/measurements.md](archive/measurements.md) §12.7。
 
 > 参考项目的 `gpio-leds` 节点在我们的机器上不成立（那套映射是另一个机型的）；用 PHY 的 LED 控制寄存器
 > （`MVL6193LEDcontrol=0xe3`）或者重新测绘。
@@ -92,7 +92,7 @@ mdio@12a200 {
 | TX_DISABLE | `gpio:1:7` |
 | PRESENT | `-gpio:1:3`（负号=低有效） |
 
-## 6.3 MDIO 上的其它器件
+## 4.3 MDIO 上的其它器件
 
 | 地址 | 器件 |
 |---|---|
@@ -101,7 +101,7 @@ mdio@12a200 {
 | i2c-0 0x64 | 未知（原厂可能用于 VPD/加密芯片） |
 | i2c-1 0x20 | DT 里还有一个 pca953x，但**探测失败**（`-5`），实物不存在 |
 
-## 6.4 `mvswitch` 命令（U-Boot）
+## 4.4 `mvswitch` 命令（U-Boot）
 
 ```
 mvswitch <mii_add> info                                 # 芯片信息
@@ -194,7 +194,7 @@ mvswitch 2 link 1     → Link: UP, Duplex: FULL, Speed: 1000 Mbps
 > 铜口 PHY 也不复位 —— 网络是坏的。要用 6.4 里这套原厂序列。
 
 这套序列就是原厂 U-Boot 环境变量 `sw_init_p0..p3` / `sw_init_2` 的内容，
-`fw_printenv` 可直接看到（详见 [12-measurements.md](12-measurements.md#1212)）。
+`fw_printenv` 可直接看到（详见 [archive/measurements.md](archive/measurements.md#1212)）。
 
 ### Linux 侧等价做法（原厂 `xgs-mdio`，无需 U-Boot）
 
@@ -219,13 +219,13 @@ xgs-mdio -a 0 2 9.0        # → 0xf4d（LINK=1, 10 Gbps, CMODE=0xD）
 
 注意 CMODE 只在端口处于 `0x9`（刚硬复位）时可写；`0xF` 状态下写了会被硬件还原（详见 12.11）。
 
-## 6.5 Linux 侧怎么用这些口（三条路）
+## 4.5 Linux 侧怎么用这些口（三条路）
 
 ### A. 内核 DSA（推荐，**现在用的就是这个**）
 
 - 需要 `CONFIG_NET_DSA` + `CONFIG_MV88E6XXX`，DT 改写成标准 DSA 结构（`ports { port@N { reg=…; phy-handle=…; } }`）。
 - 本机已实测可用：9 个 netdev（`p1`–`p8` + `sfp`），`mv88e6xxx` 用发行版模块；
-  两个 TCAM 修复是可选补丁（[net/patches/](../net/patches/)），见 [19](19-module-vs-kernel-rebuild.md)。
+  两个 TCAM 修复是可选补丁（[net/patches/](../net/patches/)），见 [15](15-modules-and-kernel.md)。
 - 好处：每个口一个 netdev，可以用 DSA 的 VLAN、bridge、`tc mirred` 镜像。
 
 ### B. U-Boot 配好 + Linux 只当"一个网口"
@@ -239,7 +239,7 @@ xgs-mdio -a 0 2 9.0        # → 0xf4d（LINK=1, 10 Gbps, CMODE=0xD）
 - `/usr/marvell/cpss_agent` + `umsd_*.cfg`，能做完整的 VLAN/ACL/镜像。
 - 但闭源、只支持原厂内核，不推荐在新系统上走这条。
 
-## 6.6 MAC 地址
+## 4.6 MAC 地址
 
 | 来源 | 值 |
 |---|---|
@@ -262,9 +262,9 @@ sfp = 基址+4    end0 / ethaddr = 基址+5    基址+6 留空
 > 另：这需要 `fw_printenv` 能读到 `ethaddr`，而老镜像缺 `/etc/fw_env.config`，连 MAC 都不会设
 > （所有口都跟着 `end0` 用同一个地址）。`PANEL_PORTS` 可覆盖以适配 XGS 107。
 
-## 6.7 未验证 / 待确认
+## 4.7 未验证 / 待确认
 
-- [x] **SFP 是否支持 2.5G/10G**：10GBASE-SR 模块实测 **10Gbps UP**（[12.11](12-measurements.md#1211)）；
+- [x] **SFP 是否支持 2.5G/10G**：10GBASE-SR 模块实测 **10Gbps UP**（[12.11](archive/measurements.md#1211)）；
       2.5G/5G 模块没测，但 phylink 走同一条自适应路径
 - [ ] LED 到底接在哪（本机实测：与 PCA9555 无关，跟随 PHY link）
 - [ ] `dev_write … 4 f002/2000` 这两个寄存器在 PCS 里的具体含义（已知是 SerDes 块，

@@ -10,7 +10,7 @@
 
 ---
 
-## 14.1 最终完成度
+## 7.1 最终完成度
 
 | 子系统 | 状态 | 说明 |
 |---|---|---|
@@ -32,7 +32,7 @@
 
 ---
 
-## 14.2 SFP+ 10G：根因与修复
+## 7.2 SFP+ 10G：根因与修复
 
 ### 症状
 
@@ -108,7 +108,7 @@ ethtool -m sfp:
 
 ---
 
-## 14.3 SPI NOR / MTD / U-Boot 环境
+## 7.3 SPI NOR / MTD / U-Boot 环境
 
 ### 症状
 
@@ -163,7 +163,7 @@ bootargs_emmc3=... root=/dev/mmcblk0p3 pci=pcie_bus_safe cpuidle.off=1 \
 
 ---
 
-## 14.4 加密引擎 EIP197：查清了，但**不需要**
+## 7.4 加密引擎 EIP197：查清了，但**不需要**
 
 ### 硬件在，驱动也认出来了
 
@@ -259,7 +259,7 @@ openssl speed -evp aes-128-gcm
 
 ---
 
-## 14.5 厂家 BSP vs 上游：逐子系统补丁对比
+## 7.5 厂家 BSP vs 上游：逐子系统补丁对比
 
 对 `MarvellEmbeddedProcessors/linux-marvell` 分支 `linux-6.12.x-release`
 （tag `linux-6.12.x-release-v26.10`）做 `git log v6.12.51..HEAD`：
@@ -306,7 +306,7 @@ openssl speed -evp aes-128-gcm
 
 ---
 
-## 14.6 10G SFP 与铜口 1G 能否共存？——能，实测无误
+## 7.6 10G SFP 与铜口 1G 能否共存？——能，实测无误
 
 有人担心"SFP 跑 10G 会把铜口压到 100M"。**实测证伪。**
 
@@ -349,7 +349,7 @@ ExecStart=/bin/sh -c 'for i in 1 2 3 4 5 6 7 8; do ip link set p$i up; done'
 
 ---
 
-## 14.7 原厂的 CPU 隔离参数：对内核转发**有害**，已回退
+## 7.7 原厂的 CPU 隔离参数：对内核转发**有害**，已回退
 
 原厂 bootargs 带 `cpuidle.off=1 isolcpus=1-3 nohz_full=1-3 rcu_nocbs=1-3`。
 在 NPU 上用 netns + veth 构造 `发起 → NPU 转发 → 接收` 路径实测（关掉全部
@@ -373,7 +373,7 @@ softirq 里做，需要全部 4 个核参与。隔离反而把它们从调度器
 
 ---
 
-## 14.8 与 Sophos 官方标称的对比
+## 7.8 与 Sophos 官方标称的对比
 
 厂商数字是**整机**（x86 跑防火墙逻辑 + NPU 做快通道卸载），我们是**全部
 在 NPU 的 4×A72 上软件完成**，不是同一赛道，但可以做量级对照：
@@ -398,7 +398,7 @@ softirq 里做，需要全部 4 个核参与。隔离反而把它们从调度器
 
 ---
 
-## 14.9 SFP 供电预算：`maximum-power-milliwatt`
+## 7.9 SFP 供电预算：`maximum-power-milliwatt`
 
 SFP 核心在没有该属性时**默认按 1.0 W** 限制模块功耗，日志里是：
 
@@ -446,7 +446,7 @@ sfp sfp: Host maximum power 2.6W
 
 ---
 
-## 14.10 开机服务时序：必须等 DSA 端口出现
+## 7.10 开机服务时序：必须等 DSA 端口出现
 
 把"设备端口 up + 每口 MAC"做成 systemd 服务时踩了一个坑：写成
 
@@ -482,7 +482,7 @@ XGS 107 可用 `PANEL_PORTS` 覆盖）。
 
 ---
 
-## 14.11 时间：板载 RTC 是坏的，用 fake-hwclock + NTP
+## 7.11 时间：板载 RTC 是坏的，用 fake-hwclock + NTP
 
 ### 现象
 
@@ -533,7 +533,7 @@ RTC time      : Mon 2105-07-27 ...                ← 硬件仍坏，已绕过
 
 ---
 
-## 14.12 复现清单
+## 7.12 复现清单
 
 ```bash
 # 1. DTB：port@9 必须带 managed = "in-band-status"
@@ -565,7 +565,7 @@ ethtool sfp | grep -E 'Speed|Link detected'
 
 ---
 
-## 14.13 固件与驱动的缺口（2026-11-25 在现机上逐项查过）
+## 7.13 固件与驱动的缺口（2026-11-25 在现机上逐项查过）
 
 `dmesg` + sysfs 的实测结果，按"要不要动"排序：
 
@@ -573,9 +573,9 @@ ethtool sfp | grep -E 'Speed|Link detected'
 |---|---|---|
 | **DNS**（`/etc/resolv.conf`） | 镜像里装了 `systemd-resolved`，但没有任何东西把 `br-wan` 接进 resolved：`/etc/resolv.conf` 指向 `127.0.0.53` stub，`getent hosts deb.debian.org` 全失败 —— apt、NTP 一起挂（**2026-11-25 实测**） | 镜像里 `apt-get purge systemd-resolved`，让 dhcpcd 直接写 `/etc/resolv.conf`。默认解析器固定为 **`1.1.1.1` / `8.8.8.8`**（NPU 走 `/etc/resolv.conf.head`，DHCP 下发的留作后备；x86 走 `resolved.conf.d` 并把 WAN 链路设成 `UseDNS=no`，否则 link DNS 会盖过全局）。两边都实测能解析 |
 | **开机 fsck** | initramfs 里没有 `e2fsck`：构建 chroot 里 stock `fsck` hook 认不出根设备，**自建 hook 在 qemu-user 下也复制不到库**，于是 initramfs 阶段不会被 fsck | 镜像现在有真正的 `/etc/fstab`（root 条目 `pass=1`），所以 `fsck.mode=force fsck.repair=yes` 会落到 **systemd-fsck-root**（用 root 里的原生 e2fsck，不依赖 initramfs）；在机器上跑一次 `update-initramfs -u` 还能把 e2fsck 装进 initramfs。2026-11-25 用这条链把 p2 从 `clean with errors` 修成 `clean` |
-| EIP197 微码 `ifpp.bin` | `crypto-safexcel: firmware: failed to load inside-secure/eip197b/ifpp.bin (-2)` → `HW init failed`，整个驱动 probe 失败（`/proc/crypto` 只有 699 行，全是 CPU 实现） | **不装**：驱动进 blacklist（`/etc/modprobe.d/xgs87-blacklist.conf`）。有固件 PE 也起不来，CPU AES 已 8.5 Gbps（§14.4）。想试就 `apt install firmware-misc-nonfree` 再删掉 blacklist |
+| EIP197 微码 `ifpp.bin` | `crypto-safexcel: firmware: failed to load inside-secure/eip197b/ifpp.bin (-2)` → `HW init failed`，整个驱动 probe 失败（`/proc/crypto` 只有 699 行，全是 CPU 实现） | **不装**：驱动进 blacklist（`/etc/modprobe.d/xgs87-blacklist.conf`）。有固件 PE 也起不来，CPU AES 已 8.5 Gbps（§7.4）。想试就 `apt install firmware-misc-nonfree` 再删掉 blacklist |
 | `regulatory.db` | `cfg80211: failed to load regulatory.db (-2)` —— 系统加载了 cfg80211，但镜像里没有监管数据库 | 镜像加 `wireless-regdb`（几十 KB）。比屏蔽 cfg80211 更好：以后插 USB 无线网卡还能用 |
-| `cpufreq` | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在；DT 的 `cpu@0` 只有 `clocks`，**没有 `operating-points-v2`**，所以 `cpufreq-dt` 没有表可读 | 不是装包能解决的，要 DT + 时钟驱动一起做（[09](09-remaining-work.md) §9.2 高优先级第 1 条）。**x86 侧有**：`acpi-cpufreq` + `schedutil` |
+| `cpufreq` | `/sys/devices/system/cpu/cpu0/cpufreq` 不存在；DT 的 `cpu@0` 只有 `clocks`，**没有 `operating-points-v2`**，所以 `cpufreq-dt` 没有表可读 | 不是装包能解决的，要 DT + 时钟驱动一起做（[16](16-remaining-work.md) §16.2 高优先级第 1 条）。**x86 侧有**：`acpi-cpufreq` + `schedutil` |
 | `i2c-dev` 没加载 | `i2c-tools` 装了但 `/dev/i2c-*` 不存在，`i2cdetect` 直接报错；**2026-11-25 实测** SFP cage EEPROM 在 `i2c-1` 的 `0x50/0x51`，要手动 `modprobe i2c-dev` 才看得到 | 加进 `/etc/modules-load.d/xgs87-hardware.conf`（`i2c-dev`），已生效 |
 | **RTC 是坏的**（硬件） | `hwclock -r` 超时；`/sys/class/rtc/rtc0/since_epoch` 恒为 `4278124286`（2106），`hwclock --set` 返回成功但读回不变 —— 晶振/电池有问题，不是驱动能修的 | `fake-hwclock` 在开机第一秒就把时间改回存档值（实测 journal 第一行时间正常），再由 NTP 校准。**不要把 RTC 当成可用时钟** |
 | 温控实际不动作 | NPU 的 6 个 thermal zone 只有 `trip_point_0 = 100 ℃`、`policy = step_wise`，但 **`cooling_device` 数量为 0** —— 到 100 ℃ 也没有可降频的对象（连 `cpufreq` 都没有） | 硬件层面无解；上策是补 `operating-points-v2` 让 `cpufreq` 可用，之后 thermal 才有 cooling device 可挂 |

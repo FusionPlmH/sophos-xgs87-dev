@@ -60,7 +60,7 @@ EP 头：`0x000 = 0x708011AB`（VID 11AB / DID 7080）、`0x004 = 0x00100006`（
 > 具体字段布局随 DWC 版本不同而不同，**没有该版本手册就不硬解**。
 > 可以确定的是：存在一个已使能的入站窗口，目标是 `0x6BA00000`（与内核日志
 > `BAR0 address @ ffff80006ba00000` 一致）。
-> "1 MiB 对齐"和"dma-coherent"两条后来由 vNTB 实机验证（见 [17](17-x86-npu-shared-mgmt.md) §17.6）；
+> "1 MiB 对齐"和"dma-coherent"两条后来由 vNTB 实机验证（见 [档案](../archive/p8-shared-mgmt.md) §17.6）；
 > 这一段保留的是原厂 EP 状态下的原始读数。
 
 ## 12.3 交换机 ID 与寻址（U-Boot）
@@ -421,7 +421,7 @@ npu0.sff.event=phys:1:4
 | 备份/恢复文档：`bootcmd_emmc3` 永远能回原厂槽 p3；SPI U-Boot 永不写 | 刷机风险可控 |
 
 我们的适配路线因此非常明确：**不自研交换机驱动，直接用 mainline 内核 + 这块板的 DTS**。
-（这条路线已经走完了 —— 只不过落地系统是 Debian 而不是 OpenWrt，见 [09](09-remaining-work.md)。）
+（这条路线已经走完了 —— 只不过落地系统是 Debian 而不是 OpenWrt，见 [16](../16-remaining-work.md)。）
 
 ---
 

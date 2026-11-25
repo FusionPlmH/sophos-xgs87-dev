@@ -10,7 +10,7 @@
 但我们的镜像是**整块 GPT 盘**（ESP + GRUB + ext4），没法从正在运行的 SFOS 原地 dd，
 所以 x86 侧换成"U 盘启动 → 整盘写回"。
 
-## 22.1 先备份，再动手
+## 13.1 先备份，再动手
 
 最少要留这三样（`reference/` 里有脱敏后的样本，确认格式对得上）：
 
@@ -23,7 +23,7 @@
 U-Boot 的 `bootcmd` 指向 `mmc 0:3`，原厂系统在 p3；只要不动 `mtd0`，uboot 就还在，
 刷坏了还能从串口救。
 
-## 22.2 进 SFOS 的高级 shell（需要用它的时候）
+## 13.2 进 SFOS 的高级 shell（需要用它的时候）
 
 串口登进 SFOS 的 x86：账号 `admin`，菜单 **5**（Device Management）→ **3**（Advanced Shell）。
 到了 shell 就有 root，能 `curl`、`dd`、`fw_printenv`。
@@ -45,7 +45,7 @@ lsblk; sfdisk -d /dev/mmcblk0
 
 **它不能做的事**：把自己的根盘 `dd` 掉再重启 —— 所以 x86 侧的 Debian 只能从 USB 启动后写。
 
-## 22.3 推荐路径：维护 U 盘
+## 13.3 推荐路径：维护 U 盘
 
 1. 在 PC 上生成或下载 `debian-usb.img.zst`，写到 U 盘（步骤见
    [image/release-usb.md](../image/release-usb.md)）。
@@ -63,7 +63,7 @@ lsblk; sfdisk -d /dev/mmcblk0
    U-Boot 的 `bootcmd` 指向 p3，改过 `bootcmd` 的机器要确认它指向你装的那个分区。
 5. 装完重启，x86 首次开机自动扩分区，NPU 由 U-Boot 拉起。
 
-## 22.4 没有 U 盘启动时
+## 13.4 没有 U 盘启动时
 
 BIOS 不认 U 盘（或者手头没有 U 盘）时，只能先换 NPU，x86 留在 SFOS：
 
@@ -75,7 +75,7 @@ BIOS 不认 U 盘（或者手头没有 U 盘）时，只能先换 NPU，x86 留�
 - x86：需要另一次从外部介质启动（USB 或网络 PXE）。SFOS 的 swap 分区方案（参考项目那样）
   只适合"把 rootfs 塞进 swap + 加 GRUB 项"，不适合我们这套带 ESP 的整盘镜像。
 
-## 22.5 换完之后
+## 13.5 换完之后
 
 - 两个系统都不再依赖 SFOS；`mtd0`（U-Boot）没动过，`mtd1` 的 `bootcmd` 决定 NPU 从哪个分区起。
 - 想回原厂：把备份的 eMMC 镜像写回对应分区，`fw_setenv bootcmd` 指回原厂槽位。

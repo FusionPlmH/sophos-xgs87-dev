@@ -29,7 +29,7 @@ eth.macs=7
 
 > `eth.macs=7` 表示这是 7 个连续 MAC 的基址。本机的实际用法：
 > p1–p4 = 基址+0..3，SFP = 基址+4，end0 / U-Boot `ethaddr` = 基址+5，
-> 基址+6 留空（详见 [06](06-switch-and-ports.md) §6.6）。
+> 基址+6 留空（详见 [04](04-switch.md) §4.6）。
 
 ## 1.2 x86 模块
 
@@ -44,7 +44,7 @@ eth.macs=7
 | SATA | `00:11.0` FCH AHCI —— **本机没有接 SATA 盘**（参考机型是 64 GB SATA） |
 | SMBus | `00:14.0` FCH SMBus（i2c-0…i2c-4） |
 | LPC | `00:14.3`（UART、GPIO 等走这里） |
-| 固件 | AMI UEFI 1906，shim + grub，ESP 128 MiB vfat（见 docs/07 §7.3） |
+| 固件 | AMI UEFI 1906，shim + grub，ESP 128 MiB vfat（见 docs/05 §5.3） |
 
 ### USB 树（实测 `lsusb -t`）
 
@@ -73,7 +73,7 @@ Bus 003  xHCI 4 ports (USB 3.0)
 > 当前 Debian 13 内核把这颗 16550 的速率配成 **host 115200 = 线上 115200**。
 > 早期那套 `image/` 内核把它报成 2x 分频（host 57600 = 线上 115200），所以旧笔记里
 > 写的 57600 只适用于那套内核；现在用 `stty -F /dev/ttyS2 115200`。详见
-> [08](08-console-access.md) §8.3。
+> [10](10-console.md) §10.3。
 
 ### I²C
 
@@ -83,7 +83,7 @@ Bus 003  xHCI 4 ports (USB 3.0)
 ### 传感器
 
 - `k10temp`（CPU 温度）、`fam15h_power`（功耗）。
-- 没有 `thermal_zone`（ACPI 没导出），也没有风扇转速传感器 —— **本机有风扇**，但转速既不在 SuperIO 里也不在 ACPI 里导出，软件看不到也控不了（见 19 §19.6）。
+- 没有 `thermal_zone`（ACPI 没导出），也没有风扇转速传感器 —— **本机有风扇**，但转速既不在 SuperIO 里也不在 ACPI 里导出，软件看不到也控不了（见 19 §15.8）。
 
 ## 1.3 NPU 模块
 
@@ -109,7 +109,7 @@ NPU 侧 `pcie@f2600000`（DesignWare + Marvell wrapper）工作在 **endpoint �
 
 > ⚠️ **分两种状态看**：下面这张表是**原厂** endpoint function 的档案（`11ab:7080`，SR-IOV 6 个 VF）。
 > 现在跑的是自己写的 **vNTB** function，在 x86 上枚举成 `03:00.0 [1957:0809]`，BAR 只有
-> ctrl / db / mw 各 1 MiB（见 [17](17-x86-npu-shared-mgmt.md)）。原厂那张表：
+> ctrl / db / mw 各 1 MiB（见 [档案](archive/p8-shared-mgmt.md)）。原厂那张表：
 
 | BAR | 大小 | 说明 |
 |---|---|---|
@@ -135,7 +135,7 @@ NPU 侧 `pcie@f2600000`（DesignWare + Marvell wrapper）工作在 **endpoint �
 
 - RJ45 的 PHY LED 控制寄存器值：`0xe3`；SFP：`0xe1`（原厂设置）。
 - 上表 `gpio:3:x` 是**原厂 DTB** 的写法（那时它还多一个 chip）；现机只有 3 个 `gpiochip`，
-  面板灯实测走的是 **PHY 自带的 LED 控制寄存器**，`PCA9555` 驱动面板灯已被证伪（见 [06](06-switch-and-ports.md)）。
+  面板灯实测走的是 **PHY 自带的 LED 控制寄存器**，`PCA9555` 驱动面板灯已被证伪（见 [04](04-switch.md)）。
 - LED 极性：原厂当低有效用，**未逐一验证**。
 
 ## 1.5 电源与复位
@@ -144,5 +144,5 @@ NPU 侧 `pcie@f2600000`（DesignWare + Marvell wrapper）工作在 **endpoint �
 |---|---|
 | 输入 | **单路** DC（机箱背面），一条线同时喂 x86 和 NPU，断电两台一起下 |
 | 交换机复位 | CP GPIO2 pin 17（U-Boot 里 `gpio clear C17` / `set C17`） |
-| NPU 复位 | x86 断 PCIe 链路（PERST#）时 NPU 会**整机复位**，实测与软件无关（ramoops 里零记录），见 20 §20.8 |
+| NPU 复位 | x86 断 PCIe 链路（PERST#）时 NPU 会**整机复位**，实测与软件无关（ramoops 里零记录），见 20 §11.1 |
 | 风扇 | **有**（整机一颗，随电源常转）—— 但**软件不可控**：x86 侧无 SuperIO 风扇控制器、ACPI 无风扇设备；NPU 侧原厂 DTB 里没有任何 `fan`/`pwm` 节点。要么定速，要么板载硬件温控 |
