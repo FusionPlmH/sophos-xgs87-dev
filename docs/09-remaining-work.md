@@ -2,8 +2,9 @@
 
 > 🏷 **状态（2026-11-25）**：⚠️ 活文档 —— 每次实机验证后更新。
 > 这是**唯一**的"待办 + 缺口"清单；每条都能对应到一份带证据的文档。
-> **当前现场**：x86 Debian 正常（但 vNTB 仍需一次 `--force-rescan`，见 §9.2）；NPU p2 已修复并
-> 在跑 Debian 13.8（砖机复盘见 §9.1 末尾）；p3 原厂完好可回滚。
+> **当前现场**：两台都在跑 Debian 13.8 / 6.12.117，vNTB 通（`eth0/.100/.200` 全 UP），
+> 面板 `2/WAN` 没插线所以两边都还没有默认路由。NPU p2 的根文件系统已修复并通过
+> `md5sum -c` 全量校验（砖机复盘见 §9.1 末尾）；p3 原厂完好可回滚。
 
 ## 9.0 路线已经定了：两边都是 Debian
 
@@ -71,7 +72,7 @@ NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑�
 | `** No partition table - mmc 0 **` | U-Boot 那一次分区表读取失败（当时正处在 x86 remove/rescan 的复位风暴里） | 无需处理；LBA0 签名 `0xFAE598E3`、p1/p2 内容都在，`mbrfix` 写回的就是原厂那份 MBR |
 | 串口无限 `BOOTP broadcast` | env 被 `mbrfix` 的连续 `saveenv` 写坏（env 区不先擦除） | 用 [mcp2210-nor.py](../tools/on-x86/mcp2210-nor.py) `flash-write --offset 0x3F0000` 整块重写；以后只用 `fw_setenv` |
 | p2 "起不来" | `bootcmd_deb` 要 `/boot/initrd.img`，而 p2 里只有 `initrd.img-6.12.117+deb13-arm64` | 补一个硬链接即可，见下 |
-| 约 3.2 s 一轮的"自复位" | x86 的 `xgs-ntb-up.sh` 每 2 s 一次 remove/rescan | 已改成默认只等待；`--force-rescan` 才动一次 |
+| 约 3.2 s 一轮的"自复位" | x86 的 `xgs-ntb-up.sh` 每 2 s 一次 remove/rescan | 已改成**每次运行最多一次**、且只在"内核缓存的是固件出厂身份"时才做（§20.7.5）；不做循环 |
 
 **复现修法（实测有效）**
 
@@ -174,7 +175,7 @@ BootROM 的 UART 恢复通道只在 SPI 镜像"无效"时才会停住，不能�
 | 格式化 `/persistent`（p4） | 丢机型和 MAC 基址 | 只读使用 |
 | 往 `p1` 上放系统 | 那是原厂冷备槽，留着回滚 | 空着 |
 | **把裸文件系统镜像写到整盘**（`dd if=p2.img of=/dev/mmcblk0`） | **LBA 0 的 MBR 被 ext4 超级块覆盖 → `No partition table - mmc 0`**，所有分区消失（2026-11-24 那台就是这么砖的） | 脚本层已加守卫：`require_partition` / `require_whole_disk`（[07](07-storage.md) §7.6）。裸 FS 镜像只写 `...p2`，整盘镜像才写 `/dev/mmcblk0` / `/dev/sdX` |
-| 在 NPU 还没稳定启动时跑 `xgs-ntb-up.sh --force-rescan` | 一次 remove/rescan 就会拉 PERST#，把正在启动的 NPU 打断；循环做就是 2026-11-25 的 3.2 s "自复位" | **默认不自动 rescans**；等 NPU 起来后手动执行一次。`xgs-ntb-watch` 默认只重建本地 VLAN |
+| 在 NPU 还没稳定启动时跑 `xgs-ntb-up.sh --force-rescan` | 一次 remove/rescan 就会拉 PERST#，把正在启动的 NPU 打断；循环做就是 2026-11-25 的 3.2 s "自复位" | 脚本**每次运行最多 re-enumerate 一次**，且只在端点身份还是固件出厂值时；`xgs-ntb-watch` 默认 `AUTO_RECOVER=1` 但等 **5 分钟**（NPU 的 Linux 只要 11 s），不会撞上启动窗口 |
 | **在端点抖动时读它的 PCIe 配置空间**（哪怕只是 `lspci`） | **x86 会直接重启**。2026-11-25 实测：`lspci -nn \| grep -i 11ab` 一跑机器就重启（当晚这样崩了 4~5 次）。端点复位风暴期间，主机在抖动窗口里读 config space 会触发致命错误 | 用 sysfs 判存在性（`[ -e /sys/bus/pci/devices/0000:03:00.0 ]`），**端点不稳定时不要 `lspci`**。要复位 NPU 优先用串口 SysRq（BREAK + `b`，见 [20](20-lan-over-vntb.md) §20.11.5）；Link Disable（`setpci -s 00:03.1 CAP_EXP+10.w=0010`）现在会把 x86 一起带下去，只是最后手段 |
 
 > ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（root 解开约 900 MB）。现在实测 1.4G/1.5G，

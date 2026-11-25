@@ -230,9 +230,9 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
   写坏，以及 p2 缺 `/boot/initrd.img` 这个名字。后者补个硬链接就好，前者用本工具的
   `flash-write --offset 0x3F0000` 处理（改用 `fw_setenv` 后不会再复发）。证据见
   [03](03-boot-chain.md) §3.6。
-- 现在的剩余动作是 **x86 侧做一次 `xgs-ntb-up.sh --force-rescan`**（NPU 的 vNTB 端点是在 x86
-  开机之后才出现的），然后把 p2 上的 `bootcmd=run bootcmd_deb10g` 固定下来
-  （见 [09](09-remaining-work.md) §9.2）。p3 原厂槽随时可回滚。
+- p2 上 `bootcmd=run bootcmd_deb10g` 已经固定下来；vNTB 也不再需要人去手动
+  `--force-rescan`（脚本会自己发现"内核缓存的是固件出厂身份"并重枚举一次，见
+  [20](20-lan-over-vntb.md) §20.7.5）。p3 原厂槽随时可回滚。
 
 ## 23.8 mtd0 组件表与"心跳桩"诊断
 

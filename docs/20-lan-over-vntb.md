@@ -205,8 +205,10 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 
 x86 的 uptime 全程连续（没有 panic、没有重启），NPU 侧 `eth0` 也随之变 UP。
 **但这个"自动"在 NPU 还在启动时是有害的**：remove/rescan 会拉 PERST#，把 NPU
-按在启动里，正是 2026-11-25 的 3.2 s 复位循环。所以现在默认关闭，改由人确认 NPU
-已经起来后再执行 `sudo /usr/local/sbin/xgs-ntb-up.sh --force-rescan`。
+按在启动里，正是 2026-11-25 的 3.2 s 复位循环。所以现在是"**每次运行最多一次、且只
+在端点身份还是固件出厂值时才做**"，`xgs-ntb-watch` 自动兜底也要等 5 分钟（NPU 的
+Linux 只要 11 s），不会撞上启动窗口。需要手动触发时用
+`sudo /usr/local/sbin/xgs-ntb-up.sh --force-rescan`。
 
 ### 20.7.1 rescan 也不是万能的：链路得在 POST 时训练过
 
@@ -552,9 +554,10 @@ echo 1 > /sys/bus/pci/rescan                       （让主机重新读 BAR 尺
 xgs-ntb-up.sh                                      （握手、重建 VLAN、补地址）
 ```
 
-现在**不再自动执行这段**。可用的入口只有两个：
+现在**不会自动跑这段**（rmmod 那一步在端点失联时会把 x86 带崩）。可用的入口只有两个：
 
-- `xgs-ntb-up.sh --force-rescan`：只做一次 remove/rescan，不 rmmod；NPU 已经起来时够用；
+- `xgs-ntb-up.sh --force-rescan`：只做一次 remove/rescan，不 rmmod；NPU 已经起来时够用，
+  也是 `xgs-ntb-watch` 在 `AUTO_RECOVER=1`（镜像默认）下等满 5 分钟后自动调的那一条；
 - 上面的完整重置：手动做，失败就断电重启 x86/NPU，不要把 rmmod 写成循环或自动服务。
 
 > 教训：**别在 x86 上手工 `rmmod ntb_hw_epf`** —— 在端点已经失联时，那一步会把整机带崩。
