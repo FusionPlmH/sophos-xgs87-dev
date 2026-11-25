@@ -30,6 +30,21 @@ COOLDOWN=${COOLDOWN:-600}	# 10 min between automatic attempts
 AUTO_RECOVER=${AUTO_RECOVER:-0}
 MAX_RECOVER=${MAX_RECOVER:-1}
 
+# The BIOS picks the endpoint's bus number, so 03:00.0 is a guess, not a fact:
+# after a chassis power cycle the function can be renumbered and a watcher that
+# only looks at the hardcoded path reports "endpoint gone" forever.
+epf_present() {
+	[ -e "$NTB_DEV" ] && return 0
+	for d in /sys/bus/pci/devices/*; do
+		[ -r "$d/vendor" ] || continue
+		[ "$(cat "$d/vendor" 2>/dev/null)" = 0x1957 ] || continue
+		[ "$(cat "$d/device" 2>/dev/null)" = 0x0809 ] || continue
+		NTB_DEV=/sys/bus/ntb/devices/${d##*/}
+		return 0
+	done
+	return 1
+}
+
 miss=0
 recover_count=0
 warned=0
@@ -65,7 +80,7 @@ keep_local_plumbing() {
 while :; do
 	healthy=1
 
-	if [ ! -e "$NTB_DEV" ]; then
+	if ! epf_present; then
 		healthy=0
 	elif ! is_ntb_eth0; then
 		healthy=0

@@ -12,23 +12,28 @@
 # ntb_hw_epf.ko, ntb_transport.ko and ntb_netdev.ko must be built against
 # this kernel's headers and dropped in /lib/modules/$(uname -r)/extra/.
 #
-# PCIe policy: wait, do not poke.  A remove/rescan re-asserts PERST# and, in a
+# PCIe policy: wait, do not reset.  A remove/rescan re-asserts PERST# and, in a
 # loop, keeps resetting the NPU while it is still booting.  That is exactly the
-# "self-resets every ~2 s" symptom chased on 2026-11-25.  Automatic rescan is
-# therefore off; once the NPU is fully up, run this script with --force-rescan.
+# "self-resets every ~2 s" symptom chased on 2026-11-25.  Automatic
+# remove/rescan is therefore off; once the NPU is fully up, run this script
+# with --force-rescan.  A plain rescan (no remove) is safe and is used below,
+# because it cannot reset anything the kernel does not already know.
 set -u
 
 FORCE_RESCAN=0
+RETRAIN=0
 case "${1:-}" in
 --force-rescan) FORCE_RESCAN=1 ;;
+--retrain) RETRAIN=1 ;;
 "") ;;
 -h | --help)
-	echo "usage: $0 [--force-rescan]"
+	echo "usage: $0 [--force-rescan|--retrain]"
 	echo "  --force-rescan  one remove/rescan after the wait; only when the NPU is up"
+	echo "  --retrain       toggle Link Disable on the root port so the link trains again"
 	exit 0
 	;;
 *)
-	echo "usage: $0 [--force-rescan]" >&2
+	echo "usage: $0 [--force-rescan|--retrain]" >&2
 	exit 2
 	;;
 esac
@@ -36,13 +41,36 @@ esac
 WAN_VID=${WAN_VID:-100}
 LAN_VID=${LAN_VID:-200}
 WAIT=${WAIT:-180}
-NTB_DEV=/sys/bus/ntb/devices/0000:03:00.0
-PCI_DEV=/sys/bus/pci/devices/0000:03:00.0
 BDF=0000:03:00.0
+NTB_DEV=/sys/bus/ntb/devices/$BDF
+PCI_DEV=/sys/bus/pci/devices/$BDF
 
 modprobe ntb_hw_epf 2>/dev/null
 modprobe ntb_transport transport_mtu=2048 2>/dev/null
 modprobe ntb_netdev 2>/dev/null
+
+# The endpoint's bus number is assigned by the BIOS, and 03:00.0 was hardcoded
+# everywhere.  A chassis power cycle is free to renumber it, and then every
+# path below points at nothing while the device sits one bus over -- with the
+# extra twist that `tee .../bind: No such device` reads like "the NPU is dead".
+# Look the function up by its vendor/device IDs instead; 03:00.0 stays as the
+# starting guess so the messages read the same as before on a normal boot.
+find_epf() {
+	for d in /sys/bus/pci/devices/*; do
+		[ -r "$d/vendor" ] && [ -r "$d/device" ] || continue
+		[ "$(cat "$d/vendor" 2>/dev/null)" = 0x1957 ] || continue
+		[ "$(cat "$d/device" 2>/dev/null)" = 0x0809 ] || continue
+		echo "${d##*/}"
+		return 0
+	done
+	return 1
+}
+
+set_bdf() {
+	BDF=$1
+	NTB_DEV=/sys/bus/ntb/devices/$BDF
+	PCI_DEV=/sys/bus/pci/devices/$BDF
+}
 
 # 180 s of plain waiting.  The NPU's Debian boots in ~11 s, but a power cycle,
 # fsck or a manual U-Boot stop can take much longer; none of that is a reason
@@ -50,19 +78,94 @@ modprobe ntb_netdev 2>/dev/null
 i=0
 while [ ! -e "$NTB_DEV" ] && [ "$i" -lt "$WAIT" ]; do
 	i=$((i + 1))
+	if [ $((i % 5)) -eq 0 ] && found=$(find_epf); then
+		[ "$found" = "$BDF" ] || echo "xgs-ntb: endpoint enumerated at $found (was $BDF)" >&2
+		set_bdf "$found"
+	fi
 	sleep 1
 done
 
+# A plain rescan is not a reset.  It asks the kernel to walk the buses again
+# and build pci_devs for functions it does not already know; devices it does
+# know are not touched, nothing is removed, and therefore no PERST# is
+# asserted.  That is what makes it safe here, unlike remove+rescan below.
+#
+# It is also necessary.  On a cold start the BIOS enumerates the root port
+# before the NPU has armed its endpoint (U-Boot plus kernel plus
+# xgs-vntb.service is ~10-20 s), so the function can appear after the kernel
+# has already scanned the bus.  Without a rescan the host never notices, and
+# from both ends it looks exactly like a dead link.
+if [ ! -e "$NTB_DEV" ] && [ "$FORCE_RESCAN" != 1 ]; then
+	i=0
+	while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 3 ]; do
+		i=$((i + 1))
+		echo "xgs-ntb: no ntb device yet; plain bus rescan $i/3" >&2
+		echo 1 2>/dev/null > /sys/bus/pci/rescan || true
+		j=0
+		while [ ! -e "$NTB_DEV" ] && [ "$j" -lt 20 ]; do
+			j=$((j + 1))
+			sleep 1
+		done
+	done
+fi
+
 if [ "$FORCE_RESCAN" = 1 ] && [ -e "$PCI_DEV" ]; then
 	echo "xgs-ntb: forcing one remove/rescan of $PCI_DEV" >&2
-	echo 1 > "$PCI_DEV/remove" 2>/dev/null
+	echo 1 2>/dev/null > "$PCI_DEV/remove"
 	sleep 1
-	echo 1 > /sys/bus/pci/rescan 2>/dev/null
+	echo 1 2>/dev/null > /sys/bus/pci/rescan
 	i=0
 	while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 30 ]; do
 		i=$((i + 1))
 		sleep 1
 	done
+fi
+
+# Last resort: the link itself never trained (the endpoint armed its EPC
+# long after POST finished training), so no amount of rescanning will find a
+# function that is not electrically there.  Toggling Link Disable on the root
+# port restarts the LTSSM and both sides train from scratch.
+#
+# Only the *root port* is written.  Reading or writing the endpoint's config
+# space while it is unstable is what killed the host on 2026-11-25, and the
+# check here is a sysfs existence test, which does not touch the device.
+#
+# The NPU generally reboots when the link drops, so allow it time to come back
+# and arm its endpoint again before looking.
+retrain_link() {
+	port=$1
+	[ -e "/sys/bus/pci/devices/$port" ] || return 1
+	cur=$(setpci -s "$port" CAP_EXP+10.w 2>/dev/null) || return 1
+	[ -n "$cur" ] || return 1
+	off=$(printf '%04x' $(( 0x$cur | 0x10 )))
+	on=$(printf '%04x' $(( 0x$cur & 0xffef )))
+	echo "xgs-ntb: link down on $port (${cur} -> off ${off} -> on ${on})" >&2
+	setpci -s "$port" CAP_EXP+10.w="$off" 2>/dev/null || return 1
+	sleep 2
+	setpci -s "$port" CAP_EXP+10.w="$on" 2>/dev/null || return 1
+	return 0
+}
+
+if [ "$RETRAIN" = 1 ] && [ ! -e "$NTB_DEV" ]; then
+	bus=${BDF#*:}
+	bus=$((0x${bus%%:*}))
+	port=
+	for d in /sys/bus/pci/devices/*; do
+		[ -r "$d/secondary_bus_number" ] || continue
+		[ "$(cat "$d/secondary_bus_number" 2>/dev/null)" = "$bus" ] || continue
+		port=${d##*/}
+		break
+	done
+	if [ -z "$port" ]; then
+		echo "xgs-ntb: no root port with secondary bus $bus; nothing to retrain" >&2
+	elif retrain_link "$port"; then
+		j=0
+		while [ ! -e "$NTB_DEV" ] && [ "$j" -lt 45 ]; do
+			j=$((j + 1))
+			sleep 1
+			[ $((j % 15)) -eq 0 ] && echo 1 2>/dev/null > /sys/bus/pci/rescan
+		done
+	fi
 fi
 
 # The ntb device node only exists once ntb_hw_epf has *bound* the PCI
@@ -80,7 +183,7 @@ if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
 		echo "xgs-ntb: $PCI_DEV is bound to $bound, not to ntb_hw_epf" >&2
 	else
 		echo "xgs-ntb: $PCI_DEV is enumerated with no driver; binding ntb_hw_epf" >&2
-		if echo "$BDF" > /sys/bus/pci/drivers/ntb_hw_epf/bind 2>/dev/null; then
+		if echo "$BDF" 2>/dev/null > /sys/bus/pci/drivers/ntb_hw_epf/bind; then
 			i=0
 			while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 15 ]; do
 				i=$((i + 1))

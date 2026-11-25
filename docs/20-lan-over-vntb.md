@@ -234,6 +234,50 @@ NPU 自己 `eth0` 有 MAC 但 `NO-CARRIER`，而 x86 上 `ip a` 只有 `lo`（x8
 顺带补了 `MODULE_DEVICE_TABLE(pci, ntb_epf_pci_tbl)`：没有它模块不导出 modalias，
 `modules.alias` 里查不到 `v00001957d00000809`，设备热插拔时 udev 也就无法自动加载。
 
+### 20.7.3 端点不一定是 `03:00.0`
+
+总线号是 **BIOS 分配的**，`0000:03:00.0` 只是本机以往的常见值。整机断电重启、换
+PCIe 槽、BIOS 改设置都可能让它变成别的值；一旦变了，所有写死旧路径的东西（脚本、
+watcher、安装器、文档里的 `tee .../bind`）全都指向空气，而现象和「NPU 死了」一模
+一样 —— 2026-11-25 在 x86 上就撞到了这个：
+
+```
+$ echo 0000:03:00.0 | sudo tee /sys/bus/pci/drivers/ntb_hw_epf/bind
+tee: /sys/bus/pci/drivers/ntb_hw_epf/bind: No such device     ← 不是"没有这个文件"
+$ ls /sys/bus/ntb/devices/
+                                                              ← 空
+```
+
+`ENODEV` 只说明「没有这个设备」，不区分「链路没起来」和「编号变了」。所以三个地方
+现在都改成按 **`1957:0809`** 查找，`03:00.0` 只作为初始猜测保留：
+
+| 位置 | 行为 |
+|---|---|
+| `/usr/local/sbin/xgs-ntb-up.sh` | 每 5 s 扫一次 vendor/device，找到就切换 BDF 并打印 `endpoint enumerated at X (was Y)` |
+| `/usr/local/sbin/xgs-ntb-watch.sh` | 健康检查用 ID 扫，不再只看死路径 |
+| 维护盘 `install-npu.sh` | 报错信息里直接写端点到底在不在 |
+
+排查时先用这个确认，比猜快得多：
+
+```sh
+sudo lspci -nn -d 1957: ; ls /sys/bus/ntb/devices/
+```
+
+### 20.7.4 `--retrain`：链路从没训练起来时唯一还有效的动作
+
+如果端点连 sysfs 里都不存在（`lspci -d 1957:` 也是空），那不是驱动问题，是 LTSSM
+根本没训练：端点比主机 POST 晚得多才 arm，主机的根端口早就放弃等它了。rescan 只会
+重新读配置空间，读不到一个电气上不存在的设备。
+
+`xgs-ntb-up.sh --retrain` 做的是：找到 secondary bus 是端点所在总线的那个根端口，
+对它的 Link Control 写一次 **Link Disable，再清掉** —— LTSSM 重启，双方从 0 训练。
+要点：
+
+- **只写根端口**，不读也不写端点的配置空间（2026-11-25 在端点抖动时读它把主机读崩过）
+- 链路断开会通常带着 NPU 一起复位，所以脚本给了 45 s 让它重新起来并 arm，中途每
+  15 s 再 rescan 一次
+- 这是「最后一次尝试」，不是常规路径；正常开机永远走不到这里
+
 ## 20.8 重启的真实代价（一次完整实测）
 
 x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal recovery），启动 38 → 26 秒：

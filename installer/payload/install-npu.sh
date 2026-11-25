@@ -163,14 +163,31 @@ systemctl start xgs-ntb 2>/dev/null || true
 # 排掉：端点没枚举（BIOS 早于 NPU 启动）、枚举了但驱动没绑、或者单元没跑。
 # 2026-11-25 实机：这一步之前直接进 find_npu，30 秒后报"网络到不了 NPU"，
 # 没人知道到底是哪一环。
+#
+# 端点的总线号由 BIOS 分配，0000:03:00.0 只是通常的那个；整机断电重启后可能
+# 被重新编号，而所有路径都写死了旧值，看起来就像"端点消失了"。
+epf_bdf() {
+	for d in /sys/bus/pci/devices/*; do
+		[ -r "$d/vendor" ] || continue
+		[ "$(cat "$d/vendor" 2>/dev/null)" = 0x1957 ] || continue
+		[ "$(cat "$d/device" 2>/dev/null)" = 0x0809 ] || continue
+		echo "${d##*/}"
+		return 0
+	done
+	return 1
+}
+
 i=0
 while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 3 ]; do
 	i=$((i + 1))
-	if [ ! -e /sys/bus/pci/devices/0000:03:00.0 ] && [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
-		echo "   eth0 没有，03:00.0 也没枚举到，做一次 rescan（第 $i 次）"
+	if ! epf=$(epf_bdf); then
+		epf=0000:03:00.0
+	fi
+	if [ ! -e "/sys/bus/pci/devices/$epf" ] && [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
+		echo "   eth0 没有，端点（1957:0809）没枚举到，做一次 rescan（第 $i 次）"
 		/usr/local/sbin/xgs-ntb-up.sh --force-rescan || true
 	elif [ -x /usr/local/sbin/xgs-ntb-up.sh ]; then
-		echo "   eth0 没有但 03:00.0 在，重跑一次 xgs-ntb-up --force-rescan（第 $i 次）"
+		echo "   eth0 没有但 $epf 在，重跑一次 xgs-ntb-up --force-rescan（第 $i 次）"
 		/usr/local/sbin/xgs-ntb-up.sh --force-rescan || true
 	else
 		echo "   eth0 没有，也没有 /usr/local/sbin/xgs-ntb-up.sh（不是我们的镜像？）"
@@ -182,12 +199,12 @@ if [ -e /sys/class/net/eth0 ]; then
 	echo "   eth0 就位：$(cat /sys/class/net/eth0/operstate)"
 else
 	echo "   ⚠️ eth0 还是没有；下面的网络办法会失败，会走串口/急救"
-	# rescan 只有在 PCIe 链路本身已经训练起来时才有用。如果 03:00.0 在
-	# rescan 之后仍然不出现，说明主机侧从来没有枚举过这个端点（典型是
+	# rescan 只有在 PCIe 链路本身已经训练起来时才有用。如果端点
+	# rescan 之后仍然不出现，说明主机侧从来没有枚举过它（典型是
 	# x86 先开机、NPU 后部署，POST 时链路上什么都没有）。这种情况下唯一
 	# 可靠的办法是重启 x86，让 BIOS 在 POST 里重新训练链路。
-	if [ ! -e /sys/bus/pci/devices/0000:03:00.0 ]; then
-		echo "      03:00.0 依然不存在 → 主机侧没枚举过这个端点。"
+	if ! epf=$(epf_bdf); then
+		echo "      1957:0809 依然不存在 → 主机侧没枚举过这个端点。"
 		echo "      重启一次 x86（NPU 保持开机），让 BIOS 在 POST 时训练 PCIe 链路，"
 		echo "      再回来重跑本菜单的 2 就会走网络这条路。"
 	fi
