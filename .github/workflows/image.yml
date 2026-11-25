@@ -111,17 +111,19 @@ jobs:
           curl -fsSLO "http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/$(cat kr.name)"
           sudo dpkg -i "$(cat kr.name)"
 
-      - name: Build rootfs
-        run: |
-          sudo bash ./image/build.sh --arch arm64 --variant "${{ inputs.variant }}" \
-            --out out/debian-npu.tar.zst
-
       - name: Build the board DTB
         run: |
-          # The rootfs build ran as root and created out/; build-dtb.sh clones
-          # the kernel tree in there as the runner user.
-          sudo chown -R "$(id -u):$(id -g)" out
+          # Before the rootfs: build.sh --dtb embeds it in /boot so the image is
+          # bootable even when it is unpacked by something other than our
+          # installer (which used to be the only place that copied it in).
           bash ./tools/build/build-dtb.sh
+
+      - name: Build rootfs
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" out
+          sudo bash ./image/build.sh --arch arm64 --variant "${{ inputs.variant }}" \
+            --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
+            --out out/debian-npu.tar.zst
 
       - name: Report
         run: |

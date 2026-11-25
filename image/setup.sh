@@ -144,6 +144,14 @@ if [ "$SIDE" = npu ]; then
 		ln -f "/boot/initrd.img-$KVER" /boot/initrd.img 2>/dev/null ||
 			cp -f "/boot/initrd.img-$KVER" /boot/initrd.img
 	fi
+	# bootcmd_deb also loads the board DTB by fixed name.  The installer used to
+	# be the only thing that put it there, so any other install path (a plain
+	# tar unpack) produced an unbootable machine.  Ship it in the image.
+	_dtb=/opt/xgs87/board/cn9130-sophos-xgs87w-sfp10g.dtb
+	if [ -f "$_dtb" ] &&
+		! cmp -s "$_dtb" /boot/cn9130-sophos-xgs87w-sfp10g.dtb; then
+		cp -f "$_dtb" /boot/cn9130-sophos-xgs87w-sfp10g.dtb
+	fi
 	# Verify the initramfs can actually repair the root: without e2fsck inside,
 	# `fsck.mode=force` only reaches systemd-fsck-root (which still works, thanks
 	# to /etc/fstab) instead of being handled before the root is mounted.

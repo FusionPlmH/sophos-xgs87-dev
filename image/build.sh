@@ -29,6 +29,7 @@ VARIANT=full
 SUITE=trixie
 MIRROR=http://deb.debian.org/debian
 OUT=
+BOARD_DTB=
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
 while [ $# -gt 0 ]; do
@@ -38,6 +39,7 @@ while [ $# -gt 0 ]; do
 	--suite)   SUITE=$2; shift 2 ;;
 	--mirror)  MIRROR=$2; shift 2 ;;
 	--out)     OUT=$2; shift 2 ;;
+	--dtb)     BOARD_DTB=$2; shift 2 ;;
 	-h|--help) sed -n '2,24p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
@@ -73,6 +75,19 @@ echo "== $ARCH / $VARIANT -> $OUT"
 TAR=${OUT%.zst}
 rm -f "$OUT" "$TAR"
 
+# The board tree that lands in the image.  A prebuilt DTB (--dtb) is added on
+# top: the NPU's bootcmd_deb loads /boot/cn9130-sophos-xgs87w-sfp10g.dtb by
+# fixed name, so an image without it cannot boot, and until now only the
+# installer copied it in -- a bare `tar -x` (or any other install path) left the
+# machine unbootable.  copy-in needs a real file, so stage a directory.
+STAGE_BOARD=$(mktemp -d)
+cp -f "$REPO"/board/* "$STAGE_BOARD"/ 2>/dev/null || true
+if [ -n "$BOARD_DTB" ]; then
+	[ -f "$BOARD_DTB" ] || { echo "--dtb: no such file: $BOARD_DTB" >&2; exit 1; }
+	cp -f "$BOARD_DTB" "$STAGE_BOARD/cn9130-sophos-xgs87w-sfp10g.dtb"
+	echo "== board dtb: $BOARD_DTB"
+fi
+
 # These machines have no screen, no keyboard and no translator: drop the doc
 # tree (keeping the copyright files dpkg policy asks for), the man pages, the
 # gettext catalogs and the locale sources.  ~100 MB that never gets read, and
@@ -92,9 +107,8 @@ mmdebstrap \
 	--customize-hook="sync-in $REPO/image/overlay/$SIDE /" \
 	--customize-hook="sync-in $REPO/systemd /opt/xgs87/systemd" \
 	--customize-hook="sync-in $REPO/kernel /opt/xgs87/kernel" \
-	--customize-hook="sync-in $REPO/board /opt/xgs87/board" \
-	--customize-hook="copy-in $REPO/image/setup.sh /tmp" \
-	--customize-hook="chroot \$1 /bin/sh /tmp/setup.sh $SIDE $VARIANT" \
+	--customize-hook="sync-in $STAGE_BOARD /opt/xgs87/board" \
+	--customize-hook="copy-in $REPO/image/setup.sh /tmp" \	--customize-hook="chroot \$1 /bin/sh /tmp/setup.sh $SIDE $VARIANT" \
 	"$SUITE" "$TAR" "$MIRROR"
 
 echo "== compress"
