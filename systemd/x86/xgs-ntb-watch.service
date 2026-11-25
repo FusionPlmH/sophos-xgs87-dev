@@ -1,16 +1,14 @@
 [Unit]
-Description=Watch the vNTB link to the NPU (local plumbing only by default)
+Description=Watch the vNTB link to the NPU (one tick; driven by xgs-ntb-watch.timer)
 After=xgs-ntb.service
-Wants=xgs-ntb.service
 
 [Service]
-Type=simple
-# xgs-ntb.service is Type=simple and may still be waiting for the NPU; give it
-# half a minute before the watcher starts touching the same VLANs.
-ExecStartPre=/bin/sleep 30
+Type=oneshot
+# 一次只做一件有界的事就退出。timer 每 2 秒拉起一次；卡住的话 systemd 会在
+# TimeoutStartSec 之后直接杀掉，不会出现"常驻循环卡死在 wait() 里、看着还在跑"。
+# 见 xgs-ntb-watch.sh 开头的说明。
+TimeoutStartSec=45
 ExecStart=/usr/local/sbin/xgs-ntb-watch.sh
-Restart=always
-RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

@@ -61,7 +61,7 @@ EOF
 	# its own table and is applied by xgs-nat.service instead.
 	systemctl disable nftables.service >/dev/null 2>&1 || true
 else
-	systemctl enable systemd-networkd xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole
+	systemctl enable systemd-networkd xgs-ntb xgs-ntb-watch.timer xgs-ntb-stop xgs-netconsole
 	# k10temp is the only CPU temperature sensor this SoC exposes and Debian does
 	# not load it by itself: without it the x86 side has no hwmon at all, so
 	# nothing watches the CPU (measured 2026-11-25: 40.8 C once loaded).

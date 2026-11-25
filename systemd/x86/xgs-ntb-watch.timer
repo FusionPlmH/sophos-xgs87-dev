@@ -1,0 +1,11 @@
+[Unit]
+Description=Tick for the vNTB link watcher (every 2 s)
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=2s
+AccuracySec=200ms
+Unit=xgs-ntb-watch.service
+
+[Install]
+WantedBy=timers.target
