@@ -6,8 +6,11 @@ Wants=network-pre.target
 # Type=simple: xgs-ntb-up.sh may legitimately wait up to WAIT (180 s) for the
 # NPU, and a oneshot here would hold multi-user.target hostage for that long.
 # The script keeps running in the background; xgs-ntb-watch starts right after.
+# RemainAfterExit makes a *successful* run stay "active (exited)" instead of
+# looking dead, and a failed one still shows up in `systemctl --failed`.
 [Service]
 Type=simple
+RemainAfterExit=yes
 ExecStart=/usr/local/sbin/xgs-ntb-up.sh
 
 [Install]

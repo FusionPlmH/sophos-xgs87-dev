@@ -72,6 +72,29 @@ set_bdf() {
 	PCI_DEV=/sys/bus/pci/devices/$BDF
 }
 
+# Cold boots land here with a *stale* enumeration surprisingly often: the
+# firmware's PERST# resets the endpoint's DBI, the kernel scans the bus during
+# that window and caches the boot firmware's factory identity (11ab:7080 /
+# Ethernet class) in struct pci_dev.  `lspci` and every /sys attribute then
+# keep showing those cached values even though the live config space reads
+# 1957:0809 (check: setpci -s 03:00.0 0.w 2.w).  ntb_hw_epf matches on the
+# cached IDs, so it can never bind until the kernel re-enumerates -- and a
+# plain rescan does not re-read IDs of a device it already knows.
+#
+# The device has no driver in that state, so removing it is safe.  Do it first:
+# waiting 180 s for an NTB device that cannot possibly appear just makes boot
+# look broken.
+if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
+	cached_vid=$(cat "$PCI_DEV/vendor" 2>/dev/null || echo "?")
+	cached_did=$(cat "$PCI_DEV/device" 2>/dev/null || echo "?")
+	if [ "$cached_vid" != "0x1957" ] || [ "$cached_did" != "0x0809" ]; then
+		echo "xgs-ntb: $PCI_DEV is stale: cached $cached_vid:$cached_did, live config space says 1957:0809; re-enumerating" >&2
+		echo 1 2>/dev/null > "$PCI_DEV/remove"
+		sleep 2
+		echo 1 2>/dev/null > /sys/bus/pci/rescan
+	fi
+fi
+
 # 180 s of plain waiting.  The NPU's Debian boots in ~11 s, but a power cycle,
 # fsck or a manual U-Boot stop can take much longer; none of that is a reason
 # to touch the PCIe link.
@@ -176,39 +199,8 @@ fi
 # there with no driver and nothing ever picks it up.  Meanwhile a user looking
 # at `lspci` sees a perfectly normal endpoint, which is exactly the confusing
 # "03:00.0 在，eth0 没有" state.
-if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
-	cached_vid=$(cat "$PCI_DEV/vendor" 2>/dev/null || echo "?")
-	cached_did=$(cat "$PCI_DEV/device" 2>/dev/null || echo "?")
-	if [ "$cached_vid" != "0x1957" ] || [ "$cached_did" != "0x0809" ]; then
-		# The kernel enumerated this function before the NPU had armed its
-		# EPF, so it cached the boot firmware's factory identity
-		# (11ab:7080 / Ethernet class) in struct pci_dev.  `lspci` and
-		# every /sys attribute then keep showing those cached values
-		# forever, even though the *live* config space now reads
-		# 1957:0809 -- check with:  setpci -s ${BDF} 0.w 2.w
-		# ntb_hw_epf matches on the cached IDs, so it can never bind until
-		# the kernel re-enumerates.  Nothing is using the device (no
-		# driver), so removing it is safe; the NPU may reset, hence the
-		# extra rescans afterwards.
-		cat >&2 <<EOF
-xgs-ntb: $PCI_DEV is stale: cached $cached_vid:$cached_did, live config space says 1957:0809.
-  Re-enumerating it once (nothing is bound to it).
-EOF
-		echo 1 2>/dev/null > "$PCI_DEV/remove"
-		sleep 2
-		echo 1 2>/dev/null > /sys/bus/pci/rescan
-		i=0
-		while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 30 ]; do
-			i=$((i + 1))
-			sleep 1
-			if [ $((i % 10)) -eq 0 ]; then
-				if fresh=$(find_epf); then set_bdf "$fresh"; fi
-				echo 1 2>/dev/null > /sys/bus/pci/rescan
-			fi
-		done
-		if found=$(find_epf); then set_bdf "$found"; fi
-	fi
-fi
+
+
 
 # The ntb device node only exists once ntb_hw_epf has *bound* the PCI
 # function, and a driver that was already loaded binds as soon as the device
@@ -234,7 +226,6 @@ if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
 		fi
 	fi
 fi
-
 if [ ! -e "$NTB_DEV" ]; then
 	if [ -e "$PCI_DEV" ]; then
 		bound=$(readlink -f "$PCI_DEV/driver" 2>/dev/null || true)
@@ -259,14 +250,25 @@ fi
 # Find the netdev owned by ntb_netdev.  Never fall back to "whatever is called
 # eth0": a USB Ethernet adapter used for the U-Boot rescue path is also eth0
 # on this machine, and putting the WAN VLAN on it would be very confusing.
+#
+# The NTB device node appears as soon as ntb_hw_epf binds, but the netdev is
+# created later, when ntb_transport finishes its handshake with the peer --
+# a second or two on a good day, longer right after a re-enumeration.  Wait
+# for it instead of failing the unit.
 NTB=
-for n in /sys/class/net/*; do
-	dev=${n##*/}
-	drv=$(ethtool -i "$dev" 2>/dev/null | sed -n 's/^driver: //p')
-	if [ "$drv" = ntb_netdev ]; then
-		NTB=$dev
-		break
-	fi
+i=0
+while [ -z "$NTB" ] && [ "$i" -lt 20 ]; do
+	for n in /sys/class/net/*; do
+		dev=${n##*/}
+		drv=$(ethtool -i "$dev" 2>/dev/null | sed -n 's/^driver: //p')
+		if [ "$drv" = ntb_netdev ]; then
+			NTB=$dev
+			break
+		fi
+	done
+	[ -n "$NTB" ] && break
+	i=$((i + 1))
+	sleep 1
 done
 if [ -z "$NTB" ]; then
 	for n in /sys/class/net/*; do

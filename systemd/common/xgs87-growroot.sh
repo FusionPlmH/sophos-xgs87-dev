@@ -13,8 +13,10 @@ ROOT=$(findmnt -n -o SOURCE /)
 case "$ROOT" in
 /dev/*) ;;
 *)
+	# Building the image runs this inside a chroot, where / is not a block
+	# device.  Do *not* leave the marker behind: it would be baked into the
+	# image and the real machine would skip growing forever.
 	echo "xgs87-growroot: root is not on a block device ($ROOT), skipping"
-	mkdir -p /var/lib/xgs87; : > "$MARKER"
 	exit 0
 	;;
 esac
@@ -25,7 +27,12 @@ PART=$(cat "/sys/class/block/$(basename "$ROOT")/partition")
 # Only grow the last partition.  On the NPU, p2 is followed by p3 (factory
 # rollback) and p4 (VPD); growing p2 to the end of the disk would try to eat
 # them.  growpart normally refuses, but do not even ask.
-LAST=$(lsblk -ln -o PARTN "$DISK" 2>/dev/null | sed '/^$/d' | sort -n | tail -1)
+#
+# lsblk's PARTN column is right-aligned, so the value arrives as " 2" and a
+# plain string compare against "2" is always true -- which is how this script
+# used to decide "not the last partition" on every x86 install and leave the
+# root at 597 MiB.  Strip the padding.
+LAST=$(lsblk -ln -o PARTN "$DISK" 2>/dev/null | awk 'NF {print $1}' | sort -n | tail -1)
 if [ -n "$LAST" ] && [ "$PART" != "$LAST" ]; then
 	echo "xgs87-growroot: $ROOT is partition $PART of $DISK, not the last ($LAST); not growing"
 	mkdir -p /var/lib/xgs87; : > "$MARKER"
