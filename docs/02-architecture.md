@@ -67,10 +67,16 @@ pci-epf-vntb  ── BAR0=control ───────────► ntb_hw_ep
 
 x86 `/dev/ttyS2` ↔ NPU `ttyS0`，线上 115200 8N1。当前 Debian 的 host 侧也设 115200；
 只有老 `image/` 内核是 2x 分频，才需要 host 57600（见 [10](10-console.md) §10.3）。
-
 - 用途：救砖、看 boot log、进 U-Boot、在 NPU 没网时下命令。
 - 带宽：~11.5 KB/s，只适合控制，不适合传数据。
 - 复用了这个通道就等于拿到"带外管理"：x86 可以当 NPU 的 BMC。
+
+### 附带的一条：USB 也能借（usbip）
+
+NPU 板子上**一个 USB 主控都没有**，但 USB/IP 的客户端是虚拟主控（`vhci-hcd`），
+所以能把 x86 的 USB 设备挂到 NPU 上，走 vNTB 的 TCP。实测（2026-11-25）：
+x86 的 MCP2210 导出后，NPU 上出现 `/dev/hidraw0` 并能用救砖工具读它的设置。
+用法与限制见 [07](07-npu-system.md) §7.14。
 
 ## 2.5 交换机数据面
 

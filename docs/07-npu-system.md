@@ -28,7 +28,7 @@
 | I2C | ✅ | `cp0_i2c1`，SFP cage EEPROM |
 | 加密引擎 EIP197 | ⛔ **不启用** | 镜像不带微码，驱动 probe 失败，已 blacklist；见 14.4、14.13 |
 | `cpufreq` | ❌ | DT 没有 `operating-points-v2`，`cpufreq-dt` 无表可读；见 14.13 |
-| USB / SATA | — | 板上未引出，不追 |
+| USB / SATA | — | 板上**一个 USB 主控都没有**，SATA 也没引出。需要在 NPU 上用 USB 设备就走 [usbip 借 x86 的](#714-usb：npu-自己没有但可以借-x86-的usbip)（实测可用） |
 
 ---
 
@@ -591,3 +591,59 @@ x86 侧本身没有网卡/显卡硬件，镜像只装最小集。2026-11-25 补�
 `ethtool`（vNTB 的 `eth0` 出问题时，只有它能看 carrier/speed/driver）、显式的 `zstd`
 （安装器流式解包全靠它，以前只是被 `initramfs-tools` 顺带装进来，等于靠运气），
 以及 `wireless-regdb`（见上方 regdb 那一行）。
+## 7.14 USB：NPU 自己没有，但可以借 x86 的（usbip）
+
+**实测可用（2026-11-25）**：把 x86 上的 MCP2210 导出，NPU 上出现了 `/dev/hidraw0`，
+`mcp2210-nor.py info` 能完整读出它的设置。来回 attach/detach 两轮，设备每次都干净地
+回到 x86。
+
+### 为什么能（这块板子没有 USB 主控）
+
+CN9130 在这台机器上**一个 USB 主控都没引出**（`ls /sys/bus/usb/devices/` 是空的），所以接
+不了任何 USB 设备。但 USB/IP 的客户端用的是 `vhci-hcd` —— 一个**虚拟**主控，纯软件，
+不需要硬件。数据走 vNTB 上的 TCP，1.2 Gbit/s 远快于 USB 2.0 的 480 Mbit/s，瓶颈永远在
+设备侧。
+
+两个内核都自带模块（`CONFIG_USBIP_CORE=m`、`USBIP_HOST=m`、`USBIP_VHCI_HCD=m`），
+缺的只是 userspace：`apt install usbip usb.ids`（镜像里已带）。
+
+### 用法
+
+x86（服务端，导出设备）：
+
+```sh
+sudo tools/on-x86/usbip-export.sh list           # 看 busid
+sudo tools/on-x86/usbip-export.sh export 1-1.3   # 导出（脚本会顺带 modprobe + 起 usbipd）
+# ... NPU 用完并 detach 之后
+sudo tools/on-x86/usbip-export.sh unexport 1-1.3 # 收回
+```
+
+NPU（客户端，挂载设备）：
+
+```sh
+sudo modprobe vhci-hcd
+sudo usbip list -r 10.234.56.2      # 看 x86 导出了什么
+sudo usbip attach -r 10.234.56.2 -b 1-1.3
+lsusb                               # 设备出现在 NPU 上
+sudo usbip detach -p 00             # 用完必须 detach，否则 x86 拿不回去
+```
+
+### 该拿它干什么 / 别干什么
+
+| 想做的事 | 行不行 |
+|---|---|
+| NPU 自己读/写 SPI NOR（MCP2210） | ✅ 可行，但先用 `systemctl stop` 掉 `spi-orion` 那一路 MTD，否则两个主控同时驱动同一条 SPI 总线 |
+| NPU 读一块 U 盘 | ✅ 可行。只是**纯存储**用 NBD/sshfs 更省事（[08](08-network.md)），usbip 适合"必须是真 USB 设备"的场合 |
+| 给 NPU 挂 USB 网卡 | ⚠️ 能枚举，但 usbip 传的是同步 URB，网卡这种高频中断设备延迟很差 |
+| 调试用串口适配器 / HID / 加密狗 | ✅ 正是它的用途 |
+| 让 NPU 真的"拥有"一个 USB 口 | ❌ 做不到，那是硬件 |
+
+### 坑
+
+- **导出期间设备只在 NPU 上可见**：x86 上的 `hidraw0` / `ttyUSB0` / `sdX` 会消失。忘了
+  unexport 就会以为设备坏了。
+- NPU 重启后 attach 会断（vNTB 断则 TCP 断），但 x86 那边还处于 bind 状态 —— 重新
+  attach 即可，不用重新 export。
+- `usbipd` 只在导出时需要跑，它 fork 到后台；重启后要重新 `modprobe usbip-host`。
+- 这台机器的 USB 只有一个内部 4 口 hub（[06](06-x86-system.md) §6.3）：插拔 CH340 之类的
+  设备会把同一 hub 上的 MCP2210 带掉线（[10](10-console.md) §10.5）。

@@ -230,9 +230,12 @@ sudo ./mcp2210-nor.py env-write --cs-pin 0 --commit --yes \
   写坏，以及 p2 缺 `/boot/initrd.img` 这个名字。后者补个硬链接就好，前者用本工具的
   `flash-write --offset 0x3F0000` 处理（改用 `fw_setenv` 后不会再复发）。证据见
   [03](03-boot-chain.md) §3.6。
-- p2 上 `bootcmd=run bootcmd_deb10g` 已经固定下来；vNTB 也不再需要人去手动
-  `--force-rescan`（脚本会自己发现"内核缓存的是固件出厂身份"并重枚举一次，见
-  [09](09-vntb.md) §9.3.5）。p3 原厂槽随时可回滚。
+- 现在的剩余动作：无 —— vNTB 会自己发现"内核缓存的是固件出厂身份"并重枚举一次
+  （见 [09](09-vntb.md) §9.3.5），p2 上 `bootcmd=run bootcmd_deb10g` 也已固定。p3 原厂槽随时可回滚。
+- 想把这块 MCP2210 交给 **NPU 自己**用（让 NPU 直接读写自己的 SPI NOR），可以走 usbip：
+  x86 上 `tools/on-x86/usbip-export.sh export <busid>`，NPU 上 `usbip attach`，
+  详见 [07](07-npu-system.md) §7.14。前提是先把 NPU 自己的 `spi-orion` 那一路 MTD
+  停掉，否则两个主控会同时驱动同一条 SPI 总线。
 
 ## 14.8 mtd0 组件表与"心跳桩"诊断
 

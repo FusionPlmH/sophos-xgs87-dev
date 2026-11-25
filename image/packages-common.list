@@ -15,3 +15,7 @@ cloud-guest-utils
 # serial console, and C.UTF-8 is built into glibc (image/setup.sh sets it).
 systemd-resolved
 tzdata
+# usbip: NPU 上一个 USB 主控都没有，靠 vhci-hcd（虚拟主控）+ 这条工具把 x86 的
+# USB 设备借过来。usb.ids 只是为了让 `usbip list` 打印厂商名。实测可用，
+# 见 docs/07 §7.14。
+usbip,usb.ids

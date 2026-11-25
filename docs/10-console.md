@@ -181,9 +181,10 @@ setsid cat /dev/ttyS2 > /tmp/npu.log 2>&1 < /dev/null &
 | `tools/on-x86/npu-console.sh` | 通过 `/dev/ttyS2` 操作 NPU 控制台。`login` 分支自动登录；`'cmd'` 分支发一条命令并抓回显 |
 | `tools/on-x86/npu-uboot.py` | 上一行的 Python 版：termios 直连，启动窗口内空格打断 `bootdelay`，识别 `=>`/`U-Boot 20`/`Hit any key`，再 `--cmd`/`--pre`/`--p3`/`--login` 下发；`--log` 落盘 |
 | `tools/on-x86/uboot-probe.sh` | 早期探针：启动窗口狂发空格并录全程，判断 U-Boot 是否出提示符 |
-| `tools/on-x86/mcp2210-nor.py` | **救砖工具**，见 [14](14-rescue.md) |
+| `tools/on-x86/mcp2210-nor.py` | **救砖工具**，见 [14](14-rescue.md) §14.6 |
 | `tools/on-x86/mrvl-uart.py`、`mk-hb.py` | BootROM UART 通道与心跳桩，见 [14](14-rescue.md) §14.8 |
 | `tools/on-x86/x86-linkoff-test.sh` | 判决实验：把 PCIe 链路彻底关掉干看 45 秒。**注意**：现在这条路会把 x86 自己带下去，复位 NPU 请用串口 SysRq（[11](11-operations.md) §11.2.5） |
+| `tools/on-x86/usbip-export.sh` | 把 x86 的 USB 设备借给 NPU（`list` / `export` / `unexport` / `status`），见 [07](07-npu-system.md) §7.14 |
 
 ```sh
 # x86 上
