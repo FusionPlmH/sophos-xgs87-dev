@@ -104,16 +104,20 @@ serial_login() {
 # 跑一条命令，等一个唯一标记来判断命令结束。
 #
 # 标记不能在发出去的命令里出现：NPU 的 tty 会把输入回显回来，直接等
-# "XGS87DONE<pid>" 会立刻匹配到我们自己敲的那一行。所以发出去的是
-#   echo XGS87$(echo DONE)$$
-# 回显里是那个 $(...) 原文，只有真正执行完才有光秃秃的 XGS87DONE<pid>。
+# "XGS87DONE4711" 会立刻匹配到我们自己敲的那一行。所以发出去的是
+#   printf 'XGS87%s%s\n' DONE 4711
+# 回显里是带 %s 的原文，只有真正执行完才有光秃秃的 XGS87DONE4711。
 #
-# sudo 在串口上会问密码，这里替它回答一次（$NPU_PASS）。
+# 以前这里写的是 `echo XGS87$(echo DONE)$$`，等的是本机的 $$ —— 而远端展开的
+# 是它自己的 PID，两边永远不相等，于是每次调用都要白等满整个超时再假失败
+# （2026-11-25 复查：串口兜底"白跑一趟"就是这个）。现在标记由本机生成、原样
+# 作为参数发过去。
 serial_run() {
 	_cmd=$1
 	_to=${2:-60}
-	_mark="XGS87DONE$$"
-	serial_send "$_cmd; echo XGS87\$(echo DONE)$$"
+	_tag=$$
+	_mark="XGS87DONE$_tag"
+	serial_send "$_cmd; printf 'XGS87%s%s\\n' DONE $_tag"
 	_SERIAL_BUF=
 	_answered=0
 	_end=$(( $(date +%s) + _to ))
@@ -139,6 +143,19 @@ serial_run() {
 		return 1
 		;;
 	esac
-	printf '%s\n' "$_SERIAL_BUF" | grep -v -e "$_mark" -e 'XGS87$(echo DONE)' || true
+	printf '%s\n' "$_SERIAL_BUF" | grep -v -e "$_mark" -e "XGS87%s%s" || true
+	return 0
+}
+
+# serial_uboot <uboot 命令> [秒]
+#
+# U-Boot 的提示符不会跑 `; printf …` 这种 shell 尾巴，所以 serial_run 在这里
+# 只会得到一串 "Unknown command"。U-Boot 的命令都是同步的（ext4load / unzip /
+# loady 都会自己把结果打完才回 "=> "），于是这里只做一件事：发出去，然后等
+# $2 秒把输出收完。返回值只能表示"发成功"，判断成败交给调用方 grep 输出。
+serial_uboot() {
+	serial_send "$1"
+	serial_drain "${2:-5}"
+	printf '%s\n' "$_SERIAL_BUF"
 	return 0
 }

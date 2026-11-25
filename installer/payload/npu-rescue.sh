@@ -59,15 +59,16 @@ KVER=$(zcat "$WORK/initramfs.gz" 2>/dev/null | cpio -t 2>/dev/null | sed -n 's#^
 echo "== 4/6 先看 p2 里有没有能直接用的 kernel"
 USE_P2_KERNEL=0
 if [ -n "$KVER" ]; then
-	p2kver=$(serial_run 'ext4ls mmc 0:2 /usr/lib/modules' 20 2>/dev/null |
+	p2kver=$(serial_uboot 'ext4ls mmc 0:2 /usr/lib/modules' 25 |
 		grep -o "$KVER" | head -1)
-	[ -n "$p2kver" ] || p2kver=$(serial_run 'ext4ls mmc 0:2 /lib/modules' 20 2>/dev/null |
+	[ -n "$p2kver" ] || p2kver=$(serial_uboot 'ext4ls mmc 0:2 /lib/modules' 25 |
 		grep -o "$KVER" | head -1)
 	if [ -n "$p2kver" ]; then
 		echo "   p2 里有 $KVER 的模块，可以少推 13.7 MB"
-		if serial_run 'ext4load mmc 0:2 $kernel_addr_r /boot/Image' 120 >/dev/null 2>&1 ||
-			{ serial_run 'ext4load mmc 0:2 $loadaddr /boot/vmlinuz-'$KVER 60 >/dev/null 2>&1 &&
-			  serial_run 'unzip $loadaddr $kernel_addr_r' 120 >/dev/null 2>&1; }; then
+		if serial_uboot 'ext4load mmc 0:2 $kernel_addr_r /boot/Image' 120 | grep -q 'bytes read'; then
+			USE_P2_KERNEL=1
+		elif serial_uboot 'ext4load mmc 0:2 $loadaddr /boot/vmlinuz-'$KVER 60 | grep -q 'bytes read' &&
+			serial_uboot 'unzip $loadaddr $kernel_addr_r' 120 | grep -q 'Uncompressed size'; then
 			USE_P2_KERNEL=1
 		fi
 	fi
@@ -79,7 +80,7 @@ stty -F "$TTY" "$BAUD" raw -echo -crtscts 2>/dev/null || true
 push() {
 	_n=$1; _addr=$2
 	echo "   loady $_addr  ← $_n"
-	serial_run "loady $_addr" 3 >/dev/null 2>&1 || true   # 让 U-Boot 打出 "Ready for binary (ymodem) ..."
+	serial_uboot "loady $_addr" 1 >/dev/null 2>&1 || true   # 让 U-Boot 打出 "Ready for binary (ymodem) ..."
 	python3 "$PAYLOAD/ymodem.py" "$TTY" "$WORK/$_n" || return 1
 	serial_read_until "=> " 20 || true
 }
@@ -88,17 +89,17 @@ cp "$d" "$WORK/xgs87.dtb"
 push xgs87.dtb '$fdt_addr_r' || { echo "   DTB 推失败"; return 1; }
 # initramfs 放最后：booti 要的 $filesize 是它的大小
 push initramfs.gz '$ramdisk_addr_r' || { echo "   initramfs.gz 推失败"; return 1; }
-serial_run 'setenv rd_size ${filesize}' 10 >/dev/null || true
-serial_run 'unzip $ramdisk_addr_r $ramdisk_addr_r; setenv rd_size ${filesize}' 90 >/dev/null ||
+serial_uboot 'setenv rd_size ${filesize}' 3 >/dev/null || true
+serial_uboot 'unzip $ramdisk_addr_r $ramdisk_addr_r; setenv rd_size ${filesize}' 90 >/dev/null ||
 	{ echo "   unzip initramfs 失败"; return 1; }
 if [ "$USE_P2_KERNEL" != 1 ]; then
 	push Image.gz '$loadaddr' || { echo "   Image.gz 推失败"; return 1; }
-	serial_run 'unzip $loadaddr $kernel_addr_r' 120 >/dev/null || { echo "   unzip kernel 失败"; return 1; }
+	serial_uboot 'unzip $loadaddr $kernel_addr_r' 120 >/dev/null || { echo "   unzip kernel 失败"; return 1; }
 fi
 
 echo "== 6/6 启动"
-serial_run "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.2:$PORT/$IMG_NAME rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.1/24'" 15 >/dev/null || true
-serial_run "booti \$kernel_addr_r \$ramdisk_addr_r:\${rd_size} \$fdt_addr_r" 20 >/dev/null || true
+serial_uboot "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.2:$PORT/$IMG_NAME rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.1/24'" 15 >/dev/null || true
+serial_uboot "booti \$kernel_addr_r \$ramdisk_addr_r:\${rd_size} \$fdt_addr_r" 20 >/dev/null || true
 
 echo "== 等急救系统把 eth0 拉起来，然后喂它整盘影像"
 # vNTB 起来之前 x86 是没有地址的；先等 NTB netdev 出现，再给裸 eth0 配一个。

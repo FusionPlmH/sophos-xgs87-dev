@@ -5,7 +5,7 @@
 #   sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-full.tar.zst \
 #                          --out out/xgs87-x86.img [--size 8G]
 #
-# Writes ESP (64 MiB, FAT32) + root (ext4, rest), installs GRUB EFI and
+# Writes ESP (128 MiB, FAT32) + root (ext4, rest), installs GRUB EFI and
 # shortens the boot menu the same way the running machine has it (a failed
 # boot otherwise waits 30 s on recordfail).
 set -eu

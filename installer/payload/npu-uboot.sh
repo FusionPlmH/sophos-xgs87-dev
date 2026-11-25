@@ -37,12 +37,17 @@ fi
 [ -n "$STOPPED" ] && echo "   已暂停:$STOPPED（免得它们去碰 PCIe）"
 
 restore_ntb() {
+	# Only when handing the port to a human.  In the rescue path (INTERACTIVE=0)
+	# the caller is about to push files into U-Boot over this port, and starting
+	# xgs-ntb again re-enumerates the endpoint -- one rescan re-asserts PERST#
+	# and kicks the NPU straight out of U-Boot.
+	[ "${RESTORE_NTB:-$INTERACTIVE}" = 1 ] || return 0
 	[ -n "$STOPPED" ] || return 0
 	# shellcheck disable=SC2086
 	systemctl start $STOPPED 2>/dev/null || true
 }
 
-stty -F "$TTY" "$BAUD" raw -echo -crtscts 2>/dev/null || true
+stty -F "$TTY" "$BAUD" raw -echo -crtscts -hupcl 2>/dev/null || true
 
 # 它现在可能停在 shell 上，也可能已经停在 "=> "。前者要 sudo 密码（从 tty 读）。
 printf 'sudo -S systemctl reboot\r' >"$TTY"

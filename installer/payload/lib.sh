@@ -82,7 +82,7 @@ npu_ssh() {
 	npu_ssh_setup
 	# shellcheck disable=SC2086  # 选项串就是要分词
 	{ printf '%s\n' "$NPU_PASS"; printf '%s\n' "$1"; } |
-		ssh $NPU_SSH_OPTS "admin@$NPU" "sudo -S -p '' bash -s"
+		ssh $NPU_SSH_OPTS "${NPU_USER:-admin}@$NPU" "sudo -S -p '' bash -s"
 }
 # npu_ssh_stream 已删除：它唯一的调用者（"ssh + tar 流式解包"）在 2026-11-25 被
 # 证明永远不可能成功 —— 那一级要在 NPU 正挂着的根分区上 mkfs，内核必拒
