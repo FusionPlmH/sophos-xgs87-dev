@@ -69,8 +69,8 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 选项 | 做什么 | 风险 |
 |---|---|---|
 | `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + tar**（NPU 有 tar/zstd）→ **ssh + dd**（NPU 只有 busybox `dd`，原厂系统就是这种）→ **U-Boot + tftp**（前两条都不行，需要 USB 网卡）→ **急救 initramfs**。NBD 那一级目前禁用 | 目标分区被整个重写；前两条路装完会回读校验 |
-| `3` 查看状态 / 备份 / 挂 NPU 硬盘 | 子菜单：`1` 看状态，`2` 备份 x86 内置盘，`3` 备份 NPU 分区，`4` NBD 挂载（**已禁用**） | 备份只读；NBD 要自己把 nbd-client/server 装回 |
+| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + dd**（NPU 只要 sshd 和 busybox `dd`，原厂系统也成立）→ **U-Boot + tftp**（需要 x86 插 USB 网卡）→ **急救 initramfs**。写之前会先回读校验 | 目标分区被整个重写 |
+| `3` 查看状态 / 备份 | 子菜单：`1` 看状态，`2` 备份 x86 内置盘，`3` 备份 NPU 分区 | 只读 |
 | `4` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，**115200**；老 image 内核 57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
 | `5` shell | 直接进 root shell（U 盘系统） | — |
 | `9` / `0` | 关机 / 重启 | — |
@@ -79,18 +79,17 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 
 | 办法 | 数据通道 | NPU 需要活着到什么程度 | 190 MB 大约要 | 适合 |
 |---|---|---|---|---|
-| **ssh + tar**（菜单 `2` 第 1 步） | vNTB，TCP | 还要 sshd、host key、tar/zstd | 1–2 分钟 | ✅ **首选**：NPU 跑着我们自己的镜像时最省事 |
-| **ssh + dd**（菜单 `2` 第 2 步） | vNTB，TCP | 只要 sshd + busybox `dd` | 1–2 分钟 | ✅ **原厂系统就走这条**（实测它没有 tar/zstd，也装不上 nbd-server） |
-| **U-Boot `tftpboot` + `mmc write`**（菜单 `2` 第 3 步） | 网线（x86 的 USB 网卡 → 面板口，交换机在 U-Boot 里默认转发） | 停在 `=> ` 即可，**不依赖任何用户态** | 1 Gbit/s 下 ~1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，但要插 USB 网卡 |
-| **NBD**（菜单 `2` 的 NBD 级 / 子菜单 `3`→`4`） | vNTB，块级 TCP | 能跑到用户态、能起 `nbd-server` | 1–2 分钟 | ⛔ **镜像里禁用**（没带 nbd-client/server）；要备份/fsck 先用 `ssh+dd` 或自己把 NBD 装回 |
+| **ssh + dd**（菜单 `2` 第 1 步） | vNTB，TCP | 只要 sshd + busybox `dd` | 1–2 分钟 | ✅ **首选，也是唯一实战验证过的**：整块 ext4 镜像灌进 p2，装完回读校验 |
+| **U-Boot `tftpboot` + `mmc write`**（菜单 `2` 第 2 步） | 网线（x86 的 USB 网卡 → 面板口，交换机在 U-Boot 里默认转发） | 停在 `=> ` 即可，**不依赖任何用户态** | 1 Gbit/s 下 ~1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，但要插 USB 网卡 |
 | U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
 | U-Boot `tftpboot` | 网口（end0→交换机，或 `mvswitch` 拉起 SFP port9） | 同上 | 10G 时很快 | ⚠️ 得先有 SFP 模块 + TFTP 服务，交换机在 U-Boot 里没初始化 |
 | U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
 | 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、手动 `wget`/`dd` |
 
-**结论**：先试 **ssh + tar / ssh + dd**（都不动 NPU、不需要插网卡，`dd` 那条对原厂系统也成立）；
-两条都失败才轮到 **U-Boot（tftpboot + mmc write，需要插 USB 网卡做物理旁路）**，最后是**急救包**。
-NBD 目前禁用，别把它当默认退路。
+**结论**：先试 **ssh + dd**（不动 NPU、不需要插网卡，原厂系统也成立）；
+失败了才轮到 **U-Boot（tftpboot + mmc write，需要插 USB 网卡做物理旁路）**，最后是**急救包**。
+"ssh + tar 流式解包"和 NBD 这两级已经删除：前者要在 NPU 正挂着的根分区上 `mkfs`，内核必拒，
+永远不可能成功（docs/20 §20.11.1）；后者两个镜像都没带 `nbd-client`/`nbd-server`，也从未跑通。
 U-Boot 还能做 ssh 路径做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、
 修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
 

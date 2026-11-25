@@ -489,7 +489,7 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
 | 现象 | 真因 |
 |---|---|
 | 模块能加载，但 `p1..p8/sfp` 全部消失，dmesg 一行错都没有 | 我在外部目录**手拼 Makefile**，漏了内核 Kbuild 里的条件对象，`dsa_register_switch()` 之后没下文。必须用 in-tree Kbuild。 |
-| dmesg 出现 `decompression failed with status 6`，模块根本没被加载 | `xz -9` 的 64 MiB 字典**超出内核 xz 解码器允许范围**。要么用小字典（`--lzma2=dict=1MiB`），要么干脆不压缩直接放 `.ko` —— 现在就是直接放 `.ko`。 |
+| dmesg 出现 `decompression failed with status 6`，模块根本没被加载 | 手工用 `xz -9` 压的模块：64 MiB 字典**超出内核 xz 解码器允许范围**。小字典（`--lzma2=dict=1MiB`）或干脆放未压缩的 `.ko` 都行。反过来说，`make modules_install` 自己产出的 `.ko.xz` 是能加载的 —— 镜像里 `/lib/modules/*/updates/` 那四个就是 `.ko.xz`（`CONFIG_MODULE_COMPRESS_XZ=y`），一直在用。 |
 
 第二个坑特别有欺骗性：`lsmod` 里看不到模块，但启动过程不报错，看起来就像"驱动不 probe"。
 
@@ -497,7 +497,7 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
 
 ```sh
 D=/lib/modules/6.12.117+deb13-arm64/kernel/drivers/net/dsa/mv88e6xxx
-# 模块不压缩（xz -9 的 64 MiB 字典会被内核解码器拒绝）
+# 放未压缩的 .ko（手工 xz -9 的 64 MiB 字典会被内核解码器拒绝）
 cp -a $D/mv88e6xxx.ko.orig $D/mv88e6xxx.ko
 depmod -a && reboot
 ```

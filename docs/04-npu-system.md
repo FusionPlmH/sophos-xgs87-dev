@@ -239,4 +239,3 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 | LED 控制（`xgs_dt1_startup.sh` 里的 gpioset / PHY LED） | 未实现 | 现在 LED 跟 PHY 走（docs/06 §6.7） |
 | SFP+ 口只当 1G（原厂 `npu0.eth4.init_speed=1G`） | 更强 | DTS 改成 `10gbase-r`，实测 10G |
 | 日志转发（`xgs_log_fwd`） | 不需要 | 用 journald + netconsole 双目标 |
-| NBD | 禁用 | 这一级从未实测通过，代码保留在 `SKIP_NBD=0` 后面 |

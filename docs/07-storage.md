@@ -198,7 +198,7 @@ tar -C / --exclude=./proc --exclude=./sys --exclude=./dev \
 - `require_partition <dev> [说明]` —— 写裸文件系统镜像前必须调用，给整盘名直接退出。
 - `require_whole_disk <dev> [说明]` —— 写整盘镜像前必须调用，给分区名直接退出。
 
-调用点：`install-npu.sh`、`npu-sshdd.sh`、`npu-disk.sh`（`require_partition`）；
+调用点：`install-npu.sh`、`npu-sshdd.sh`（`require_partition`）；
 `install-x86.sh`、`backup-x86.sh`（`require_whole_disk`）。
 
 反过来也一样：`npu-sshdd.sh SRC=<镜像>` 直接写现成的裸 ext4 镜像时会检查

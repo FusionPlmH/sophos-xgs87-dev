@@ -10,7 +10,6 @@
 #   ethtool          -> the port / SFP checks used throughout docs/
 #   wireless-regdb   -> regulatory.db; without it cfg80211 logs
 #                       "failed to load regulatory.db (-2)" on every boot
-#   nbd-server       -> 暂时禁用（这一级从未实测通过），需要时再加回来
 #
 # Not installed on purpose: firmware-misc-nonfree.  It is the only source of
 # the EIP197 microcode (ifpp.bin) and nothing else here needs it; the driver is

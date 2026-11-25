@@ -56,7 +56,7 @@ sudo dd if=debian-x86.img of=/dev/sdX bs=4M conv=fsync status=progress
 
 | 变体 | root 解开 | `tar.zst` | 模块怎么来的 | 内核升级 |
 |---|---|---|---|---|
-| `full`（默认） | ~900 MiB | ~350 MB | 镜像里带 DKMS + 编译器，构建时编好 | `apt upgrade` 自动重编 |
+| `full`（默认） | ~900 MiB | ~350 MB | 镜像里带 DKMS + 编译器，构建时编好 | 有 dkms，`apt upgrade` 自动重编 |
 | `lean` | **387 MiB** | **199 MB** | 构建时用 `make` 编一次，之后把工具链 purge 掉 | 内核被 `apt-mark hold`；要升就先 `apt-mark unhold linux-image-amd64` 再跑 `/opt/xgs87/kernel/x86/install.sh` |
 | `base` | 比 `lean` 略小 | 未测 | 不带模块 | 装完自己跑一次 `kernel/x86/install.sh` |
 

@@ -172,7 +172,7 @@ partno=AMDA0200-0001
 ## 3.5 x86 启动
 
 ```
-AMI UEFI (BIOS 1906) → Boot0000 shimx64.efi → grub → Debian (6.12.118+deb13-amd64)
+AMI UEFI (BIOS 1906) → Boot0000 shimx64.efi → grub → Debian (6.12.117+deb13-amd64)
 ```
 
 `efibootmgr -v`：

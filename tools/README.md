@@ -52,7 +52,10 @@ md5sum $OBJ/Module.symvers $NPU_ROOT/usr/src/linux-headers-$KVER/Module.symvers
   在 x86 主机上跑不了 → 必须用完整源码树 + `CROSS_COMPILE`。
 - **`vermagic` 必须带 `+deb13-arm64`**：写进 `.config` 的 `CONFIG_LOCALVERSION`，
   不要用 `localversion` 文件（会和它叠加成两份）。
-- **模块不压缩**：`xz -9` 的 64 MiB 字典超出内核解码器上限，会静默 `status 6` 不加载。
+- **别手工 `xz -9`**：它的 64 MiB 字典超出内核 xz 解码器上限，`insmod` 会静默 `decompression
+  failed with status 6`。`make modules_install` 自己产出的 `.ko.xz` 是好的 —— 镜像里
+  `/lib/modules/*/updates/` 那四个 `ntb_*.ko.xz` 就是（Debian 内核 `CONFIG_MODULE_COMPRESS_XZ=y`
+  + `MODULE_DECOMPRESS=y`，实测能加载）。中招的只有"手工压一遍放进去"。
 
 ## `on-x86/` — 在 x86 上跑
 

@@ -45,7 +45,7 @@ cp cn9130-sophos-xgs87w-sfp10g.dtb /mnt/boot/
 
 | 变体 | root 解开 | 1.5 GB 的 `p2` | 内核升级 |
 |---|---|---|---|
-| `full` | **815 MiB**（2026-11-25 实测） | ❌ 装不下（占用 90% 以上） | DKMS 自动重编 |
+| `full` | **815 MiB**（2026-11-25 实测） | ❌ 装不下（占用 90% 以上） | 有 dkms，自动重编 |
 | `lean`（发布用，**workflow 默认**） | **500 MiB** 内容 / 190 MB 压缩（2026-11-25 实测；装上后 `df` 报 545 MiB） | ✅ 约三分之一 | 内核被 `apt-mark hold`，升级见 `/opt/xgs87/kernel/npu/install.sh` |
 | `base` | ~550 MB | ⚠️ 勉强 | 装完自己跑一次 `kernel/npu/install.sh` |
 
@@ -59,7 +59,7 @@ sudo ./image/build.sh --arch arm64 --variant lean     # 必须在 arm64 上跑
 ## 出问题
 
 维护 U 盘 [`debian-usb`](https://github.com/FusionPlmH/sophos-xgs87-dev/releases/tag/debian-usb)
-菜单选 `2`：自动按 **ssh+tar → ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试
-（NBD 目前禁用）。网络到不了 NPU 时，选项 `2` 会自己走 `ttyS2` 串口登录、问出它的
+菜单选 `2`：自动按 **ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试。
+网络到不了 NPU 时，选项 `2` 会自己走 `ttyS2` 串口登录、问出它的
 `br-lan` 地址和 VLAN、在 x86 上镜像同样的 VLAN 再重试；两条都不通时它会提示走急救包
 （串口是菜单 `4`）。

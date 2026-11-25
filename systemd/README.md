@@ -67,7 +67,7 @@ WAN / LAN 怎么分全在这个文件里（镜像里由 `image/overlay/npu` 带�
 |---|---|---|
 | `WAN_PORTS` | `p2` | 面板 `2/WAN`。留空等于不要 WAN 桥 |
 | `WAN_MODE` | `dhcp` | `dhcp` / `static`（配 `WAN_ADDR`，可多个，空格分隔） / `none` |
-| `LAN_PORTS` | `p1` | 面板 `1/LAN`（`p3`/`p4`/`p8` 默认不并入任何桥） |
+| `LAN_PORTS` | `p1` | 面板 `1/LAN`（`p3`/`p4` 默认不并入任何桥） |
 | `LAN_MODE` | `static` | `static` 用 `LAN_ADDR`；`dhcp` 表示这个桥上跑 dhcpcd（本机不提供 DHCP 服务） |
 | `LAN_ADDR` | `10.234.56.1/24` | LAN 上 NPU 自己的地址 |
 | `LAN_VID` / `WAN_VID` | `200` / `100` | 两条 vNTB VLAN，x86 侧 `xgs-ntb-up.sh` 建同名设备 |
@@ -79,8 +79,10 @@ WAN / LAN 怎么分全在这个文件里（镜像里由 `image/overlay/npu` 带�
 
 前置条件（都在仓库别处）：
 
-- 模块：`pci_ep_cfs` / `pcie_dw_plat` / `pci_epf_vntb` / `ntb_*` 在
-  `/lib/modules/$(uname -r)/extra/`，由 `tools/build/build-npu-vntb.sh` 产出，**不压缩**。
+- 模块：`pci_ep_cfs` / `pcie_dw_plat` / `pci_epf_vntb` / `ntb_*` 由
+  `tools/build/build-npu-vntb.sh` 产出；镜像里它们在
+  `/lib/modules/$(uname -r)/updates/`，是 `make modules_install` 自己压的 `.ko.xz`
+  （能加载 —— 别手工再 `xz -9` 压一遍，那才会 `decompression failed`）。
 - `spi-orion` + `clkfix` 自动加载（`/etc/modules-load.d/xgs87-hardware.conf`），
   `fw_printenv` 才能读到 `ethaddr`。
 - 交换机是 DSA 的 `p*`/`sfp` netdev，需要 `mv88e6xxx`（`tools/build/build-npu-net.sh`）。
@@ -89,8 +91,8 @@ WAN / LAN 怎么分全在这个文件里（镜像里由 `image/overlay/npu` 带�
 
 | unit | 脚本 | 干什么 |
 |---|---|---|
-| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`，等 `03:00.0` 出现；**默认只等待、不 remove/rescan**。建 `eth0.100`（WAN）/`eth0.200`（LAN）并**把 MAC 钉死**。NPU 起来后需要重枚举时手动 `xgs-ntb-up.sh --force-rescan` |
-| `xgs-ntb-watch.service` | `xgs-ntb-watch.sh` | 每 15 s 查 `carrier` + `ping 10.234.56.1`（NPU 的 `br-lan`）；异常时只重建本地 VLAN/地址，**默认不碰 PCIe**。`/etc/default/xgs-ntb-watch` 里 `AUTO_RECOVER=1` 才在 5 分钟后自动试一次 `--force-rescan` |
+| `xgs-ntb.service` | `xgs-ntb-up.sh` | 装 `ntb_hw_epf`+`ntb_transport`+`ntb_netdev`；**先按 `1957:0809` 找端点（BDF 由 BIOS 分配，`03:00.0` 只是初始猜测），发现内核缓存的是固件出厂身份就 `remove`+`rescan` 一次**（普通 rescan 不会重读 ID，见 [docs/20](../docs/20-lan-over-vntb.md) §20.7.5），再等 netdev。建 `eth0.100`（WAN）/`eth0.200`（LAN）并**把 MAC 钉死** |
+| `xgs-ntb-watch.service` | `xgs-ntb-watch.sh` | 每 15 s 查 `carrier` + `ping 10.234.56.1`（NPU 的 `br-lan`）；异常时先只重建本地 VLAN/地址。`/etc/default/xgs-ntb-watch` 里默认 `AUTO_RECOVER=1`：连续 5 分钟不通就跑一次 `xgs-ntb-up.sh --force-rescan`，然后冷却 10 分钟（5 分钟是为了不打断正在启动的 NPU） |
 | `xgs-ntb-stop.service` | `xgs-ntb-stop.sh` | 关机前把 `ntb_hw_epf` 卸掉 → 它往端点控制区写 `COMMAND_LINK_DOWN`，NPU 才不会拿着悬空指针 |
 | `xgs-npu-console.service` | —（`cat /dev/ttyS2`） | **可选**：把 NPU 控制台连续录到 `/var/log/npu-console.log`。它会**独占** ttyS2，交互式调试前要先停 |
 | `100-wan.network` | — | 装到 `/etc/systemd/network/`，`eth0.100` 上跑 DHCP —— 上游给的租约，x86 的默认路由也从这里来 |
@@ -117,7 +119,7 @@ sudo systemctl enable --now xgs-ntb xgs-ntb-watch xgs-ntb-stop xgs-netconsole sy
 
 | 装错方向 | 现象 |
 |---|---|
-| NPU 脚本装到 x86 | `xgs-ports-init.sh` 等不到 `p8`/`sfp` 直接退出；`xgs-vntb.sh` 找不到 `/sys/class/pci_epc/f2600000.pcie` |
+| NPU 脚本装到 x86 | `xgs-ports-init.sh` 等不到 `p1`/`sfp` 直接退出；`xgs-vntb.sh` 找不到 `/sys/class/pci_epc/f2600000.pcie` |
 | x86 脚本装到 NPU | `xgs-ntb-up.sh` 找不到 `/sys/bus/ntb/devices/0000:03:00.0`（NPU 是 EP 不是 host），且会用掉 `eth0` 这个名字 |
 | 两个都装 | 最惨：两边都去建 `eth0.100`，互相抢 |
 

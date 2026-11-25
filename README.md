@@ -48,7 +48,7 @@ NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走�
 | 硬件看门狗 | ✅ | `xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`；实测不喂狗约 10–20 s 整机复位（docs/04 §4.13） |
 | NPU 单独重启 → x86 恢复 | ✅ | 自动：`xgs-ntb-watch` 默认 `AUTO_RECOVER=1`，链路连续 5 分钟不通就跑一次 `xgs-ntb-up.sh --force-rescan`（5 分钟是为了不打断正在启动的 NPU），见 docs/20 §20.11.6 |
 | x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
-| **内核/系统可以随便升级** | ✅ | 两台都用**发行版内核 + DKMS**：x86 实测 6.12.94 → **6.12.118** 自动重编，NPU 用发行版内核（`kernel/npu`），自编内核已退役。想做小镜像可以用 `--variant lean`（工具链编完就删，内核需 hold） |
+| **内核/系统可以随便升级** | ❌ | **发布用的 `lean` 镜像把内核 hold 住了，而且不带 `dkms`**（实测 2026-11-25：`apt-mark showhold` 有 `linux-image-*`、`command -v dkms` 为空，模块是构建时用 `make` 编好放进 `/lib/modules/*/updates/` 的 `.ko.xz`）。要升级就 `apt-mark unhold linux-image-amd64`（NPU 是 `linux-image-arm64`）+ 跑一次 `/opt/xgs87/kernel/<side>/install.sh` —— 那个脚本装 dkms 并从源码重编。`full` variant 才自带 dkms、能自动重编（历史实测：6.12.94 → 6.12.118 自动重编成功） |
 | SFP 自适应模块 | ✅ | 端口只声明 `1000base-x` 基线 + `sfp` phandle，phylink 按插入的模块切换（实测 10G 模块被自动提到 `10gbase-r`） |
 | NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/20 §20.8） |
 | NPU 内核 `CONFIG_PSTORE_CONSOLE` | 📦 | 自编内核已退役（37.7 → 44.3 MB 的那版）；发行版内核不带它，而且 ramoops 被 DDR scrub 证伪，净收益为零 |
@@ -158,7 +158,7 @@ SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（*
 | NPU SoC | Marvell CN9130（AP807-B0 + CP115-A0），4×A72@1.6G，2 GB DDR |
 | NPU 系统 | p2 **Debian 13.8 / 6.12.117+deb13-arm64**（2026-11-25 实测启动）；p3 原厂 Buildroot 4.14 完好（档案见 docs/04） |
 | 交换机 | Marvell 88E6193X，MDIO addr 2，product 193，11 口（本机面板 4×RJ45 + 1×SFP） |
-| x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian 13.6；`lean` 镜像自带 **6.12.117** 且内核被 hold，`apt-mark unhold linux-image-amd64` 后可升（实机已升到 **6.12.118**，DKMS 自动重编） |
+| x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian **13.8**；`lean` 镜像自带 **6.12.117** 且内核被 `apt-mark hold`（**镜像里没有 dkms**，要换内核先 `apt-mark unhold linux-image-amd64` 再跑 `/opt/xgs87/kernel/x86/install.sh`） |
 | x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |
 | NPU console | x86 `/dev/ttyS2`，host 侧 **115200**（老 `image/` 内核才要 57600）；p3 原厂 `root` / `openwrt123`，`image/` 产出的是 `admin` / `P@ssw0rd` |
 | x86 console | RJ45 / micro-USB 二选一，同一个 ttyS0，**115200** |

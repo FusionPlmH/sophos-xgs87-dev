@@ -8,12 +8,13 @@
 ## 9.0 路线已经定了：两边都是 Debian
 
 ```
-x86   Debian 13.6 / 6.12.118   通用计算、控制面（正常）
+x86   Debian 13.8 / 6.12.117   通用计算、控制面（正常）
 NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑通）
 ```
 
-> 2026-11-25 实测：NPU 从 p2 正常启动，`br-wan` 从上游拿到 DHCP 地址、`br-lan` 是
-> 10.234.56.1/24，面板 p1/p2 都 link up，端口 MAC 按 VPD 的 7 地址方案分配。
+> 2026-11-25 实测：NPU 从 p2 正常启动、`br-lan` 是 10.234.56.1/24，端口 MAC 按 VPD 的
+> 7 地址方案分配。面板 p2/WAN 现在没插线，所以 `br-wan` 退到 IPv4LL `169.254.38.2`、
+> 两台都没有默认路由 —— 插上上游就恢复（`eth0.100` 的 DHCP 也一起来的）。
 
 - **OpenWrt 不装了**：NPU 上原来那个 OpenWrt 已经删掉，x86 也只装 Debian。
   早期设想（"NPU 跑 OpenWrt 当路由、x86 装 OpenWrt"）**作废**，文中如遇一律以此处为准。
@@ -51,7 +52,7 @@ NPU   Debian 13.8 / 6.12.117   网络数据面（DSA + 10G + 双面板口已跑�
 | 掉链 / 关机不再 oops（peer_db 校验、spad 守卫、关机道别） | [20](20-lan-over-vntb.md) §20.7 |
 | 崩溃取证：netconsole 双目标（NPU → x86 + PC） | [20](20-lan-over-vntb.md) §20.8 |
 | 镜像构建：`image/` + 一个 CI workflow（`target=x86/npu/usb/all`），自动发 release | [image/README.md](../image/README.md)、[21](21-reproduce.md) |
-| 维护（诊断）U 盘：整盘重装 x86、ssh+tar / ssh+dd / U-Boot / 急救包推 NPU、备份内置盘 | [22](22-from-sfos.md)、[image/release-usb.md](../image/release-usb.md) |
+| 维护（诊断）U 盘：整盘重装 x86、ssh+dd / U-Boot / 急救包推 NPU、备份内置盘 | [22](22-from-sfos.md)、[image/release-usb.md](../image/release-usb.md) |
 | MCP2210 SPI NOR 救砖工具（GP0 CS、NPU hold/release、整片双遍 dump、只写 env、失败回滚） | [23](23-mcp2210-spi-nor.md) |
 | 账号统一：只有 `admin`（sudo），root 锁定、SSH 拒绝 root | [image/release-x86.md](../image/release-x86.md) |
 | **主机名**：x86 = `xgs-debian-x86`，NPU = `xgs-debian-npu`（2026-11-25 起，`image/setup.sh`） | [image/setup.sh](../image/setup.sh) |
@@ -168,7 +169,7 @@ sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debi
 
 | 别做 | 后果 | 现状 |
 |---|---|---|
-| ~~`apt upgrade` 内核~~ | 以前会：`ntb_*.ko`、`mv88e6xxx`、`mvpp2`、vNTB 全是对着固定版本编的 | ✅ **已解决（2026-11-23）**：模块改成 **DKMS**，内核升级会自动重编。x86 已实机从 6.12.94 升到 **6.12.118**，NPU 已切回**发行版内核**，全部正常。见 [19](19-module-vs-kernel-rebuild.md) §19.2 |
+| ~~`apt upgrade` 内核~~ | 以前会：`ntb_*.ko`、`mv88e6xxx`、`mvpp2`、vNTB 全是对着固定版本编的 | ✅ **已解决**：`kernel/<side>/install.sh` 走 **DKMS**，装了 dkms 的镜像（`full` variant）升级内核会自动重编，历史实测 6.12.94 → 6.12.118 成功。**发布用的 `lean` 镜像不带 dkms、内核被 hold**，换内核要先 `apt-mark unhold` 再跑该脚本。见 [19](19-module-vs-kernel-rebuild.md) §19.2 |
 | 手工 `rmmod ntb_hw_epf`（x86） | 端点已失联时 `ntb_epf_spad_write()` 会写野指针 → panic | 已修（spad 守卫），但顺序错了仍危险 —— 交给关机钩子做；`xgs-ntb-watch` 默认只重建本地 VLAN，不碰 PCIe |
 | 写 SPI `mtd0` | U-Boot 在那儿，写坏就得靠 MCP2210 或 JTAG 救 | 只读，从不写；有备份。唯一的例外是 `mtd0-restore --unsafe-mtd0 --commit`（刷坏后回滚用，见 [23](23-mcp2210-spi-nor.md) §23.5） |
 | 格式化 `/persistent`（p4） | 丢机型和 MAC 基址 | 只读使用 |
@@ -196,7 +197,8 @@ sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debi
 3. **DTB**：`board/cn9130-sophos-xgs87w-sfp10g.dts`（本仓库；节点里保留了 `ramoops`，
   但已被 DDR scrub 证伪，留着不影响启动），`tools/build/build-dtb.sh` 生成
   `out/cn9130-sophos-xgs87w-sfp10g.dtb`。
-4. **模块**：`kernel/npu/install.sh` / `kernel/x86/install.sh`（DKMS 包，内核升级自动重编）。
+4. **模块**：`kernel/npu/install.sh` / `kernel/x86/install.sh`（DKMS 包；脚本会把 dkms 和
+   headers 装上，之后再升级内核就是自动重编）。
    只有要改驱动源码时才用 `tools/build/*` —— 它负责先把 `ntb/*.patch`、`net/patches/*`
    打到上游源码上再编。
 5. **网络**：`systemd/npu/` 装到 NPU、`systemd/x86/` 装到 x86（见 [systemd/README.md](../systemd/README.md)、[20](20-lan-over-vntb.md)）。

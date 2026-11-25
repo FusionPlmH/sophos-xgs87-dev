@@ -46,5 +46,5 @@ EOF
 chroot /srv/npu make -C "$KDIR" M=/build/ntb modules
 
 ls -l "$B"/*.ko
-echo "install UNCOMPRESSED: cp <mod>.ko /lib/modules/$(uname -r)/extra/ && depmod -a"
-echo "(xz -9 uses a 64 MiB dictionary, which the kernel's xz decoder rejects)"
+echo "install UNCOMPRESSED: cp <mod>.ko /lib/modules/$(uname -r)/updates/ && depmod -a"
+echo "(do NOT xz -9 them by hand: its 64 MiB dictionary is past the kernel decoder)"

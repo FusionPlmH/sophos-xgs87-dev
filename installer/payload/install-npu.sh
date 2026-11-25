@@ -1,26 +1,28 @@
 #!/bin/sh
 # 把 debian-npu.tar.zst 装到 NPU 的 root 分区。
 #
-# 四级阶梯（NBD 目前禁用），按"前提最容易满足 + 破坏性从小到大"排，任一级失败
-# 自动往下一级走：
+# 三级阶梯，按"前提最容易满足 + 破坏性从小到大"排，任一级失败自动往下一级走：
 #
-#   1. ssh + tar：NPU 能 ssh 且有 tar/zstd（我们自己的镜像）→ x86 这边 mkfs，
-#      190 MB 直接流进 NPU 的 tar（npu_ssh_stream 用 sudo -A，stdin 留给数据）
-#   1b. ssh + dd：NPU 连 tar/zstd 都没有（原厂系统就是这样）→ x86 造一个等大的
-#      ext4 镜像，ssh + dd 整块灌进去。只要 busybox 的 dd
+#   1. ssh + dd：往 NPU 的块设备上整块写一个等大的 ext4 镜像。只要 busybox 的
+#      dd（原厂系统和我们的镜像都有）。**这是唯一实战验证过的路径**
+#      （2026-11-25：1.5 GiB 走 vNTB 用了 45 秒）
 #   2. U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
 #      旁路（NPU 一进 U-Boot，vNTB 就断了）。会先停掉 xgs-ntb-watch，免得它
 #      的 PCIe rescan 把刚停住的 U-Boot 打飞
 #   3. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
 #
-# NBD 这一级目前禁用（两个镜像都不带 nbd-client/nbd-server，也从未实测通过），
-# 代码保留在 SKIP_NBD=0 后面，等它真的跑通再启用。
+# 两条被删掉的老路，别再想：
+#
+#   * "ssh + tar 流式解包"：它要在 NPU 的根分区上 mkfs，而那个分区正被 NPU 自
+#     己挂着，内核直接拒绝（加 -F -F 也只是换一句 "Device or resource busy"）。
+#     只要 NPU 还能 ssh，它的根就一定是挂着的 —— 这一级永远不可能成功。
+#   * NBD：两个镜像都不带 nbd-client / nbd-server，从未实测通过，已整段删除。
 #
 # 网不到 NPU 时先走串口（ttyS2）登录一遍：问出 br-lan 地址和 VLAN、在 x86 上
 # 镜像同样的 VLAN、顺手把 sshd 的 host key 修好，再回到第 1 级。
 #
-# ⚠️ 写的是块设备：NPU 如果正跑着这个分区，边写边用会把文件系统写坏。真机上
-# 就是"装系统"这个语义，装完要重启。
+# ⚠️ 写的是块设备：NPU 如果正跑着这个分区，边写边用会把文件系统写坏
+# （2026-11-25 就这么写坏过一次，见 docs/20 §20.11.1）。装完要重启。
 set -u
 # shellcheck disable=SC2154
 trap 'rc=$?; [ "$rc" = 0 ] || echo "$0: 退出码 $rc" >&2' EXIT
@@ -31,11 +33,6 @@ TAR=$PAYLOAD/debian-npu.tar.zst
 DTB=$(ls "$PAYLOAD"/cn9130-sophos-xgs87w-sfp10g*.dtb 2>/dev/null | head -1)
 . "$PAYLOAD/lib.sh"
 SERIAL=${SERIAL:-/dev/ttyS2}
-PORT=${PORT:-10809}
-NBD=${NBD:-/dev/nbd0}
-# NBD 这一级先禁用（两个镜像都不再带 nbd-client/nbd-server，也从未实测通过）
-SKIP_NBD=${SKIP_NBD:-1}
-MNT=${MNT:-/mnt}
 
 [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; exit 1; }
 [ -n "$DTB" ] || { echo "找不到 DTB"; exit 1; }
@@ -118,29 +115,12 @@ serial_repair() {
 	return 0
 }
 
-# 没有 nbd-server 时的退路：ssh + tar 流式解包（NPU 只要 tar 和 zstd）
-#
-# 这条路在"NPU 正跑着 tar/zstd 的那个镜像"上是**走不通的**：目标是它的根分区，
-# 而根分区正挂着，`mkfs.ext4` 会直接拒绝（"is mounted; will not make a
-# filesystem here!"，加了 -F -F 也只是继续到 "Device or resource busy"）。
-# 2026-11-25 在实机上确认过。真要用它，NPU 得先停进 急救 initramfs / U-Boot
-# 那种"根没挂"的状态；在那之前请走 ssh + dd。
-stream_install() {
-	echo "== ssh + tar 需要目标分区没被挂载，NPU 现在正跑在 $PART 上 —— 跳过"
-	echo "   （用 ssh + dd 那一级，或者先让它停在 U-Boot/急救包里）"
-	return 1
-}
-
 # 连 tar/zstd 都没有时的退路：x86 这边造一个等大的 ext4 镜像，ssh + dd 整块灌进去。
 # 唯一的前提是 NPU 上有 dd —— busybox 自带，原厂系统也有。
 sshdd_install() {
 	echo "== ssh + dd 整块写 $PART（NPU 上只要 dd）"
 	NPU=$NPU NPU_USER=${NPU_USER:-root} NPU_PASS=${NPU_PASS:-} PART=$PART \
 		sh "$PAYLOAD/npu-sshdd.sh"
-}
-
-cleanup_nbd() {
-	nbd-client -d "$NBD" 2>/dev/null || true
 }
 
 echo "== 先把 vNTB 链路拉起来（watcher 默认不碰 PCIe，安装期间也别让它插手）"
@@ -252,7 +232,7 @@ fi
 
 if [ -z "$NPU" ]; then
 	cat <<EOM
-== NPU 完全不可达（试过：$NPU_CANDIDATES）。NBD 那一级已禁用，自动流程只剩急救包。
+== NPU 完全不可达（试过：$NPU_CANDIDATES）。自动流程只剩急救包。
 
    先确认串口还能看到它（菜单 4 → NPU 串口）：能停在 U-Boot 就还有 U-Boot+tftp
    这条路（需要 x86 插 USB 网卡）；连 U-Boot 都进不去就只能走急救 initramfs。
@@ -268,7 +248,7 @@ fi
 
 echo "== NPU 在线（$NPU）"
 
-# ---- 破坏性操作的确认：只问一次，所有层级（U-Boot / NBD(禁用) / 急救）共用 ----
+# ---- 破坏性操作的确认：只问一次，三条路（ssh+dd / U-Boot / 急救）共用 ----
 # 分区路径是**NPU 上的**（写入通过 npu_ssh 在 NPU 上执行），大小也从 NPU 读，
 # 不要用本机的 lsblk —— 维护盘上那会显示 x86 自己的 mmcblk0p2，看着像要写本机。
 printf 'NPU 上要重写的分区 [/dev/mmcblk0p2]: '
@@ -292,27 +272,10 @@ trap '' INT QUIT
 echo "   已开始，Ctrl+C 不再中断（要重来就等它跑完）。"
 export PART
 
-# 顺序按"前提最容易满足"排：ssh + tar 只要 NPU 上有 tar/zstd（哪个镜像都有），
-# NBD 还得多一个 nbd-server。所以先试 ssh，成不了再谈 nbd。
+# 这一级是第一顺位，也是唯一在真机跑通过的那条：整块 ext4 镜像走 ssh 灌进去。
 # `timeout` 只能执行外部命令，npu_ssh 是 shell 函数 —— 写成 `timeout 60 npu_ssh …`
 # 会直接 "No such file or directory"。ssh 自己带 ConnectTimeout，够了。
-echo "== 1/6 看 NPU 上能不能直接解包（tar + zstd）"
-if npu_ssh 'command -v tar && command -v zstd' >/dev/null 2>&1; then
-	echo "   能 —— 直接用 ssh 解包，不需要 nbd-server"
-	if stream_install; then
-		echo
-		echo "NPU 写完了（ssh+tar 路径），它正在重启。"
-		trap - INT QUIT
-		printf '按回车返回菜单...'
-		read -r _
-		exit 0
-	fi
-	echo "== ssh+tar 没成，退到 ssh+dd"
-else
-	echo "   NPU 上没有 tar/zstd（它不是我们的镜像？）—— 退到 ssh+dd"
-fi
-
-echo "== 1/6 试 ssh + dd（整块 ext4 镜像；NPU 上只要 busybox 的 dd）"
+echo "== 1/3 试 ssh + dd（整块 ext4 镜像；NPU 上只要 busybox 的 dd）"
 if sshdd_install; then
 	# 写完了：把 Ctrl+C 还回去，否则"按回车返回菜单"这里按 Ctrl+C 毫无反应。
 	trap - INT QUIT
@@ -331,99 +294,9 @@ if try_uboot; then
 	read -r _
 	exit 0
 fi
-echo "== U-Boot 那条路没走通，看 NBD（默认禁用）"
-
-if [ "${SKIP_NBD:-1}" = 1 ]; then
-	echo "== NBD 已禁用（SKIP_NBD=1），跳过这一级"
-	trap - INT QUIT
-	try_rescue
-	exit 1
-fi
-
-echo "== 1/6 确认 NPU 上有 nbd-server"
-echo "   （在 NPU 上查一遍；没有就装，apt 走它自己的外网，最多等 3 分钟）"
-if ! npu_ssh 'command -v nbd-server' >/dev/null 2>&1; then
-	echo "   没有，试着装一下"
-	npu_ssh 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq nbd-server' || {
-		echo
-		echo "   没有 nbd-server，也装不上（NPU 没外网？）—— 改用 ssh 直接解包，"
-		echo "   这条路只要 NPU 上有 tar 和 zstd，不需要 nbd。"
-		stream_install && exit 0
-		echo "== ssh 直接解包也没成"
-		try_rescue
-		exit 1
-	}
-fi
-
-echo "== 2/6 让 NPU 导出 $PART"
-# 必须用配置文件：命令行形式（nbd-server PORT FILE）在新版里是只读导出，
-# mkfs 会直接 "Operation not permitted while setting up superblock"。
-npu_ssh "mkdir -p /etc/nbd-server
-	cat > /etc/nbd-server/xgs87.conf <<CONF
-[generic]
-[xgs87]
-exportname = $PART
-readonly = false
-port = $PORT
-CONF
-	pkill -f 'nbd-server -C /etc/nbd-server/xgs87.conf' 2>/dev/null || true
-	: > /var/log/xgs87-nbd.log
-	setsid nbd-server -C /etc/nbd-server/xgs87.conf >/var/log/xgs87-nbd.log 2>&1 &
-	sleep 2
-	ss -ltn 2>/dev/null | grep -q ':$PORT ' && echo NBD_LISTENING || { echo NBD_FAILED; cat /var/log/xgs87-nbd.log; }"
-
-echo "== 3/6 x86 这边接上 $NBD"
-modprobe nbd max_part=8 2>/dev/null || true
-cleanup_nbd
-nbd-client -N xgs87 -p "$NPU" "$PORT" "$NBD" >/dev/null || {
-	echo "nbd-client 连不上（$NPU:$PORT）"
-	exit 1
-}
-if [ ! -b "$NBD" ]; then
-	echo "$NBD 没出现（内核没 nbd 模块？）"
-	exit 1
-fi
-
-echo "== 4/6 备份？"
-printf '先把 %s 备份到 U 盘再动手吗？[Y/n] ' "$PART"
-read -r bk
-case "${bk:-y}" in
-y | Y)
-	STORE=$(ensure_store) || STORE=
-	if [ -z "$STORE" ]; then
-		echo "   备份分区不可用，跳过备份"
-	else
-		DEST=$STORE/npu-$(basename "$PART")-$(date +%Y%m%d-%H%M).img.zst
-		echo "   写到 $DEST"
-		dd if="$NBD" bs=4M status=progress | zstd -1 -T0 >"$DEST" || {
-			echo "   备份失败，已中止 —— 没有格式化任何东西。"; cleanup_nbd; exit 1
-		}
-		zstd -t "$DEST" >/dev/null 2>&1 || { echo "   备份校验失败，已中止。"; cleanup_nbd; exit 1; }
-		ls -lh "$DEST"
-	fi
-	;;
-esac
-
-echo "== 5/6 格式化 + 解包（都在 x86 这边做）"
-mkfs.ext4 -q -F -L xgsroot "$NBD"
-mkdir -p "$MNT"
-mount "$NBD" "$MNT"
-zstd -dc "$TAR" | tar -xpf - -C "$MNT"
-mkdir -p "$MNT/boot"
-cp "$DTB" "$MNT/boot/cn9130-sophos-xgs87w-sfp10g.dtb"
-materialize_boot_names "$MNT" || true
-sync
-echo "   rootfs: $(du -sh "$MNT" 2>/dev/null | cut -f1)"
-umount "$MNT"
-
-echo "== 6/6 断开、让它重启"
-cleanup_nbd
-npu_ssh "pkill -f 'nbd-server -C /etc/nbd-server/xgs87.conf' 2>/dev/null || true
-	(sleep 1; reboot) >/dev/null 2>&1 &" || true
-
-echo
-echo "NPU 写完了，正在重启。等它起来后菜单选 3 看状态。"
+echo "== 3/3 U-Boot 那条路没走通，只剩急救 initramfs"
+try_rescue
 trap - INT QUIT
 printf '按回车返回菜单...'
 read -r _
-exit 0
+exit 1

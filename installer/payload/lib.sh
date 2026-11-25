@@ -84,16 +84,10 @@ npu_ssh() {
 	{ printf '%s\n' "$NPU_PASS"; printf '%s\n' "$1"; } |
 		ssh $NPU_SSH_OPTS "admin@$NPU" "sudo -S -p '' bash -s"
 }
-# npu_ssh_stream：给"要把数据从 stdin 灌进去"的场景（例如 zstd -dc tar | 它）。
-# 普通 npu_ssh 把密码喂给 sudo -S，stdin 就被占了；这里改成在 NPU 上放一个
-# askpass 脚本、让 sudo -A 自己去问，stdin 空出来给数据。
-npu_ssh_stream() {
-	_cmd=$1
-	npu_ssh_setup
-	npu_ssh "printf '#!/bin/sh\nprintf \"%%s\\n\" %s\n' >/tmp/.xgs87-ap && chmod 700 /tmp/.xgs87-ap" >/dev/null || return 1
-	# shellcheck disable=SC2086
-	ssh $NPU_SSH_OPTS "admin@$NPU" "SUDO_ASKPASS=/tmp/.xgs87-ap sudo -A bash -c \"$_cmd\""
-}
+# npu_ssh_stream 已删除：它唯一的调用者（"ssh + tar 流式解包"）在 2026-11-25 被
+# 证明永远不可能成功 —— 那一级要在 NPU 正挂着的根分区上 mkfs，内核必拒
+# （docs/20 §20.11.1）。现在往 NPU 灌数据只有 npu-sshdd.sh，它自带同一套
+# askpass（SUDO_ASKPASS + sudo -A，stdin 留给数据），照那份写就行。
 
 # ------------------------------------------------ 块设备安全检查（必读）---
 # 2026-11-24 那台砖机的成因：p2.img 是 mkfs 出来的**裸文件系统**（没有分区表），

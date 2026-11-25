@@ -21,11 +21,12 @@ sudo ./image/build.sh --arch amd64 --variant base   # 只要骨架，不带模�
 ```
 
 - `--variant full`（默认）：额外装 `dkms` + `build-essential` + `linux-headers-*`，
-  构建时就把 `kernel/<side>/` 的模块编好装上。**以后内核升级会自动重编**，代价是
-  root 解开 ~900 MiB、tar ~350 MB。
-- `--variant lean`：用普通 `make` 编一次模块（装进 `/lib/modules/<kver>/updates/`），
+  构建时就把 `kernel/<side>/` 的模块编好装上。**之后内核升级会自动重编**（因为有 dkms），
+  代价是 root 解开 ~900 MiB、tar ~350 MB。
+- `--variant lean`：用普通 `make` 编一次模块（装进 `/lib/modules/<kver>/updates/`，
+  `make modules_install` 会按内核配置压成 `.ko.xz`），
   然后把工具链按 **dpkg 快照差值**精确 purge 掉。**root 解开 387 MiB、tar 199 MB**
-  （2026-11-24 workflow 实测；full 的 root 约 900 MiB，所以少的正是工具链和 headers）。代价是镜像自己没法再编模块，所以内核被
+  （2026-11-24 workflow 实测；full 的 root 约 900 MiB，所以少的正是工具链和 headers）。代价是镜像自己没法再编模块，也没装 dkms，所以内核被
   `apt-mark hold`；要升级内核就先 `apt-mark unhold linux-image-amd64`（NPU 是
   `linux-image-arm64`），再跑镜像里的 `/opt/xgs87/kernel/<side>/install.sh`。
 - `--variant base`：不装编译器、不带模块。根分区小的时候用，之后再跑一次

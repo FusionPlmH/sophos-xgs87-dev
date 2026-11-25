@@ -52,8 +52,8 @@ lsblk; sfdisk -d /dev/mmcblk0
 2. U 盘插前面板 USB，开机按 **F11** 选 U 盘启动。
 3. 串口 115200 上出菜单：
    - `1` 重装 x86 —— 把 `debian-x86.img` 整盘写进内置 eMMC；
-   - `2` 重装 NPU —— 自动按 **ssh+tar → ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试
-     （NBD 目前禁用）。开工前它会先把 vNTB 拉起来：没有 `eth0` 就重试最多 3 次
+   - `2` 重装 NPU —— 自动按 **ssh+dd → U-Boot+tftp → 急救 initramfs** 逐级尝试。
+     开工前它会先把 vNTB 拉起来：没有 `eth0` 就重试最多 3 次
      `xgs-ntb-up.sh --force-rescan`（NPU 的端点总在 x86 开机之后才枚举到），并幂等补上
      `eth0.200 = 10.234.56.2/24` —— 维护盘跑的是 U 盘自己那套 root，它的 networkd 不一定
      配这个地址，缺了就只能靠 `ttyS2` 兜底。真走串口时会自动登录、读出 NPU 的

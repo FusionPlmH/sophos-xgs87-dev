@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 |---|---|
-| 发行版 | Debian GNU/Linux 13 (trixie)，内核 **6.12.118+deb13-amd64**（从 6.12.94 升级，DKMS 自动重编） |
+| 发行版 | Debian GNU/Linux 13.8 (trixie)，内核 **6.12.117+deb13-amd64**，被 `apt-mark hold`（发布用的 `lean` 镜像不带 dkms；模块是构建时 `make` 编好放进 `/lib/modules/*/updates/` 的 `.ko.xz`） |
 | 固件 | AMI UEFI BIOS 1906，**UEFI + GPT**（shim + grub） |
 | CPU | AMD RX-216TD，2 核 |
 | 内存 | 2×2 GB DDR4-1600（可见 3.8 GiB） |
@@ -46,7 +46,7 @@ eth0.200@eth0    UP       10.234.56.2/24           ← LAN，经 NPU 的 p1 到�
 
 - 这条虚拟网线两侧**只有 x86 和 NPU**，所以想上真正的内网必须让 NPU 把面板口桥进来
   （现在是 `p2` 走 WAN、`p1` 走 LAN）。详见 [20](20-lan-over-vntb.md)。
-- 需要的模块都在 `/lib/modules/$(uname -r)/extra/`：`ntb_core` / `ntb_hw_epf` /
+- 需要的模块都在 `/lib/modules/$(uname -r)/updates/`（`make modules_install` 放那儿，压成 `.ko.xz`）：`ntb_core` / `ntb_hw_epf` /
   `ntb_transport` / `ntb_netdev`（Debian 不自带 NTB 栈，见 [tools/build](../tools/build/)）。
 - 装机脚本在 [systemd/x86/](../systemd/x86/)，安装步骤见 [systemd/README.md](../systemd/README.md)。
 

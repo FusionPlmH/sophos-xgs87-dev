@@ -24,9 +24,10 @@ sudo ./image/build.sh --arch arm64 --variant full   # NPU（在 arm64 上跑）
 ```
 
 - `full` 会额外装 `dkms` + `build-essential` + `linux-headers-*`，并在 `setup.sh` 里
-  把 `kernel/<side>/` 的模块编好、`dkms install` 进去（以后内核升级自动重编）。
-- `lean` 用普通 `make` 编一次模块，然后把工具链按 dpkg 快照差值 purge 掉：root 解开
-  387 MiB（`full` 是 ~900 MiB），代价是内核被 `apt-mark hold`。
+  把 `kernel/<side>/` 的模块编好、`dkms install` 进去（带 dkms，所以之后升级内核会自动重编）。
+- `lean`（**workflow 发布用的就是它**）用普通 `make` 编一次模块，然后把工具链按 dpkg 快照
+  差值 purge 掉：root 解开 387 MiB（`full` 是 ~900 MiB），代价是内核被 `apt-mark hold`、
+  镜像里没有 dkms —— 换内核要 `apt-mark unhold` 后跑 `/opt/xgs87/kernel/<side>/install.sh`。
 - `base` 不装工具链也不带模块；装到机器上后再跑一次 `kernel/<side>/install.sh`。
 - 产物：`out/xgs87-<side>-<variant>.tar.zst`。
 

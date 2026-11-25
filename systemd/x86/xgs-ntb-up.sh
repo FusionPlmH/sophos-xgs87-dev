@@ -10,14 +10,20 @@
 # Install as /usr/local/sbin/xgs-ntb-up.sh plus a oneshot unit, see
 # xgs-ntb.service.  Debian does not build the NTB stack, so ntb.ko,
 # ntb_hw_epf.ko, ntb_transport.ko and ntb_netdev.ko must be built against
-# this kernel's headers and dropped in /lib/modules/$(uname -r)/extra/.
+# this kernel's headers and dropped in /lib/modules/$(uname -r)/updates/.
 #
-# PCIe policy: wait, do not reset.  A remove/rescan re-asserts PERST# and, in a
-# loop, keeps resetting the NPU while it is still booting.  That is exactly the
-# "self-resets every ~2 s" symptom chased on 2026-11-25.  Automatic
-# remove/rescan is therefore off; once the NPU is fully up, run this script
-# with --force-rescan.  A plain rescan (no remove) is safe and is used below,
-# because it cannot reset anything the kernel does not already know.
+# PCIe policy: one targeted remove/rescan, never a loop.
+#
+# A cold boot regularly lands here with a *stale* enumeration -- the kernel
+# enumerated the function while the firmware's PERST# still had the endpoint
+# presenting its factory identity (11ab:7080, Ethernet class), and a plain
+# rescan never re-reads the IDs of a device the kernel already knows.  Without
+# the remove+rescan that follows, ntb_hw_epf can never bind and the link looks
+# dead even though the NPU is fine (docs/20 §20.7.5).
+#
+# Doing that in a loop is what produced the "NPU resets every ~2 s" symptom on
+# 2026-11-25, so it happens at most once per run, and never while the endpoint
+# is present and simply unbound.
 set -u
 
 FORCE_RESCAN=0

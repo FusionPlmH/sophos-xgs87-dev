@@ -47,10 +47,16 @@ make -C $SRC O=/srv/kbuild ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j16 Imag
 > 现有模块不用跟着重编。这次的产物已上线，`printk: legacy console [ramoops-1] enabled` 可见；
 > 但 ramoops 本身在这块板子上没用（每次复位都 DDR scrub），见 [20 §20.8](20-lan-over-vntb.md)。
 
-⚠️ **反过来的坑更致命**：模块绑死在内核版本上。**已解决（2026-11-23）** ——
-所有 out-of-tree 模块都改成了 DKMS 包（[kernel/x86](../kernel/x86/)、[kernel/npu](../kernel/npu/)），
-内核升级时 `dkms` 自动重编。实机验证：x86 从 6.12.94 升到 6.12.118，重启后链路自己回来；
+⚠️ **反过来的坑更致命**：模块绑死在内核版本上。**已解决** —— out-of-tree 模块都做成了
+DKMS 包（[kernel/x86](../kernel/x86/)、[kernel/npu](../kernel/npu/)），`install.sh` 会把
+dkms + headers 装上，之后内核升级自动重编。历史实机验证：`full` 变体的 x86 从 6.12.94
+升到 6.12.118，重启后链路自己回来。
 NPU 则干脆切回**发行版内核**（自编的 `CONFIG_PSTORE_CONSOLE` 内核已退役，因为 ramoops 本来就没用）。
+
+> **发布用的 `lean` 镜像不在这条"自动重编"的覆盖范围内**：它把工具链 purge 掉了，也不装
+> dkms，模块是构建时用 `make` 编好放进 `/lib/modules/<kver>/updates/` 的 `.ko.xz`，内核被
+> `apt-mark hold`。要换内核：`apt-mark unhold linux-image-amd64`（NPU 是 `linux-image-arm64`）
+> → 升内核 → 跑 `/opt/xgs87/kernel/<side>/install.sh`（它会把 dkms 装回来）。
 
 `mv88e6xxx` / `mvpp2` 也不再替换了：两个补丁（TCAM 越权、`AGGR_TXQ_SIZE 512`）都只是加固/调优，
 用发行版原版即可，补丁留在 [net/patches/](../net/patches/) 里备用。
