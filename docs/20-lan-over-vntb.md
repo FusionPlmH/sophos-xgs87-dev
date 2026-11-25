@@ -190,7 +190,7 @@ static enum hrtimer_restart epf_ntb_poll_timer(struct hrtimer *timer)
 
 | 机制 | 位置 | 作用 |
 |---|---|---|
-| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `10.234.56.1`；异常时**只重建本地 VLAN/地址**，默认不碰 PCIe。要自动重枚举就在 `/etc/default/xgs-ntb-watch` 里设 `AUTO_RECOVER=1`，它会在连续 5 分钟异常后跑一次 `xgs-ntb-up.sh --force-rescan`，然后冷却 10 分钟 |
+| `xgs-ntb-watch.service` | x86 | 每 15 s 查 `carrier` + ping `10.234.56.1`；异常时先只重建本地 VLAN/地址。镜像里默认 `AUTO_RECOVER=1`：连续 5 分钟异常后跑一次 `xgs-ntb-up.sh --force-rescan`，然后冷却 10 分钟（见 §20.11.6） |
 | `/etc/sysctl.d/90-xgs-panic.conf` | 两边 | `kernel.panic=30`、`panic_on_oops=1`、`hardlockup_panic=1` |
 
 2026-11-23 的旧版本会自动做完整重置，当时的记录是：
@@ -322,7 +322,11 @@ sudo /usr/local/sbin/xgs-ntb-up.sh
 > 排查手法：判断端点身份**必须用 `setpci` 读活值**（`setpci -s 03:00.0 0.w 2.w
 > 8.l`），`lspci` / sysfs 只能用来判断"内核此刻认为它是什么"。
 
-### 20.7.6 附带的恢复手段：拉一次 Link Disable 就能复位 NPU
+### 20.7.6 附带的恢复手段：拉一次 Link Disable 就能复位 NPU（**现在有风险，见 §20.11.5**）
+
+> **2026-11-25 更新**：这招后来把 x86 自己带下去了两次（`sysrq` 之外没有任何反应，
+> 只能靠串口 SysRq 才救回来）。现在优先用**串口 SysRq**（BREAK + `s`/`b`）复位，
+> 见 §20.11.5；Link Disable 只在 SysRq 完全没反应时才用。
 
 2026-11-25 有一次 NPU 卡死在启动里（串口一个字都不出、板子 ping 不通）。用
 `tools/on-x86/x86-linkoff-test.sh` 里那套 Link Disable 写法，对**根端口**
@@ -339,7 +343,7 @@ sudo /usr/local/sbin/xgs-ntb-up.sh
 |---|---|
 | EP 节点 `snps,dw-pcie-ep`，`reg-names = dbi/dbi2/addr_space` = `0xf2600000` / `0xf2604000` / `0x80_0000_0000`，删掉 `dma-coherent` | **完全一致**（`board/cn9130-sophos-xgs87w-sfp10g.dts`） |
 | `.align = SZ_1M`（BAR 匹配 iATU 忽略目标地址低 20 位） | **已有**（`ntb/0002`） |
-| 端点只实现偶数 BAR，主机按 ctrl=0/db=2/mw=4 找 | **已有**（`BAR_1/3/5 = BAR_RESERVED`），现在还在 `xgs-vntb.sh` 里把这三个 BAR 号**写死** |
+| 端点只实现偶数 BAR，主机按 ctrl=0/db=2/mw=4 找 | **已有**（`BAR_1/3/5 = BAR_RESERVED`）。注意这三个 BAR 号是 `pci_epf_vntb` 的**只读** configfs 属性，驱动自己算，`xgs-vntb.sh` 里写过三行 `echo 0 > ctrl_bar` 之类，每次启动只换来 `Permission denied`（2026-11-25 删掉，改成把驱动算出来的值读回来打日志） |
 | 必须用 MSI，不能 MSI-X（DW 核宣称 MSI-X 但只发 MSI） | **已有**（`.msix_capable = false`，主机侧优先 MSI） |
 | `transport_mtu=2048` 两侧都要 | **已有** |
 | 1 MiB 窗口只有 15 个 slot，默认 64 KiB 帧导致每个小包都要等一次往返 | 同上，`transport_mtu=2048` 解决 |

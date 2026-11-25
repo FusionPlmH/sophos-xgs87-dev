@@ -175,7 +175,7 @@ sudo hostnamectl set-hostname xgs-debian-x86     # 旧装机的名字还是 debi
 | 往 `p1` 上放系统 | 那是原厂冷备槽，留着回滚 | 空着 |
 | **把裸文件系统镜像写到整盘**（`dd if=p2.img of=/dev/mmcblk0`） | **LBA 0 的 MBR 被 ext4 超级块覆盖 → `No partition table - mmc 0`**，所有分区消失（2026-11-24 那台就是这么砖的） | 脚本层已加守卫：`require_partition` / `require_whole_disk`（[07](07-storage.md) §7.6）。裸 FS 镜像只写 `...p2`，整盘镜像才写 `/dev/mmcblk0` / `/dev/sdX` |
 | 在 NPU 还没稳定启动时跑 `xgs-ntb-up.sh --force-rescan` | 一次 remove/rescan 就会拉 PERST#，把正在启动的 NPU 打断；循环做就是 2026-11-25 的 3.2 s "自复位" | **默认不自动 rescans**；等 NPU 起来后手动执行一次。`xgs-ntb-watch` 默认只重建本地 VLAN |
-| **在端点抖动时读它的 PCIe 配置空间**（哪怕只是 `lspci`） | **x86 会直接重启**。2026-11-25 实测：`lspci -nn \| grep -i 11ab` 一跑机器就重启（当晚这样崩了 4~5 次）。端点复位风暴期间，主机在抖动窗口里读 config space 会触发致命错误 | 用 sysfs 判存在性（`[ -e /sys/bus/pci/devices/0000:03:00.0 ]`），**端点不稳定时不要 `lspci`**；真正要"脱开"这条链路就用 Link Disable（`setpci -s 00:03.1 CAP_EXP+10.w=0010`），见 [tools/on-x86/x86-linkoff-test.sh](../tools/on-x86/x86-linkoff-test.sh) |
+| **在端点抖动时读它的 PCIe 配置空间**（哪怕只是 `lspci`） | **x86 会直接重启**。2026-11-25 实测：`lspci -nn \| grep -i 11ab` 一跑机器就重启（当晚这样崩了 4~5 次）。端点复位风暴期间，主机在抖动窗口里读 config space 会触发致命错误 | 用 sysfs 判存在性（`[ -e /sys/bus/pci/devices/0000:03:00.0 ]`），**端点不稳定时不要 `lspci`**。要复位 NPU 优先用串口 SysRq（BREAK + `b`，见 [20](20-lan-over-vntb.md) §20.11.5）；Link Disable（`setpci -s 00:03.1 CAP_EXP+10.w=0010`）现在会把 x86 一起带下去，只是最后手段 |
 
 > ⚠️ NPU 的 1.5 GB 根分区**装不下 `full` 变体**（root 解开约 900 MB）。现在实测 1.4G/1.5G，
 > 只剩 276 MB。三条路：装 `--variant lean`（root 解开 387 MiB，**推荐**，工具链编完就删掉）、
