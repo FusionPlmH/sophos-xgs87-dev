@@ -77,7 +77,7 @@ sudo ./installer/mkusb.sh --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.
 | 做法 | 结果 | 说明 |
 |---|---|---|
 | ~~defconfig 打底再关几十项~~ | **40.6 MB / gz 12.3 MB —— 反而更大** | arm64 defconfig 自带 2800 多个 `=y`，关 35 个等于没关。已试过，别再来 |
-| **`tinyconfig` + `board/rescue-kernel.config`** | **Image 5.36 MB ｜ gz 2.14 MB ｜ lzma -9 1.63 MB** | 小 8.4 倍；包 15.9 → 3.1 MB，27 → 5 分钟。**这条是现行默认** |
+| **`tinyconfig` + `board/rescue-kernel.config`** | **Image 5.36 MB ｜ gz 2.14 MB ｜ lzma -9 1.63 MB** | 小 7 倍；包 15.9 → 3.1 MB，27 → 6 分钟。**这条是现行默认** |
 | 同上 + `--fmt lzma` | 1.63 MB | 再省 0.5 MB（~1 分钟），但 U-Boot 的 `unzip` 认不认 lzma **还没在真机上验过** |
 | initramfs 换 `xz -9` | 1.04 → 0.93 MB | 要 `CONFIG_RD_XZ`（已经在配置里） |
 | 自编一个精简 busybox | 还能再省 ~1 MB | 得编 busybox；现在 busybox 是 initramfs 的唯一大头（1.98 MB → gz 里 ~1 MB） |
