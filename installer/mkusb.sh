@@ -107,6 +107,32 @@ resize2fs "$ROOT_DEV" >/dev/null
 mkdir -p "$WORK/root"
 mount "$ROOT_DEV" "$WORK/root"
 
+# The USB image starts life as a copy of debian-x86.img, so its root filesystem
+# UUID and its partition GUIDs are *identical* to the installed system's.  Two
+# consequences, both seen on real hardware on 2026-11-25:
+#   - `search.fs_uuid <root>` and `root=UUID=<root>` match whichever disk the
+#     firmware enumerated first, so the stick happily boots the internal system
+#     (and vice versa);
+#   - the UEFI boot entry "…HD(1,GPT,<guid>)" matches the internal ESP too, so
+#     "boot from USB" can load the internal GRUB.
+# Give the stick its own identity before anything else is written into it.
+echo "== 给 U 盘换一套自己的 UUID/GUID"
+OLD_ROOT_UUID=$(blkid -s UUID -o value "$ROOT_DEV")
+umount "$WORK/root"
+e2fsck -f -y "$ROOT_DEV" >/dev/null 2>&1 || true
+NEW_ROOT_UUID=$(cat /proc/sys/kernel/random/uuid)
+tune2fs -U "$NEW_ROOT_UUID" "$ROOT_DEV" >/dev/null
+sgdisk -G "$OUT" >/dev/null 2>&1 || echo "   （sgdisk -G 失败，分区 GUID 仍然是旧的）" >&2
+LOOP=$(losetup -d "$LOOP" 2>/dev/null; losetup -f --show -P "$OUT")
+ROOT_DEV=$(part_dev 2) || exit 1
+ESP_DEV=$(part_dev 1) || exit 1
+mount "$ROOT_DEV" "$WORK/root"
+echo "   root UUID $OLD_ROOT_UUID -> $NEW_ROOT_UUID"
+
+# Everything inside the image that resolves the root by UUID has to follow.
+sed -i "s/$OLD_ROOT_UUID/$NEW_ROOT_UUID/g" \
+	"$WORK/root/etc/fstab" "$WORK/root/boot/grub/grub.cfg"
+
 echo "== 放 payload 到 $PAYLOAD_DIR"
 mkdir -p "$WORK/root$PAYLOAD_DIR"
 cp "$X86" "$WORK/root$PAYLOAD_DIR/debian-x86.img.zst"
@@ -194,6 +220,22 @@ if [ -f "$WORK/root/boot/grub/grub.cfg" ]; then
 	sed -i -E '/^[[:space:]]*linux[[:space:]]/ s/$/ quiet loglevel=3/' \
 		"$WORK/root/boot/grub/grub.cfg"
 fi
+
+# The ESP's shim is just `set prefix=($root)/boot/grub; configfile ...`, and
+# $root at that point is the ESP itself -- which has no /boot/grub.  Put a copy
+# of the menu there, with a search line in front of it so the kernel and initrd
+# paths resolve on the stick's own root.  Without this the boot attempt dies and
+# the firmware silently falls through to the internal disk.
+echo "== 让 U 盘的 ESP 能自己启动"
+mkdir -p "$WORK/esp"
+mount "$ESP_DEV" "$WORK/esp"
+mkdir -p "$WORK/esp/boot/grub"
+{
+	echo "search --no-floppy --fs-uuid --set=root $NEW_ROOT_UUID"
+	cat "$WORK/root/boot/grub/grub.cfg"
+} > "$WORK/esp/boot/grub/grub.cfg"
+sync
+umount "$WORK/esp"
 
 sync
 umount "$WORK/root"
