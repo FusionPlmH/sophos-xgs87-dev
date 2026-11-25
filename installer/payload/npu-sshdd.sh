@@ -119,7 +119,7 @@ if [ "$root_src" = "$PART" ] && [ "${ALLOW_LIVE_ROOT:-no}" != yes ]; then
        在活着的根上 dd 会把它写成碎片 —— 2026-11-25 那次 p2 就是这么没的。
        安全的做法二选一：
          * 让 NPU 从别的系统起来（p3 原厂 或 急救 initramfs），那时根不是
-           $PART，本脚本会自动放行；急救流程见 docs/14-rescue.md；
+           $PART，本脚本会自动放行；急救流程见 docs/06-rescue.md；
          * 或者 ALLOW_LIVE_ROOT=yes 再跑（请先把 p2 的整盘镜像备份到别处）。"
 fi
 echo "== NPU 的根是 $root_src（不是 $PART），可以安全写"

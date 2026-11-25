@@ -1,207 +1,67 @@
-# Sophos XGS 87 — 硬件档案、架构设计与改造记录
+# Sophos XGS 87(w) → 双 SoC 的 Debian 小机器
 
-> 现场实测记录。所有数据来自一台 **Sophos XGS 87**（非无线版）实机，目标是**两边都跑 Debian 13**：
-> x86 跑通用计算，NPU 跑数据面。本仓库记录把它改造成可自由使用设备（服务节点 / 路由器 / 自研固件）的全过程。
->
-> **2026-11-25 现场状态**：两台都在跑 Debian 13.8 / 6.12.117，vNTB 通
-> （`eth0` / `eth0.100` / `eth0.200` 全 UP，`10.234.56.2` ↔ `10.234.56.1`）。
-> **面板 `2/WAN` 现在没插线**，所以 `br-wan` 退到 IPv4LL `169.254.38.2`、`eth0.100` 没有
-> 租约，两台都还没有默认路由 —— 把上游接到面板口 2 就一起恢复（DHCP + 默认路由 + NTP）。
-> 2026-11-24 那次"砖机"已经复盘：**eMMC 数据从来没有丢过**，p2 只是缺 `/boot/initrd.img`
-> 这个名字（补硬链接即可启动）；当时的 `No partition table`、env 被写坏、3.2 s 复位循环
-> 各有别的解释，证据链见 docs/03 §3.6，结论见 docs/16 §16.1。
-> p3 原厂系统完好，SPI NOR / env 已校验、`mtd0` 未损坏。不要因为"看到 U-Boot 复位"就继续刷
-> SPI NOR —— 那次复位循环真正的来源是 x86 侧的 remove/rescan 循环，已从脚本里移除。
->
-> 与 Sophos 官方无关。仓库内不含任何原厂二进制，只包含实测数据、设备树、补丁和脚本。
-
-## 现在是什么状态
+一台防火墙被改成通用机器：x86 那半边跑 Debian，Marvell CN9130（下面都叫 **NPU**）那半边
+也跑 Debian，两边用机内 **PCIe（vNTB）** 和一条 **UART** 连起来。原厂的两个系统（p1、p3）
+一个字节都不动，坏了自己还能退回去。
 
 ```
-x86  eth0.100  DHCP（上游）  ──┐  面板 2/WAN → br-wan（VLAN 100）
-x86  eth0.200  10.234.56.2/24 ┘  └─ 面板 1/LAN → br-lan（VLAN 200，NPU = .1）
-NPU  br-lan 静态 10.234.56.1/24，不下发 DHCP；br-wan DHCP，管理也走这条路
+        ┌──────────────── x86 (AMD) ────────────────┐          ┌──────── NPU (CN9130) ────────┐
+面板 1 LAN ─┤                                           │          │                              │
+面板 2 WAN ─┤  Debian 13 · 自己的 eMMC 14.7 GB         │   PCIe   │  Debian 13 · eMMC 7.3 GB     │
+面板 3/4   ─┤  eth0 = vNTB  ◄──────────────────────────┼──────────┼─► eth0 = vNTB               │
+            │  /dev/ttyS0 = 本机控制台（COM5, 115200） │   UART   │  /dev/ttyS2（115200）        │
+            └───────────────────────────────────────────┘          └──────────────────────────────┘
 ```
 
-`br-lan` 默认**只有 p1**，`p3`/`p4` 不并入任何桥（`p5`–`p8` 面板上没引出）；LAN 段没有 DHCP 服务，下游要自己配
-`10.234.56.x/24`。`br-wan` 才跑 DHCP。想改端口归属就改 NPU 上的 `/etc/xgs87/net.conf`。
+x86 和 NPU 之间**只有这两条线**：vNTB（10 Gb/s，跑 VLAN 100/200）和 UART。NPU 自己没有
+物理网口 —— 面板口全部挂在它的 88E6193X 交换芯片上（走 DSA）。
 
-**2026-11-23 逐项实测，2026-11-25 复核当前状态**，标记含义：✅ 实测通过 ｜ 📦 原厂档案 ｜ ❌ 不可用 ｜ ⚠️ 未验证。
+## 谁是谁
 
-| 驱动 / 功能 | 状态 | 证据 |
+| | 系统 | 能不能写 |
 |---|---|---|
-| NPU Debian 13 自启（eMMC p2） | ✅ | 2026-11-25 实测：`bootcmd=run bootcmd_deb10g` → Debian 13.8，`br-wan` DHCP、`br-lan` 10.234.56.1/24（docs/03 §3.6） |
-| `mvpp2`（10G MAC，`end0`） | ✅ | 发行版模块；`AGGR_TXQ_SIZE=512` 自编译版是可选优化，镜像默认不用（docs/15） |
-| `mv88e6xxx` + DSA（9 个 netdev） | ✅ | 发行版模块；TCAM 两个上游补丁是可选加固。`p1–p8` + `sfp`，本机面板只引出 p1–p4 + sfp（docs/04、docs/15） |
-| 面板 1G / SFP+ 10G | ✅ | `ethtool`：`p1/p4` 1000 Mb/s、`sfp` **10000 Mb/s** |
-| `spi_orion` + MTD | ✅ | `mtd0` u-boot 4032 KiB、`mtd1` env 64 KiB、`fw_printenv` 可读 |
-| `crypto_safexcel`（EIP197） | ⛔ | 镜像不带 `ifpp.bin` 微码，probe 直接 `-ENOENT`；已在 `/etc/modprobe.d/xgs87-blacklist.conf` 里屏蔽。即使有固件 PE 也起不来，而单核 AES-256-GCM 已有 ~8.5 Gbps（docs/07 §7.4） |
-| thermal（6 zone）+ 9 hwmon | ✅ | `ap-ic`/`ap-cpu0..3`/`cp0-ic` 51–54 ℃（2026-11-25 实测，随负载浮动）；`sfp` + 8 个 PHY 温度 |
-| PWM / GPIO | ✅ | `pwmchip0-2`、3 个 `gpiochip`（base 0/32/64） |
-| **cpufreq** | ❌ | 没有 `/sys/devices/system/cpu/cpu0/cpufreq`：DT 的 `cpu@0` 没有 `operating-points-v2`，`cpufreq-dt` 无表可读（docs/07 §7.13） |
-| 风扇 | ✅有 / ❌不可控 | 整机一颗，上电即转；无 SuperIO、无 ACPI 风扇、DT 无 `fan` 节点（docs/15 §15.8） |
-| x86 ↔ NPU vNTB | ✅ | 单流 1.2 Gbit/s、RTT 0.6 ms（docs/09 §9.1） |
-| x86 借道拿地址 | ✅ | `eth0.100` 走 WAN（DHCP）、`eth0.200` 走 LAN（静态 `10.234.56.2/24`） |
-| 一条链路跑 WAN + LAN | ✅ | VLAN 100（WAN）/ VLAN 200（LAN），两段在交换芯片上真隔离（docs/08 §8.2） |
-| 面板口分 WAN / LAN 且可配 | ✅ | `/etc/xgs87/net.conf`：`2/WAN` = `p2` → `br-wan`（VLAN 100，DHCP），`1/LAN` = `p1` → `br-lan`（VLAN 200，静态 `10.234.56.1/24`，不发 DHCP）（docs/08 §8.3） |
-| LAN 能真的上网（转发 + NAT） | ✅ | `xgs-nat.service`：`ip_forward=1` + `inet xgs87` 表里 `br-lan → br-wan` masquerade（docs/08 §8.3.1） |
-| 维护 U 盘不用预留 payload 分区 | ✅ | 安装包放 root 的 `/opt/xgs87/payload`；U 盘剩余空间第一次开机自动切成 exfat（`XGS87BAK`，挂 `/media/xgs87-bak`）放备份 |
-| 关机钩子（主机先与对端道别） | ✅ | `xgs-ntb-stop.service` |
-| 硬件看门狗 | ✅ | `xgs-watchdog.service` 喂 SBSA `/dev/watchdog0`；实测不喂狗约 10–20 s 整机复位（[docs/07](docs/07-npu-system.md) §7.13） |
-| NPU 单独重启 → x86 恢复 | ✅ | 自动：`xgs-ntb-watch` 默认 `AUTO_RECOVER=1`，链路连续 5 分钟不通就跑一次 `xgs-ntb-up.sh --force-rescan`（5 分钟是为了不打断正在启动的 NPU），见 docs/11 §11.2.6 |
-| x86 时间同步 | ✅ | `systemd-timesyncd`，`timedatectl` = synchronized |
-| **内核/系统可以随便升级** | ❌ | **发布用的 `lean` 镜像把内核 hold 住了，而且不带 `dkms`**（实测 2026-11-25：`apt-mark showhold` 有 `linux-image-*`、`command -v dkms` 为空，模块是构建时用 `make` 编好放进 `/lib/modules/*/updates/` 的 `.ko.xz`）。要升级就 `apt-mark unhold linux-image-amd64`（NPU 是 `linux-image-arm64`）+ 跑一次 `/opt/xgs87/kernel/<side>/install.sh` —— 那个脚本装 dkms 并从源码重编。`full` variant 才自带 dkms、能自动重编（历史实测：6.12.94 → 6.12.118 自动重编成功） |
-| SFP 自适应模块 | ✅ | 端口只声明 `1000base-x` 基线 + `sfp` phandle，phylink 按插入的模块切换（实测 10G 模块被自动提到 `10gbase-r`） |
-| NPU 掉链 lockup 取证 | ✅ | **netconsole 双目标**（NPU → x86 管理 VLAN + PC 的 `br-lan`），死前 printk 落在对方磁盘上；`ramoops` 已证伪（每次复位都 DDR scrub，见 docs/11 §11.1） |
-| NPU 内核 `CONFIG_PSTORE_CONSOLE` | 📦 | 自编内核已退役（37.7 → 44.3 MB 的那版）；发行版内核不带它，而且 ramoops 被 DDR scrub 证伪，净收益为零 |
-| 完整开机无牵连重启 | ❌ | x86 断 PCIe 链路 → NPU 被 `PERST#` 复位。软件手段已穷尽（停 EP、关 panic、看门狗 inactive 都试过），要改 ATF 才有意义（docs/11 §11.1） |
-| LED / PCA9555 极性 | ⚠️ | 沿用原厂记录，未逐一验证（[docs/04](docs/04-switch.md)、[档案](docs/archive.md)） |
+| NPU `p1` | 原厂 Marvell rootfs，500 MiB | **永远不写** |
+| NPU `p2` | **我们的 Debian 13**，1524 MiB | 唯一写入目标 |
+| NPU `p3` | 原厂 Sophos 系统，1524 MiB | **永远不写**，它是救生艇 |
+| NPU `p4` | VPD：序列号 + MAC，100 MiB | **永远不写** |
+| x86 内置盘 | 我们的 Debian 13（GPT + GRUB ESP），整盘镜像 | 整盘重装 |
 
-## 一分钟看懂这台机器
+## 摸它
 
-它其实是**两台电脑塞在一个盒子里**，用一条 PCIe 链路 + 一条内部串口相连：
-
-```
-                       ┌──────────────────────────────────────────────┐
-   Console ──────────► │  x86: AMD RX-216TD, 4 GB DDR4, 16 GB eMMC    │
-   (RJ45 / microUSB)   │  Debian 13 / 6.12 — 通用计算，自己没有网口   │
-                       │  ttyS2 ───────────────┐                     │
-                       │  PCIe EP 03:00.0 ◄──┐ │                     │
-                       └─────────────────────┼─┼─────────────────────┘
-                                             │ │ 串口（NPU 控制台）
-                       ┌─────────────────────┼─┼─────────────────────┐
-                       │  NPU: Marvell CN9130 (4×A72, 2 GB)           │
-                       │  Debian 13 / 6.12 — 网络数据面                │
-                       │  mvpp2 end0 ══ 10GBase-KR ══ 88E6193X port0  │
-                       └──────────────────────────┬───────────────────┘
-                                                  │
-                            ┌─────────────────────┴──────────────┐
-                            │  88E6193X (SOHO Amethyst, 11 口)    │
-                            │  port1-4 → 面板 1/LAN 2/WAN 3 4 (1G) │
-                            │  port9   → 面板 F1 SFP (10G)        │
-                            │  port0   → CN9130 (10G XFI)         │
-                            └────────────────────────────────────┘
+```sh
+ssh admin@10.234.56.1            # 从 x86 进 NPU（LAN，VLAN 200）
+ssh admin@10.234.56.2            # 从 NPU 回 x86
+picocom -b 115200 /dev/ttyS2     # 在 x86 上开 NPU 的串口
 ```
 
-- **面板上 4 个 RJ45 + 1 个 SFP 全部挂在 NPU 的交换机上**，x86 自己没有网口 ——
-  它通过 vNTB 上的 VLAN 借道 NPU 上网。面板 `2/WAN` 单独划成 `br-wan` 接上游（DHCP）；
-  `1/LAN` 是 `br-lan`（静态 `10.234.56.1/24`，**不跑 DHCP 服务**）；`3`、`4`、`8` 默认不并入任何桥。
-- x86 与 NPU 之间只有 **PCIe 端点** + **一路内部 UART**。
-- 原厂设计里 x86 做控制面/应用（Wi-Fi、管理界面），NPU 做数据面（交换、转发）。
-  两家参考项目（[openwrt-sophos-xgs107](https://github.com/nicologiuliani6/openwrt-sophos-xgs107)、
-  [os-xgs-npu](https://github.com/AbdelmonemAwad/os-xgs-npu)）都是围绕这个分工做的。
+两个系统都是 `admin` / `P@ssw0rd`（`sudo` 要密码）；p3 原厂是 `root` / `openwrt123`。
 
-## 怎么进去
+## 文档（就这 6 篇）
 
-| 目标 | 方法 |
+| | 讲什么 |
 |---|---|
-| x86（`image/` 系统） | `ssh admin@10.234.56.2`（LAN），或 `eth0.100` 从上游拿到的 DHCP 地址；旧手工系统曾用 `192.168.0.50` |
-| NPU（`image/` 系统） | `ssh admin@10.234.56.1`（LAN）或 `192.168.31.x`（WAN 侧 DHCP）；旧手工系统曾用 `192.168.0.66` |
-| x86 控制台 | COM5（RJ45）或 micro-USB，**115200**；`admin` / `P@ssw0rd` |
-| NPU 控制台 | **x86 的 `/dev/ttyS2`，host 侧 115200**（老 `image/` 内核是 2x 分频，才需要 host 57600） |
+| [01 硬件](docs/01-hardware.md) | 两个 SoC、面板口和交换芯片、串口、eMMC/SPI、PCIe 走线 |
+| [02 系统](docs/02-system.md) | 分区表与启动链、两边的 Debian、VLAN/vNTB、模块 |
+| [03 构建](docs/03-build.md) | 镜像怎么来的、内核/DTB/模块、产物清单 |
+| [04 装机](docs/04-install.md) | 维护 U 盘、刷 x86、刷 NPU 的两级阶梯 |
+| [05 运维](docs/05-operations.md) | 服务清单、控制台、开机自检、已知故障 |
+| [06 救砖](docs/06-rescue.md) | ssh+dd → 串口急救 + 面板口 → MCP2210 写 SPI NOR |
 
-> [image/](image/) 构建出来的系统只有 `admin`（`P@ssw0rd`，`sudo` 需要密码），`root` 已
-> `passwd -l` 锁定、sshd 里 `PermitRootLogin no`，所以新镜像上 `ssh root@…` 是进不去的。
-> p3 原厂系统仍是 `root` / `openwrt123`（只在从那槽启动时有效）。
+## 仓库
 
-⚠️ `/dev/ttyS2` **同一时刻只能有一个读者**，两个 `cat` 会把字节流切成乱码。
-现成工具：NPU 控制台用 [tools/on-x86/npu-console.sh](tools/on-x86/npu-console.sh)（**在 x86 上跑**），
-x86 自己的控制台用 [tools/on-pc/x86-console.py](tools/on-pc/x86-console.py)（**在 PC 上跑**）。
-SPI NOR 救砖用 [tools/on-x86/mcp2210-nor.py](tools/on-x86/mcp2210-nor.py)（**在 x86 上跑**，见 [docs/14](docs/14-rescue.md)）。
-
-## 本机与参考机型的差异（很重要）
-
-| 项目 | 参考仓库（XGS 107/136） | **本机 XGS 87** |
-|---|---|---|
-| 面板口 | 8×RJ45 + SFP | **4×RJ45 + SFP**（switch port 1-4、9） |
-| partno | AMDA0200-0004 | **AMDA0200-0001** |
-| 板卡版本 | 1.40 | **07**（BIOS 1906 / 2021-09） |
-| x86 系统盘 | 64 GB SATA | **16 GB eMMC**（SD 控制器，GPT+EFI） |
-| Wi-Fi | QCA988x | **无** |
-
-## 文档怎么读
-
-**只有这一个索引**（原来 `README.md` 的内容并进来了）。
-
-不知道从哪读，就按这五步：**[01 硬件](docs/01-hardware.md)** → **[02 架构](docs/02-architecture.md)**
-→ **[08 网络](docs/08-network.md)** → **[11 运维手册](docs/11-operations.md) §11.0** →
-**[16 待办](docs/16-remaining-work.md)**。
-
-| 我要… | 读 |
+| 目录 | 内容 |
 |---|---|
-| 知道这台机器有什么硬件 | [01 硬件清单](docs/01-hardware.md) |
-| 搞清两颗芯片之间的三条通路 | [02 架构](docs/02-architecture.md) |
-| 看开机每一行、改 U-Boot 环境变量 | [03 启动链](docs/03-boot-chain.md) |
-| 配置面板口、PHY、SFP、MAC | [04 交换机与端口](docs/04-switch.md) |
-| 看分区表、备份、容量 | [05 存储](docs/05-storage.md) |
-| 动 x86 这一侧 | [06 x86 系统](docs/06-x86-system.md) |
-| 动 NPU 这一侧（10G / SPI NOR / EIP197 / 时序） | [07 NPU 系统](docs/07-npu-system.md) |
-| 改 WAN/LAN、加 VLAN、加 NAT | [08 网络](docs/08-network.md) |
-| vNTB 不通 / 想更快 | [09 vNTB](docs/09-vntb.md) |
-| 进不去机器（SSH、串口、波特率），或要现成的串口工具 | [10 进机器的方式](docs/10-console.md) |
-| 重启、复位、换 NPU 的根分区、看 unit 清单 | [11 运维手册](docs/11-operations.md) |
-| 重新构建/发布镜像、构建工具 | [12 镜像与发布](docs/12-images.md) |
-| 用维护 U 盘装系统 | [13 维护 U 盘](docs/13-installer.md) |
-| 机器变砖，救 SPI NOR / BootROM | [14 救砖](docs/14-rescue.md) |
-| 换内核、换模块、风扇 | [15 模块与内核](docs/15-modules-and-kernel.md) |
-| 还剩什么、什么绝对不能做 | [16 待办与红线](docs/16-remaining-work.md) |
-| 改造前的机器、原始测量、被推翻的方案 | [📦 档案](docs/archive.md) |
+| `board/` | 板级 DTS（`cn9130-sophos-xgs87w-sfp10g.dts`）、急救内核 config |
+| `kernel/{x86,npu}/` | 打进镜像的 DKMS 模块（vNTB 那一套 + `clkfix`），每边一个 `install.sh` |
+| `ntb/`、`net/` | 内核补丁：`pci-epf-vntb`、`ntb_hw_epf`、`mv88e6xxx` 端口检查 |
+| `systemd/{common,npu,x86}/` | 开机要跑的东西（脚本一律装到 `/usr/local/sbin/`） |
+| `image/` | rootfs 构建（`build.sh`）、U 盘镜像（`mkdisk.sh`）、包清单、`overlay/` |
+| `installer/` | 维护 U 盘的菜单 + 所有 payload（含急救 initramfs 和串口工具） |
+| `tools/` | `build/` 构建脚本；`on-pc/`、`on-x86/` 是一次性小工具 |
+| `out/` | 构建产物（不入库） |
 
-**约定**：文件名 = 章节号（`09-vntb.md` 里就是 `## 9.x`，所以 `§9.3.5` 靠名字就能定位）；
-每份文档开头有状态行（✅ 实测 / ⚠️ 有条件 / ❌ 不可用 / 📦 档案）；改完文档跑
-`python3 tools/check-docs.py` —— 章节引用和相对链接都必须能解析。
+## 一句话历史
 
-## 代码与产物
-
-| 路径 | 内容 |
-|---|---|
-| [docs/01-hardware.md](docs/01-hardware.md) | 完整硬件清单（x86 / NPU / 外设），含 DMI、PCI、USB、I²C、温度 |
-| [docs/02-architecture.md](docs/02-architecture.md) | 整体架构、三条通路（PCIe 端点 / vNTB / 串口）、电源与复位 |
-| [docs/03-boot-chain.md](docs/03-boot-chain.md) | BootROM → TF-A → U-Boot → Linux，全过程实录与环境变量 |
-| [docs/04-switch.md](docs/04-switch.md) | 88E6193X、端口映射、PHY/LED、SFP、MDIO、`mvswitch` 全部实测 |
-| [docs/05-storage.md](docs/05-storage.md) | eMMC / SPI NOR 分区表、镜像布局、备份与容量规划 |
-| [docs/06-x86-system.md](docs/06-x86-system.md) | x86 Debian 侧：内核、模块、EFI、串口、MCP2210 |
-| [docs/07-npu-system.md](docs/07-npu-system.md) | NPU Debian 侧硬件补齐：SFP+ 10G、SPI NOR/MTD、`fw_printenv`、EIP197、开机时序 |
-| [docs/08-network.md](docs/08-network.md) | **网络设计**：面板口分工、两条 VLAN、WAN/LAN、NAT |
-| [docs/09-vntb.md](docs/09-vntb.md) | **vNTB 一条链路**：吞吐/延迟、故障判据、自愈与手动恢复 |
-| [docs/10-console.md](docs/10-console.md) | 进机器的方式与坑（115200 / 老内核 57600 的来龙去脉） |
-| [docs/11-operations.md](docs/11-operations.md) | **运维手册**：开关机顺序、串口 SysRq 复位、换 NPU 根分区、开机自检 |
-| [docs/12-images.md](docs/12-images.md) | 重新构建/发布镜像：源码 vs 产物、占位符、发布前检查、CI |
-| [docs/13-installer.md](docs/13-installer.md) | 用维护 U 盘装系统（含从原厂 SFOS 换过来的完整路径） |
-| [docs/14-rescue.md](docs/14-rescue.md) | **MCP2210 SPI NOR 救砖工具**：GP0/3/5 hold/release、整片双遍 dump、只写 env |
-| [docs/15-modules-and-kernel.md](docs/15-modules-and-kernel.md) | 换模块 vs 重编内核、DKMS 组织、失联风险、风扇归属 |
-| [docs/16-remaining-work.md](docs/16-remaining-work.md) | **唯一的待办清单**：还剩什么、什么不用做、维护红线 |
-| [docs/archive.md](docs/archive.md) | 📦 档案：原厂 p3 槽、仍有效的原始测量、被推翻的两个方案 |
-| [systemd/](systemd/) | 设备上真正在跑的全部 unit 和脚本，按 **`npu/` / `x86/`** 分目录 |
-| [kernel/npu/](kernel/npu/) | NPU 侧 out-of-tree 模块（DKMS 包：vNTB、`spi-orion`、`clkfix`） |
-| [kernel/x86/](kernel/x86/) | x86 侧 out-of-tree 模块（DKMS 包：`ntb_*` 四个） |
-| [image/](image/) | **最小化 Debian 构建**：`mmdebstrap` 脚本、软件包清单、x86 磁盘镜像、GitHub Actions |
-| [installer/](installer/) | 维护 U 盘：把 `debian-x86.img.zst` / `debian-npu.tar.zst` 写回机器的菜单脚本 |
-| [.github/workflows/](.github/workflows/) | CI：一个 `image.yml`，手动触发，`target=x86/npu/usb/all` 选产物，各自跑在原生 runner 上 |
-| [ntb/](ntb/) | vNTB 驱动补丁（4 个 `.patch`），对照 pristine 源码生成 |
-| [net/patches/](net/patches/) | mv88e6xxx 的两个上游 TCAM 修复 |
-| [tools/](tools/) | 脚本按**运行位置**分目录：`build/`（PC 上交叉编译）、`on-x86/`、`on-pc/` |
-| [reference/](reference/) | 设备树 DTS、内核 config、U-Boot/env 镜像、脱敏后的完整信息 dump |
-
-## 关键事实速查
-
-| | |
-|---|---|
-| 型号 | Sophos XGS 87，DMI `XGS 87r1`，板卡 rev 07，BIOS 1906 |
-| NPU SoC | Marvell CN9130（AP807-B0 + CP115-A0），4×A72@1.6G，2 GB DDR |
-| NPU 系统 | p2 **Debian 13.8 / 6.12.117+deb13-arm64**（2026-11-25 实测启动）；p3 原厂 Buildroot 4.14 完好（档案见 [docs/archive.md](docs/archive.md)） |
-| 交换机 | Marvell 88E6193X，MDIO addr 2，product 193，11 口（本机面板 4×RJ45 + 1×SFP） |
-| x86 | AMD RX-216TD（2C），2×2 GB DDR4-1600，16 GB eMMC，Debian **13.8**；`lean` 镜像自带 **6.12.117** 且内核被 `apt-mark hold`（**镜像里没有 dkms**，要换内核先 `apt-mark unhold linux-image-amd64` 再跑 `/opt/xgs87/kernel/x86/install.sh`） |
-| x86 PCIe | NPU 端点 `1957:0809`（vNTB function），Gen3 ×2 |
-| NPU console | x86 `/dev/ttyS2`，host 侧 **115200**（老 `image/` 内核才要 57600）；p3 原厂 `root` / `openwrt123`，`image/` 产出的是 `admin` / `P@ssw0rd` |
-| x86 console | RJ45 / micro-USB 二选一，同一个 ttyS0，**115200** |
-| 主机名 | x86 = **`xgs-debian-x86`**，NPU = **`xgs-debian-npu`**（`image/` 产出；p3 原厂仍是 `marvell`） |
-| DNS | 默认 **`1.1.1.1` / `8.8.8.8`**（NPU 写 `/etc/resolv.conf.head`，DHCP 下发的服务器留作后备；x86 用 `resolved.conf.d` + WAN 链路 `UseDNS=no`） |
-| 存储 | NPU：4 MB SPI NOR（U-Boot+env）+ 7.28 GiB eMMC；x86：16 GB eMMC |
-| MAC | VPD 的 7 个连续地址：p1–p4 = base+0..3，sfp = base+4，end0/ethaddr = base+5（docs/04 §4.6） |
-
-## 免责声明
-
-- 数据是实机采集，可能因批次/固件版本不同而变化；关键结论都标了"实测"。
-- 不含 Sophos 专有二进制；`reference/mtd/npu-mtd0-uboot.bin.gz` 是 GPLv2 的 U-Boot 镜像，可自由分发。
-- 拆机/改固件有风险，自行承担。
+原厂 SPX 一路（BIOS → x86 SFOS + NPU 加速）换成了：BIOS → GRUB → x86 Debian，和
+U-Boot → p2 → NPU Debian。PCIe 上跑的是 Marvell 的 vNTB（`1957:0809`），内核模块和补丁
+都在本仓库里，不用外部源码树也能重建镜像。

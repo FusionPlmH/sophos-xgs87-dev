@@ -185,7 +185,7 @@ sniff() {
 # 头注释里"FIFREEZE 就安全了"的说法是错的：ext4 不支持在挂载状态下被整体覆盖，
 # 冻结只是把写者挡住，改不了"这就是同一个文件系统"这个事实。
 # 唯一可靠的前提是**写的时候 p2 没有挂载**：起急救 initramfs（根在内存里），
-# 或者从 p3 原厂系统写。流程见 docs/14-rescue.md。
+# 或者从 p3 原厂系统写。流程见 docs/06-rescue.md。
 do_install() {
 	cat >&2 <<'EOF'
 xgs87-reflash: install 已被禁用（2026-11-25 事故之后）
@@ -196,7 +196,7 @@ xgs87-reflash: install 已被禁用（2026-11-25 事故之后）
      initramfs），否则 installer/payload/npu-sshdd.sh 会直接拒绝。
 
   B. 最后手段（p2 起不来、x86 又只剩串口）：RAM 急救 initramfs + 面板口，
-     见 docs/14-rescue.md 的「最后手段」一节。
+     见 docs/06-rescue.md 的「最后手段」一节。
 
 剩下的子命令都是只读或低风险：status / snapshot / thaw / factory / debian
 EOF

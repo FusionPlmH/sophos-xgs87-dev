@@ -80,7 +80,7 @@ macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdi
 | 办法 | 数据通道 | NPU 需要活着到什么程度 | 190 MB 大约要 | 适合 |
 |---|---|---|---|---|
 | **ssh + dd**（菜单 `2` 第 1 步） | vNTB，TCP | 只要 sshd + busybox `dd` | 1–2 分钟 | ✅ **首选，也是唯一实战验证过的**：整块 ext4 镜像灌进 p2，装完回读校验 |
-| **急救 initramfs + 面板口**（菜单 `2` 第 2 步） | 串口推 15.9 MB → NPU 在内存里跑急救系统 → 面板口 1 Gb/s 从 PC 拉整盘 | U-Boot 还在即可 | 串口约 27 分钟 + 写盘 1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，**2026-11-25 实战把一台 p2 救回来过**，见 `docs/14-rescue.md` |
+| **急救 initramfs + 面板口**（菜单 `2` 第 2 步） | 串口推 15.9 MB → NPU 在内存里跑急救系统 → 面板口 1 Gb/s 从 PC 拉整盘 | U-Boot 还在即可 | 串口约 27 分钟 + 写盘 1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，**2026-11-25 实战把一台 p2 救回来过**，见 `docs/06-rescue.md` |
 | U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
 | ~~U-Boot `tftpboot`~~ | ~~网口~~ | — | — | ❌ **已证伪并删除**：2026-11-25 实测 U-Boot 里 ARP/TFTP 完全不通（面板口 link/VLAN/PVID 全对也没用），脚本已从仓库移除 |
 | U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
@@ -127,7 +127,7 @@ TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 �
 串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。
 要提速就改 U-Boot 的 `baudrate`：**在 NPU 的 Linux 里用 `fw_setenv baudrate 460800`**（它会先擦后写），
 x86 侧相应把 `BAUD=460800`。别在 U-Boot 提示符下反复 `saveenv` —— 那颗 NOR 的 env 写入不先擦除，
-连续写会把 env 写成半截（[docs/14](../docs/14-rescue.md) §14.7）。
+连续写会把 env 写成半截（[docs/14](../docs/06-rescue.md) §14.7）。
 （U-Boot 自己配置这个速率；老 image 内核的 2x 分频问题不适用于 U-Boot。）
 
 ## 备份区（`/media/xgs87-bak`）
@@ -155,7 +155,7 @@ U 盘和镜像一样大（没有剩余空间）时它只会打一行提示，菜
 
 SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先备份（SPI 的 `mtd0`/`mtd1` 和 eMMC），
 再从 U 盘启动重装。SFOS 高级 shell、备份、串口波特率的细节见
-[docs/13-installer.md](../docs/13-installer.md)。
+[docs/04-install.md](../docs/04-install.md)。
 
 ## 自己构建
 
