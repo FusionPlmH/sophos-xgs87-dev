@@ -1,14 +1,19 @@
 #!/bin/sh
 # NPU 急救 initramfs 的 /init。
 #
-# 目标：只靠"U-Boot + 串口推十几 MB"，把 NPU 变成一个可以从 x86 拉整份 rootfs
-# 的靶子。所以这里只做三件事：
-#   1. 把 vNTB 端点拉起来（PCIe 一通，x86 那边就又能说话了）
-#   2. 给裸 eth0 配 10.234.56.1/24（急救会话用不打扰任何 VLAN 配置）
-#   3. 从 x86 把 p2 的整盘影像 wget 下来 dd 进去，然后重启
+# 目标：只靠"U-Boot + 串口推十几 MB"，把 NPU 变成一个能从外面拉整份 rootfs 的靶子。
+# 所以这里只做三件事：
+#   1. 把网络拉起来 —— **两条都试**：
+#      a) 面板网口：装上 mvpp2 + DSA(mv88e6xxx)，p1 会和 vNTB 的 eth0 桥在一起，
+#         这样 PC 插在面板口上就能直接喂镜像，不需要 x86 参与。
+#      b) vNTB：PCIe 端点起来之后 eth0 就有了，x86 那边又能说话。
+#      两条进门以后在同一个 br0 里，谁通都能用。
+#   2. 给 br0 配一个地址（默认 10.234.56.11/24，刻意避开 x86 的 .2）。
+#   3. 从 rescue.url 把 p2 的整盘影像 wget 下来 dd 进去，可选 sha256 校验，重启。
 #
-# 不用 NBD、不用 ssh、不用 zstd —— busybox 的 wget/dd 就够了，initramfs 也就
-# 能压到十几 MB。所有地址/路径都可以用内核 cmdline 覆盖（rescue.url= 等）。
+# 不用 NBD、不用 ssh、不用 zstd —— busybox 的 wget/dd/sha256sum 就够了，
+# initramfs 因此能压到十几 MB。所有参数都可以用内核 cmdline 覆盖：
+#   rescue.url=… rescue.url2=… rescue.part=… rescue.ip=… rescue.sha256=…
 set -u
 
 /bin/busybox --install -s /bin 2>/dev/null
@@ -22,23 +27,47 @@ mount -t devtmpfs none /dev   2>/dev/null
 mkdir -p /sys/kernel/config /run
 mount -t configfs none /sys/kernel/config 2>/dev/null
 
-# 内核 cmdline 覆盖：rescue.url=… rescue.part=… rescue.ip=…（U-Boot 里 setenv bootargs）
 URL=$(sed -n 's/.*rescue\.url=\([^ ]*\).*/\1/p' /proc/cmdline)
+URL2=$(sed -n 's/.*rescue\.url2=\([^ ]*\).*/\1/p' /proc/cmdline)
 PART=$(sed -n 's/.*rescue\.part=\([^ ]*\).*/\1/p' /proc/cmdline)
 IP=$(sed -n 's/.*rescue\.ip=\([^ ]*\).*/\1/p' /proc/cmdline)
-URL=${URL:-http://10.234.56.2:8080/p2.img}
+SHA=$(sed -n 's/.*rescue\.sha256=\([^ ]*\).*/\1/p' /proc/cmdline)
+URL=${URL:-http://10.234.56.10:8080/p2.img}
 PART=${PART:-/dev/mmcblk0p2}
-IP=${IP:-10.234.56.1/24}
+IP=${IP:-10.234.56.11/24}
 
-# ---- 1. vNTB 端点（和 /usr/local/sbin/xgs-vntb.sh 同样的顺序）----
-modprobe configfs 2>/dev/null
+modprobe_() { modprobe "$1" 2>/dev/null || echo "rescue: modprobe $1 失败"; }
+
+# ---- 0. eMMC：没有它 /dev/mmcblk0p2 根本不存在 ----
+# Debian 的 arm64 内核把这些编译成模块，而 initramfs 里没有 udev 帮你按需加载，
+# 所以必须手点。顺序：sdhci（控制器核心）→ sdhci-of-dwcmshc（这颗 SoC 的粘合层）
+# → mmc_block（块设备层，没有它出不来 /dev/mmcblk*）。
+echo "rescue: 载入 eMMC 驱动"
+for m in sdhci sdhci-of-dwcmshc mmc_block; do
+	modprobe_ "$m"
+done
+sleep 1
+echo "rescue: 块设备: $(ls /dev/mmcblk* 2>/dev/null | tr '\n' ' ')"
+
+# ---- 1a. 面板网口：mvpp2（CPU 口 end0）+ DSA 交换机（p1..p8）----
+# 顺序有讲究：libphy 先来，mdio/mvmdio 才能探到交换机的 MDIO 总线，
+# mv88e6xxx 绑上之后 DSA 才会生成 p1..p8。
+echo "rescue: 载入面板网口驱动"
+for m in libphy fixed_phy mdio_devres mvmdio phy-mvebu-cp110-comphy mvpp2 \
+	dsa_core tag_dsa mv88e6xxx bridge; do
+	modprobe_ "$m"
+done
+
+# ---- 1b. vNTB 端点（和 /usr/local/sbin/xgs-vntb.sh 同样的顺序）----
+echo "rescue: 拉起 vNTB 端点"
+modprobe_ configfs
 for m in pci_ep_cfs pcie_dw_plat ntb_core pci_epf_vntb; do
-	modprobe "$m" 2>/dev/null || echo "rescue: modprobe $m 失败"
+	modprobe_ "$m"
 done
 
 EPC=f2600000.pcie
 i=0
-while [ ! -d "/sys/class/pci_epc/$EPC" ] && [ "$i" -lt 30 ]; do
+while [ ! -d "/sys/class/pci_epc/$EPC" ] && [ "$i" -lt 20 ]; do
 	i=$((i + 1)); sleep 1
 done
 if [ -d "/sys/class/pci_epc/$EPC" ]; then
@@ -62,39 +91,71 @@ if [ -d "/sys/class/pci_epc/$EPC" ]; then
 fi
 # ntb_hw_epf is the *host* side driver and does not belong on the NPU.
 for m in ntb_core ntb_transport ntb_netdev; do
-	modprobe "$m" 2>/dev/null || echo "rescue: modprobe $m 失败"
+	modprobe_ "$m"
 done
 
-# ---- 2. 网络：裸 eth0（急救不碰 VLAN）----
+# ---- 2. 网络：vNTB 的 eth0 和面板 p1 桥在一起 ----
 i=0
-while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 30 ]; do
+while [ ! -e /sys/class/net/eth0 ] && [ "$i" -lt 20 ]; do
 	i=$((i + 1)); sleep 1
 done
-if [ -e /sys/class/net/eth0 ]; then
-	ip link set eth0 up
-	ip addr add "$IP" dev eth0 2>/dev/null
-	echo "rescue: eth0 = $IP"
-else
-	echo "rescue: 没有 eth0（vNTB 没起来）—— 先别写盘"
-fi
+i=0
+while [ ! -e /sys/class/net/p1 ] && [ "$i" -lt 20 ]; do
+	i=$((i + 1)); sleep 1
+done
+echo "rescue: 网络设备: $(ls /sys/class/net | tr '\n' ' ')"
+
+ip link add br0 type bridge 2>/dev/null && echo "rescue: br0 建好了"
+for d in end0 p1 p2 p3 p4 eth0 sfp; do
+	[ -e "/sys/class/net/$d" ] || continue
+	ip link set "$d" up 2>/dev/null
+done
+for d in p1 p2 p3 p4 eth0; do
+	[ -e "/sys/class/net/$d" ] || continue
+	ip link set "$d" master br0 2>/dev/null && echo "rescue: $d -> br0"
+done
+ip link set br0 up 2>/dev/null
+ip addr add "$IP" dev br0 2>/dev/null && echo "rescue: br0 = $IP"
+ip -br a 2>/dev/null
 
 # ---- 3. 拉影像 + 写盘 ----
 [ -b "$PART" ] || { echo "rescue: $PART 不存在"; exec sh; }
-echo "rescue: $URL -> $PART"
-# Do not rely on a pipe's exit status: dd can return 0 after a truncated
-# download, which would reboot with a half-written p2.  A subshell records
-# wget's own status without buffering the image (tmpfs cannot hold 1.5 GB).
-RC=/tmp/xgs87-wget.rc
-rm -f "$RC"
-( wget -q -O - "$URL"; echo $? >"$RC" ) | dd of="$PART" bs=1M 2>/dev/null
-dd_rc=$?
-wget_rc=$(cat "$RC" 2>/dev/null || echo 1)
-rm -f "$RC"
-if [ "$wget_rc" = 0 ] && [ "$dd_rc" = 0 ]; then
+
+fetch() {
+	url=$1
+	echo "rescue: 试 $url"
+	RC=/tmp/wget.rc
+	rm -f "$RC"
+	# 别信管道的退出码：dd 在下载被截断时也可能返回 0。
+	( wget -q -O - "$url"; echo $? >"$RC" ) | dd of="$PART" bs=1M 2>/dev/null
+	dd_rc=$?
+	wget_rc=$(cat "$RC" 2>/dev/null || echo 1)
+	rm -f "$RC"
+	echo "rescue: wget rc=$wget_rc dd rc=$dd_rc"
+	[ "$wget_rc" = 0 ] && [ "$dd_rc" = 0 ]
+}
+
+wrote=0
+if fetch "$URL"; then
+	wrote=1
+elif [ -n "$URL2" ] && fetch "$URL2"; then
+	wrote=1
+fi
+
+if [ "$wrote" = 1 ]; then
 	sync
+	if [ -n "$SHA" ]; then
+		got=$(dd if="$PART" bs=1M 2>/dev/null | sha256sum | cut -d' ' -f1)
+		echo "rescue: p2 sha256 $got / 期望 $SHA"
+		if [ "$got" != "$SHA" ]; then
+			echo "rescue: 校验不过，不重启，给你一个 shell"
+			exec sh
+		fi
+	fi
 	echo "rescue: 写完了，重启"
 	sleep 2
 	reboot -f
 fi
-echo "rescue: 下载/写入失败（wget rc=$wget_rc dd rc=$dd_rc），给你一个 shell"
+
+echo "rescue: 下载/写入失败 —— 检查 br0 的地址和 HTTP 服务；给你一个 shell"
 exec sh

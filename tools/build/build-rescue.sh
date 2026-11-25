@@ -70,10 +70,13 @@ fi
 [ -d "$SRC_MODS" ] || { echo "找不到 $SRC_MODS" >&2; exit 1; }
 echo "   kernel $KVER"
 
-# 急救要用的模块（EP + ntb 必须；mmc 用来写 eMMC）。急救全程用裸 eth0，
-# 不碰 VLAN，所以 8021q/vlan 不用带。
+# 急救要用的模块：EP + ntb 必须；mmc 用来写 eMMC；面板口那一串
+# （mvpp2 + DSA + mv88e6xxx + bridge）是 2026-11-25 加的 —— 有了它，急救系统
+# 可以直接从插在面板口上的 PC 拉镜像，不需要 x86 参与。
 KEEP="pci_ep_cfs pcie_dw_plat pci_epf_vntb ntb_core ntb_transport ntb_netdev
-      sdhci sdhci-of-dwcmshc mmc_block dw_mmc"
+      sdhci sdhci-of-dwcmshc mmc_block dw_mmc
+      libphy fixed_phy mdio_devres mvmdio phy-mvebu-cp110-comphy mvpp2
+      dsa_core tag_dsa mv88e6xxx bridge sfp"
 mkdir -p "$R/lib/modules/$KVER"
 for m in $KEEP; do
 	f=$(find "$SRC_MODS" -name "$m.ko*" | head -1)
@@ -104,6 +107,10 @@ BB=$WORK/usr/bin/busybox
 [ -f "$BB" ] || { echo "解不出 busybox" >&2; exit 1; }
 cp "$BB" "$R/bin/busybox"
 chmod 755 "$R/bin/busybox"
+# /init 的第一行是 `#!/bin/sh` —— 内核 exec /init 时先要能打开 /bin/sh。
+# 少了这个符号链接，内核会一路退到 /sbin/init 然后 panic
+# "No working init found"，而 initramfs 显然是好的，极难看出问题在哪。
+ln -sf busybox "$R/bin/sh"
 echo "   busybox $(du -h "$R/bin/busybox" | cut -f1)"
 
 echo "== 3/6 装 /init"

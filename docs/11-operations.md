@@ -339,6 +339,20 @@ vNTB（PCIe）。vNTB 只通到 x86，而 x86 上没有那份镜像（要塞进�
 中途中断等于白传；而且它给每行打的 PS2 提示会让读的人卡在 ~1 KB/s，没人排空就是静默丢
 字节。二进制过串口只走 YMODEM：有 CRC16、有重传、结尾有 `## Total Size` 可以逐字节对。
 
+#### 这一步踩死过的三个坑（都会让"看起来全都对"的启动直接失败）
+
+1. **initramfs 里没有 `/bin/sh`** → 内核 exec `/init`（她第一行是 `#!/bin/sh`）时打不开
+   解释器，于是安静地退到 `/sbin/init`、`/etc/init`…最后
+   `Kernel panic - not syncing: No working init found`。日志里**看不到** `Run /init as
+   init process` 这一行就是它 —— 包本身好好的，只是少了那个符号链接。`build-rescue.sh`
+   现在会 `ln -sf busybox bin/sh`。
+2. **急救 init 没有 `modprobe sdhci / sdhci-of-dwcmshc / mmc_block`** →
+   `/dev/mmcblk0p2` 压根不存在，`[ -b $PART ]` 直接落到救急 shell。Debian 的 arm64 内核
+   把这些编成模块，而 initramfs 里没有 udev 帮你按需加载。
+3. **透传进程会无限等下去** → NPU 一旦 panic 就不再读串口，x86 的 `tcsetattr(TCSADRAIN)`
+   和 write 就永远不返回，**x86 的 console 彻底哑掉**（打什么都是石沉大海），只能拔电。
+   `relay.py` 现在两个方向都设了 5 s 上限并丢字节继续，还挂了 SIGHUP/SIGTERM 处理器。
+
 ## 11.3 开机之后先看这五行
 
 ```sh
