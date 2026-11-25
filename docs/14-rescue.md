@@ -1,4 +1,4 @@
-# 23 · MCP2210 SPI NOR 救砖工具
+# 14 · 救砖：MCP2210 SPI NOR / U-Boot / 急救 initramfs
 
 > 🏷 **状态（2026-11-25 复核）**：✅ **实机验证**：x86 的 `/dev/hidraw0`（MCP2210，04d8:00de）能正确读到
 > NPU SPI NOR 的 `C2 20 16`（MX25L3205D）、SR=0x00，能读出并校验 64 KiB U-Boot env。

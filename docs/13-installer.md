@@ -1,4 +1,10 @@
-# 22 — 从原厂 SFOS 换成这套 Debian
+# 13 · 维护 U 盘：装系统（含从原厂 SFOS 换过来）
+
+> 🏷 **状态（2026-11-25 复核）**：✅ 现机两台都是用这套流程装出来的。
+> 安装阶梯现在只有三级：**ssh+dd → U-Boot+tftp → 急救 initramfs**（`ssh+tar` 与 NBD 两级
+> 已删除，它们永远不可能成功，见 [11](11-operations.md) §11.2.1）。
+> 📦 维护盘本身怎么造在 [installer/mkusb.sh](../installer/mkusb.sh) 与
+> [image/release-usb.md](../image/release-usb.md)。
 
 这台机器的两个系统都能换，但入口不一样：**x86 只能从外部介质启动后整盘重写**，
 **NPU 可以从旁边推过去**。原厂 SFOS 里没有第二个可写的系统盘，所以第一次换系统

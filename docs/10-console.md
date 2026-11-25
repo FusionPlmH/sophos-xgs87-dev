@@ -1,4 +1,4 @@
-# 08 · 进机器的方式（Console / SSH）
+# 10 · 进机器的方式（Console / SSH）
 
 > 🏷 **状态（2026-11-25 复核）**：✅ **全部实测**：micro-USB 也是 115200 不是 38400、NPU 是 Debian 不是 Buildroot。
 > **ttyS2 的波特率**：TF-A / U-Boot / p3 / 当前 Debian 都是 115200；老 `image/` 系统的 16550 是 2x

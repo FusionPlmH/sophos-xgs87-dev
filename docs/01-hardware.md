@@ -92,7 +92,7 @@ Bus 003  xHCI 4 ports (USB 3.0)
 | SoC | **Marvell CN9130**（AP807-B0 quad A72 + CP115-A0），CPU 1.6 GHz |
 | 内存 | 2 GiB DDR（DDR 1200 MHz），可用 1.53 GiB（256 MiB CMA 保留） |
 | Boot Flash | SPI NOR **mx25l3205d** 4 MiB（U-Boot 4032 KiB + env 64 KiB） |
-| 主存储 | eMMC **H8G4a2** 7.28 GiB（4 分区，见 07） |
+| 主存储 | eMMC **H8G4a2** 7.28 GiB（4 分区，见 [05](05-storage.md)） |
 | 以太网 | `mvpp2` eth0，10GBase-KR，Comphy lane 4 = SFI0 10.3125 Gbps |
 | 交换机 | **88E6193X**，MDIO addr 2（`mdio@12a200`） |
 | USB | 2× xHCI（`f2500000`, `f2510000`）+ UTMI PHY0/1，VBUS 由 CP GPIO1.9 / GPIO2.21 控制 |
