@@ -218,6 +218,22 @@ NPU 保持开机**，由 BIOS 在 POST 阶段重新训练 PCIe 链路。
 NPU 自己 `eth0` 有 MAC 但 `NO-CARRIER`，而 x86 上 `ip a` 只有 `lo`（x86 本身没有
 物理网口，它的唯一网口就是 vNTB 的 `eth0`），rescan 也不产生设备 → 需要重启 x86。
 
+### 20.7.2 「`lspci` 有设备、`eth0` 没有」的第三种可能：没人绑它
+
+`/sys/bus/ntb/devices/0000:03:00.0` 只有在 `ntb_hw_epf` **绑定**了那个 PCI function
+之后才存在。已经加载的驱动会在设备出现的瞬间自动绑上，所以正常情况是免费的；但如果
+设备出现时模块还没加载（模块索引过期、服务被重启过、DKMS 模块是后来才装的），设备
+就会一直挂在那里没人管 —— 而此时 `lspci -nn -s 03:00.0` 看起来完全正常，正是最容易
+把人带偏的那种状态。
+
+所以 `xgs-ntb-up.sh` 现在会在等待超时前多做一步：设备在、但没有 `driver` 链接，就
+显式 `echo 0000:03:00.0 > /sys/bus/pci/drivers/ntb_hw_epf/bind`，失败时把
+`dmesg | grep -i ntb` 的尾巴打出来。超时报错里也会写明设备到底是
+`absent` 还是 `present, driver: ...`，下一次只凭这一行就能分清 20.7.1 和 20.7.2。
+
+顺带补了 `MODULE_DEVICE_TABLE(pci, ntb_epf_pci_tbl)`：没有它模块不导出 modalias，
+`modules.alias` 里查不到 `v00001957d00000809`，设备热插拔时 udev 也就无法自动加载。
+
 ## 20.8 重启的真实代价（一次完整实测）
 
 x86 侧已经做到干净关闭（`/dev/mmcblk0p2: clean`，不再有 journal recovery），启动 38 → 26 秒：

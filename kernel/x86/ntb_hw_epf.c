@@ -783,6 +783,7 @@ static const struct pci_device_id ntb_epf_pci_tbl[] = {
 	},
 	{ },
 };
+MODULE_DEVICE_TABLE(pci, ntb_epf_pci_tbl);
 
 static struct pci_driver ntb_epf_pci_driver = {
 	.name		= KBUILD_MODNAME,

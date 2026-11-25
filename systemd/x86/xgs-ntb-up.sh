@@ -38,6 +38,7 @@ LAN_VID=${LAN_VID:-200}
 WAIT=${WAIT:-180}
 NTB_DEV=/sys/bus/ntb/devices/0000:03:00.0
 PCI_DEV=/sys/bus/pci/devices/0000:03:00.0
+BDF=0000:03:00.0
 
 modprobe ntb_hw_epf 2>/dev/null
 modprobe ntb_transport transport_mtu=2048 2>/dev/null
@@ -64,12 +65,49 @@ if [ "$FORCE_RESCAN" = 1 ] && [ -e "$PCI_DEV" ]; then
 	done
 fi
 
+# The ntb device node only exists once ntb_hw_epf has *bound* the PCI
+# function, and a driver that was already loaded binds as soon as the device
+# is added -- so this normally does nothing.  It matters when the module was
+# not loaded at the moment the function appeared (module index stale, service
+# restarted after the fact, DKMS module installed later): the device sits
+# there with no driver and nothing ever picks it up.  Meanwhile a user looking
+# at `lspci` sees a perfectly normal endpoint, which is exactly the confusing
+# "03:00.0 在，eth0 没有" state.
+if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
+	bound=$(readlink -f "$PCI_DEV/driver" 2>/dev/null || true)
+	bound=${bound##*/}
+	if [ -n "$bound" ] && [ -e "$PCI_DEV/driver" ]; then
+		echo "xgs-ntb: $PCI_DEV is bound to $bound, not to ntb_hw_epf" >&2
+	else
+		echo "xgs-ntb: $PCI_DEV is enumerated with no driver; binding ntb_hw_epf" >&2
+		if echo "$BDF" > /sys/bus/pci/drivers/ntb_hw_epf/bind 2>/dev/null; then
+			i=0
+			while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 15 ]; do
+				i=$((i + 1))
+				sleep 1
+			done
+		else
+			echo "xgs-ntb: bind failed; the driver said:" >&2
+			dmesg | grep -iE 'ntb|0000:03:00' | tail -10 >&2 || true
+		fi
+	fi
+fi
+
 if [ ! -e "$NTB_DEV" ]; then
+	if [ -e "$PCI_DEV" ]; then
+		bound=$(readlink -f "$PCI_DEV/driver" 2>/dev/null || true)
+		pci_state="present, driver: ${bound##*/}"
+	else
+		pci_state="absent -- the host never enumerated the endpoint"
+	fi
 	cat >&2 <<EOF
 xgs-ntb: the vNTB device did not appear within ${WAIT}s.
+  $PCI_DEV: $pci_state
   - If the NPU is still booting (or stopped in U-Boot), leave it alone.
   - Once the NPU is fully up, run:
         sudo $0 --force-rescan
+  - If rescan does not bring the device back either, the link was never
+    trained: reboot this machine with the NPU left running.
   - Do NOT run remove/rescan in a loop: it resets the NPU's PCIe link and
     prevents it from ever finishing its own boot.
 EOF
