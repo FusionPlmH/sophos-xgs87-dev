@@ -116,24 +116,25 @@ IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -b
 
 ## 急救包（NPU 起不来、也没有 USB 网卡时）
 
-`/opt/xgs87/payload/xgs87-rescue.tar.zst`，由 `tools/build/build-rescue.sh` 从 `debian-npu.tar.zst`
-里就地组装（不需要交叉编译）：
+`/opt/xgs87/payload/xgs87-rescue.tar.zst`，由 `tools/build/build-rescue.sh` 组装。
+CI 里打的那一份用的是 Debian 内核（CI 不编内核），本地用自编精简内核能小到 2.1 MB：
 
-| 内容 | 大小 | 为什么需要 |
-|---|---|---|
-| `Image.gz` | **13.7 MB** | NPU 的内核（37.7 MB 的 Image 压过），U-Boot 用 `unzip` 解开 |
-| `initramfs.gz` | **1.84 MB** | 静态 busybox（`wget`/`dd`/`ip`/`modprobe`）+ 9 个模块（EP、ntb、mmc、vlan）+ `/init` |
-| `cn9130-…dtb` | 21 KB | 板级设备树 |
-| 合计 | **≈15 MB** | 串口推得动 |
+| 内容 | CI（Debian 内核） | 本地（精简内核） | 为什么需要 |
+|---|---|---|---|
+| `Image.lzma` | **9.8 MB** | **1.63 MB** | NPU 的内核，U-Boot 用 `lzmadec` 解（`unzip` 只认 gzip） |
+| `initramfs.xz` | **0.47 MB** | **0.47 MB** | 裁剪过的静态 busybox（52 个 applet）+ `/init`；内核自己解 xz |
+| `cn9130-…dtb` | 21 KB | 21 KB | 板级设备树 |
+| 合计 | **≈10.9 MB** | **≈2.1 MB** | 串口 9.8 KiB/s 推 19 / 3.6 分钟 |
 
-`/init` 只做三件事：拉起 vNTB 端点 → 给裸 `eth0` 配 `10.234.56.1/24` → 从 x86
-`wget` 整盘影像并 `dd` 到 `p2`，然后 `reboot -f`。
+`/init` 只做三件事：找网口（面板口 p1/p2 或 vNTB 的 `eth0`）→ 配地址 → 从 HTTP
+`wget` 整盘影像并 `dd` 到 `p2`，然后 sysrq-b 硬重启。
 
 **为什么不用 NBD/TFTP 做 initramfs**：那要把 `nbd-server`（glibc + 依赖，约 4 MB）或
-TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 —— 1.8 MB vs 6 MB，
+TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 —— 0.47 MB vs 6 MB，
 而且 HTTP 比 TFTP 好传大文件（能续、能看到进度）。
 
-串口耗时：15 MB 在 **115200 ≈ 24 分钟**，`BAUD=460800` 时 **≈6 分钟**。
+串口耗时：10.9 MB（CI 的 Debian 内核版）在 115200 ≈ 19 分钟，`BAUD=460800` 时 **≈5 分钟**；
+本地精简内核版只有 2.1 MB，115200 就够（3.6 分钟）。
 要提速就改 U-Boot 的 `baudrate`：**在 NPU 的 Linux 里用 `fw_setenv baudrate 460800`**（它会先擦后写），
 x86 侧相应把 `BAUD=460800`。别在 U-Boot 提示符下反复 `saveenv` —— 那颗 NOR 的 env 写入不先擦除，
 连续写会把 env 写成半截（[docs/14](../docs/06-rescue.md) §14.7）。

@@ -17,8 +17,8 @@
 #
 # 这台机器没有显示接口，菜单跑在 /dev/ttyS0（RJ45 / micro-USB 那个 115200 控制台）。
 #
-# --rescue 可选：tools/build/build-rescue.sh 产出的小急救包（Image.gz +
-# initramfs.gz，约 15 MB）。NPU 起不来、也没有 USB 网卡做物理旁路时，菜单 2 的
+# --rescue 可选：tools/build/build-rescue.sh 产出的小急救包（Image.lzma +
+# initramfs.xz，约 2.1 MB）。NPU 起不来、也没有 USB 网卡做物理旁路时，菜单 2 的
 # 最后一级会把这段走串口推进 U-Boot，起来后由 x86 喂整盘影像。
 set -eu
 

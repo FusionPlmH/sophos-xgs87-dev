@@ -157,10 +157,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y zstd dosfstools fdisk mtools e2fsprogs \
-            binutils cpio kmod curl gzip
+            binutils cpio kmod curl gzip xz-utils bzip2 file \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
+      - name: Build the pruned rescue busybox
+        # 52 个 applet 的静态 busybox：1.19 MB，而 Debian 的 busybox-static 是
+        # 1.98 MB / ~390 个。少了这一步 build-rescue.sh 会退回 Debian 那个（能用，
+        # initramfs 白胖 0.4 MB）。
+        run: |
+          ./tools/build/build-rescue-busybox.sh
+          ls -l out/busybox-rescue
 
       - name: Build the NPU rescue bundle
-        # 15 MB 的 Image.gz + initramfs.gz：NPU 起不来又没有 USB 网卡时的最后一级，
+        # Image.lzma + initramfs.xz + DTB：NPU 起不来又没有 USB 网卡时的最后一级，
         # 走串口推进 U-Boot，起来把 vNTB 拉通再让 x86 喂整盘。
         run: |
           sudo bash ./tools/build/build-rescue.sh \

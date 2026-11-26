@@ -78,6 +78,12 @@ hard_reboot() {
 # rescue.oneshot=<dev>:<4K-block> —— "只启动一次"入口的自毁开关，也是急救系统
 # 到底有没有跑起来的铁证（没有控制台的机器上就靠它）。放在最前面：只要 /init
 # 被执行到，这个扇区就会被清零，之后的 U-Boot booti 一定失败、回落到正常系统。
+#
+# ⚠ 指向的**必须是 DTB**，不要指向 Image.lzma。2026-11-26 踩过：把内核压缩包的头
+# 4 KiB 清零之后，U-Boot 用 `lzmadec` 去解一段坏流，outSize 由头部里的 8 字节给出
+# （清零后正好是 0），虽然这次没造成破坏，但"拿坏数据去解压"本身就不该出现在救砖
+# 路径里。DTB 是死的：`booti` 的 fdt_check_header() 一眼就否掉 → 直接回落，
+# 不解压、不越界写。
 if [ -n "$ONESHOT" ]; then
 	echo "rescue: oneshot 清除 ${ONESHOT%%:*} 块 ${ONESHOT##*:}"
 	dd if=/dev/zero of="${ONESHOT%%:*}" bs=4096 seek="${ONESHOT##*:}" count=1 conv=notrunc 2>/dev/null
@@ -208,7 +214,8 @@ if [ -e "/sys/class/net/$DEV" ]; then
 	ifconfig "$DEV" 2>/dev/null | head -3
 	flush_log
 fi
-ip -br a 2>/dev/null
+# busybox 的 ip **没有 -br**（那是 iproute2 的），写 `ip -br a` 只会打一行 usage。
+ifconfig -a 2>/dev/null
 
 # ---- 2b. probe：只验证"面板口通不通 / HTTP 能不能拉"，一个字节都不写盘 ----
 if [ "$MODE" = probe ]; then

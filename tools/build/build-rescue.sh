@@ -1,15 +1,17 @@
 #!/bin/bash
-# 组装 NPU 的"急救包"：Image.gz + initramfs.gz + DTB。
+# 组装 NPU 的"急救包"：Image.lzma + initramfs.xz + DTB。
 #
-#   ./tools/build/build-rescue.sh --npu out/debian-npu.tar.zst --out out/xgs87-rescue.tar.zst
+#   ./tools/build/build-rescue.sh --kernel out/rescue-kernel --out out/xgs87-rescue.tar.zst
 #
 # 这一包是给最坏情况用的：NPU 的 Debian 起不来、也没有 USB 网卡做物理旁路。
-# 它只有十几 MB，可以走串口推进 U-Boot 的内存，起来之后把 vNTB 拉通，
+# 它只有 2 MB 出头，可以走串口推进 U-Boot 的内存，起来之后把 vNTB 拉通，
 # 再让 x86 用 HTTP 把整份 rootfs 送过来。
 #
 # 为什么能这么小：
-#   * 用户态只有一个静态 busybox（wget/dd/ip/mount/modprobe 全在里面）
-#   * 内核模块只挑急救要用的那几个（EP + ntb + mmc + vlan），不是整个 /lib/modules
+#   * 用户态只有一个静态 busybox，而且**裁过**（52 个 applet，1.19 MB；
+#     Debian 的 busybox-static 是 1.98 MB / ~390 个）—— tools/build/build-rescue-busybox.sh
+#   * 内核也是裁过的（5.36 MB / lzma 1.63 MB），驱动全内置，initramfs 里没有模块
+#   * initramfs 用 xz（内核 CONFIG_RD_XZ=y 自己解，约 0.4 MB；gzip 是 0.6）
 #   * 不需要 nbd-server / sshd / zstd / glibc
 set -eu
 
@@ -17,21 +19,29 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 NPU=
 OUT=$REPO/out/xgs87-rescue.tar.zst
 BUSYBOX_DEB=
+BUSYBOX_BIN=
 KERNEL_DIR=
 MIRROR=http://deb.debian.org/debian
-# 内核用什么压缩进包。lzma 比 gzip 小 29%（实测 13.68 -> 9.76 MB），
-# 但 U-Boot 的 unzip 得认它 —— 换之前必须先在真机 U-Boot 里试一次。
-KERNEL_FMT=gz
+# 内核和 initramfs 用什么压缩进包。
+#   * lzma：Image 2.14 → 1.63 MB。**这台固件的 `unzip` 只认 gzip**（喂 lzma 进去
+#     只得到 "Error: Bad gzipped data"），lzma 得用 U-Boot 自带的另一条命令
+#     `lzmadec <src> <dst>` —— npu-rescue.sh 已经按后缀自动选，2026-11-26 真机验过
+#     （同一个包 boot 起来、面板口 192.168.31.250 回了 30 秒 ICMP）。
+#   * xz：initramfs 由**内核**解（CONFIG_RD_XZ），U-Boot 完全不管。
+KERNEL_FMT=lzma
+INITRD_FMT=xz
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--npu)    NPU=$2; shift 2 ;;
 	--out)    OUT=$2; shift 2 ;;
 	--busybox-deb) BUSYBOX_DEB=$2; shift 2 ;;
+	--busybox) BUSYBOX_BIN=$2; shift 2 ;;
 	--kernel) KERNEL_DIR=$2; shift 2 ;;
 	--mirror) MIRROR=$2; shift 2 ;;
 	--kernel-fmt) KERNEL_FMT=$2; shift 2 ;;
-	-h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+	--initrd-fmt) INITRD_FMT=$2; shift 2 ;;
+	-h|--help) sed -n '2,22p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
 done
@@ -111,18 +121,38 @@ echo "   模块 $(find "$R/lib/modules" -name '*.ko*' | wc -l) 个，$(du -sh "$
 fi
 
 echo "== 2/6 取 arm64 的静态 busybox"
-if [ -z "$BUSYBOX_DEB" ]; then
-	name=$(curl -fsS "$MIRROR/pool/main/b/busybox/" |
-		grep -oE 'busybox-static_[0-9][^"<>]*_arm64[.]deb' | sort -uV | tail -1)
-	[ -n "$name" ] || { echo "从 $MIRROR 找不到 busybox-static arm64" >&2; exit 1; }
-	BUSYBOX_DEB=$WORK/$name
-	echo "   $name"
-	curl -fsS -o "$BUSYBOX_DEB" "$MIRROR/pool/main/b/busybox/$name"
+# 优先用 tools/build/build-rescue-busybox.sh 产出的裁剪版（1.19 MB / 52 applet）。
+# 没有就退回 Debian 的 busybox-static（1.98 MB / ~390 applet）—— 功能一样够，
+# 只是白白多背 0.8 MB。`--busybox` 可以显式指定。
+if [ -z "$BUSYBOX_BIN" ] && [ -f "$REPO/out/busybox-rescue" ]; then
+	BUSYBOX_BIN=$REPO/out/busybox-rescue
+	echo "   用裁剪版 $BUSYBOX_BIN（先跑 tools/build/build-rescue-busybox.sh 可更新）"
 fi
-(cd "$WORK" && ar x "$BUSYBOX_DEB" 2>/dev/null; tar -xf data.tar.* 2>/dev/null) || true
-BB=$WORK/usr/bin/busybox
-[ -f "$BB" ] || BB=$WORK/bin/busybox
-[ -f "$BB" ] || { echo "解不出 busybox" >&2; exit 1; }
+if [ -n "$BUSYBOX_BIN" ]; then
+	[ -f "$BUSYBOX_BIN" ] || { echo "找不到 $BUSYBOX_BIN" >&2; exit 1; }
+	case "$(file -b "$BUSYBOX_BIN")" in
+	*aarch64*) ;;
+	*) echo "$BUSYBOX_BIN 不是 aarch64：$(file -b "$BUSYBOX_BIN")" >&2; exit 1 ;;
+	esac
+	case "$(file -b "$BUSYBOX_BIN")" in
+	*statically*) ;;
+	*) echo "$BUSYBOX_BIN 不是静态链接" >&2; exit 1 ;;
+	esac
+	BB=$BUSYBOX_BIN
+else
+	if [ -z "$BUSYBOX_DEB" ]; then
+		name=$(curl -fsS "$MIRROR/pool/main/b/busybox/" |
+			grep -oE 'busybox-static_[0-9][^"<>]*_arm64[.]deb' | sort -uV | tail -1)
+		[ -n "$name" ] || { echo "从 $MIRROR 找不到 busybox-static arm64" >&2; exit 1; }
+		BUSYBOX_DEB=$WORK/$name
+		echo "   $name"
+		curl -fsS -o "$BUSYBOX_DEB" "$MIRROR/pool/main/b/busybox/$name"
+	fi
+	(cd "$WORK" && ar x "$BUSYBOX_DEB" 2>/dev/null; tar -xf data.tar.* 2>/dev/null) || true
+	BB=$WORK/usr/bin/busybox
+	[ -f "$BB" ] || BB=$WORK/bin/busybox
+	[ -f "$BB" ] || { echo "解不出 busybox" >&2; exit 1; }
+fi
 cp "$BB" "$R/bin/busybox"
 chmod 755 "$R/bin/busybox"
 # /init 的第一行是 `#!/bin/sh` —— 内核 exec /init 时先要能打开 /bin/sh。
@@ -135,13 +165,20 @@ echo "== 3/6 装 /init"
 install -m755 "$REPO/installer/payload/rescue-init" "$R/init"
 mkdir -p "$R/dev" "$R/proc" "$R/sys"
 
-echo "== 4/6 打 cpio"
-( cd "$R" && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 ) >"$WORK/initramfs.gz"
+echo "== 4/6 打 cpio（initramfs.$INITRD_FMT）"
+case "$INITRD_FMT" in
+xz) ICOMP="xz -9e --check=crc32 -T0 -c" ;;
+*)  INITRD_FMT=gz; ICOMP="gzip -9 -c" ;;
+esac
+( cd "$R" && find . -print0 | cpio --null -o -H newc 2>/dev/null | $ICOMP ) >"$WORK/initramfs.$INITRD_FMT"
+echo "   $(du -h "$WORK/initramfs.$INITRD_FMT" | cut -f1)"
 
-echo "== 5/6 内核准备成 U-Boot 能 unzip 的 Image.$KERNEL_FMT"
+echo "== 5/6 内核准备成 Image.$KERNEL_FMT"
 case "$KERNEL_FMT" in
-lzma) KCOMP="lzma -9 -c" ;;
-*)    KERNEL_FMT=gz; KCOMP="gzip -9 -c" ;;
+# lzma 必须是 **LZMA-alone**（带 13 字节头，首字节 0x5d）—— U-Boot 的 unzip
+# 里 lzma_comp() 就是按这个格式解的。`xz --format=lzma` 和 `lzma` 产的都是它。
+lzma) KERNEL_FMT=lzma; KCOMP="xz --format=lzma -9e -c" ;;
+*)    KERNEL_FMT=gz;   KCOMP="gzip -9 -c" ;;
 esac
 # 统一入口：给它「解压后的 Image」或者任何压缩过的内核，产出 kernel.$KERNEL_FMT
 pack_kernel() {
@@ -171,7 +208,7 @@ fi
 echo "== 6/6 打包"
 mkdir -p "$WORK/out"
 cp "$WORK/kernel.$KERNEL_FMT" "$WORK/out/Image.$KERNEL_FMT"
-cp "$WORK/initramfs.gz" "$WORK/out/initramfs.gz"
+cp "$WORK/initramfs.$INITRD_FMT" "$WORK/out/initramfs.$INITRD_FMT"
 cp "$REPO"/out/cn9130-sophos-xgs87w-sfp10g.dtb "$WORK/out/" 2>/dev/null || true
 [ -f "$WORK/out/cn9130-sophos-xgs87w-sfp10g.dtb" ] || {
 	d=$(find "$REPO" -name 'cn9130-sophos-xgs87w-sfp10g*.dtb' | head -1)
@@ -182,5 +219,5 @@ ls -lh "$OUT"
 tar --zstd -tvf "$OUT" | sed 's/^/   /'
 echo
 echo "急救包好了。U 盘上它会在 /opt/xgs87/payload/xgs87-rescue.tar.zst 里，"
-echo "菜单 2 的最后一级会用它：串口推 Image.$KERNEL_FMT + initramfs.gz，"
+echo "菜单 2 的最后一级会用它：串口推 Image.$KERNEL_FMT + initramfs.$INITRD_FMT，"
 echo "起来后把 p2 的整盘影像走 HTTP 写进去。"

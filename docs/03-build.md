@@ -53,14 +53,18 @@ sudo ./installer/mkusb.sh --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.
 
 | 做法 | 包大小 | 串口推完 | 说明 |
 |---|---|---|---|
-| **自编精简内核** | **3.1 MB** | ~5 分钟 | 驱动全编进内核，initramfs 里只有 busybox（`board/rescue-kernel.config`） |
-| Debian 内核 + 挑模块 | 15.9 MB | ~27 分钟 | `Image.gz`(13.7 MB) + `initramfs.gz`(2.2 MB) + DTB |
+| **自编精简内核** | **2.1 MB** | ~3.6 分钟 | 驱动全编进内核，initramfs 里只有一个裁剪过的 busybox（`board/rescue-kernel.config` + `board/busybox-rescue.config`） |
+| Debian 内核 + 挑模块 | ~10.9 MB | ~19 分钟 | `Image.lzma`(9.8 MB) + `initramfs.xz`(0.47 MB) + DTB |
 
 ```sh
 # 默认：自编内核（不需要 debian-npu.tar.zst）
+./tools/build/build-rescue-busybox.sh                                   # → out/busybox-rescue
 ./tools/build/build-rescue-kernel.sh --src /path/linux-6.12 --out out/rescue-kernel
 ./tools/build/build-rescue.sh --kernel out/rescue-kernel --out out/xgs87-rescue.tar.zst
 ```
+
+`build-rescue-busybox.sh` 少了也能构建 —— `build-rescue.sh` 会退回 Debian 的
+`busybox-static`（功能一样够，initramfs 白胖 0.4 MB）。
 
 走 Debian 内核那条路时**两条硬要求，少一条就起不来**（都是实测踩过的）：
 
@@ -70,17 +74,31 @@ sudo ./installer/mkusb.sh --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.
    `dsa_core` 要 `selftests`+`hsr`；eMMC 要 `sdhci-xenon-driver`。`build-rescue.sh` 现在用
    `depmod` 的闭包，不是手写清单。
 
-## 精简内核：怎么裁、裁到多少（2026-11-25 真机验证）
+## 精简内核：怎么裁、裁到多少（2026-11-25/26 真机验证）
 
 15.9 MB 里 86% 是内核，所以只有裁内核才有意义。同一份 37.7 MB 的 Debian Image 做对照：
 
 | 做法 | 结果 | 说明 |
 |---|---|---|
 | ~~defconfig 打底再关几十项~~ | **40.6 MB / gz 12.3 MB —— 反而更大** | arm64 defconfig 自带 2800 多个 `=y`，关 35 个等于没关。已试过，别再来 |
-| **`tinyconfig` + `board/rescue-kernel.config`** | **Image 5.36 MB ｜ gz 2.14 MB ｜ lzma -9 1.63 MB** | 小 7 倍；包 15.9 → 3.1 MB，27 → 6 分钟。**这条是现行默认** |
-| 同上 + `--fmt lzma` | 1.63 MB | 再省 0.5 MB（~1 分钟），但 U-Boot 的 `unzip` 认不认 lzma **还没在真机上验过** |
-| initramfs 换 `xz -9` | 1.04 → 0.93 MB | 要 `CONFIG_RD_XZ`（已经在配置里） |
-| 自编一个精简 busybox | 还能再省 ~1 MB | 得编 busybox；现在 busybox 是 initramfs 的唯一大头（1.98 MB → gz 里 ~1 MB） |
+| **`tinyconfig` + `board/rescue-kernel.config`** | **Image 5.36 MB ｜ gz 2.14 MB ｜ lzma 1.63 MB** | 小 7 倍。**这条是现行默认** |
+| 内核 `--kernel-fmt lzma` | 2.14 → **1.63 MB** | 已进默认。**`unzip` 不认 lzma，要用 `lzmadec`**（见下） |
+| initramfs 换 `xz -9e` | 1.04 → **0.47 MB** | 内核 `CONFIG_RD_XZ=y` 自己解，U-Boot 不参与。已进默认 |
+| 自编裁剪 busybox | 1.98 → **1.19 MB**（gz 1.03 → 0.60） | `board/busybox-rescue.config`，52 个 applet。已进默认 |
+| 换 musl 交叉工具链编 busybox | 还能再省 ~0.4 MB | 现在 1.19 MB 里六成是静态 glibc。没做 |
+
+合起来：**急救包 3.1 → 2.1 MB，串口 6 → 3.6 分钟**（YMODEM 实测 9.8 KiB/s）。
+
+两个压缩格式的关键事实（都是真机撞出来的，别再猜）：
+
+* **U-Boot 的 `unzip` 只认 gzip。** 这个固件（2019.10-10.22.03）喂 lzma 给 `unzip`
+  只会打 `Error: Bad gzipped data`（`file_formats[]` 里没有 lzma，SPI NOR 备份里
+  grep 到的 "lzma" 字样其实来自 `bootm` 的 image-type 表和 `lzmadec` 命令）。
+  lzma 要用 **`lzmadec <srcaddr> <dstaddr>`**：它按 LZMA-alone 头里的 8 字节长度
+  决定输出多少，所以**绝不能**把坏掉的 lzma 喂给它。
+* **initramfs 不需要 U-Boot 解。** 内核有 `CONFIG_RD_GZIP/LZMA/XZ`，`booti` 的
+  initrd 大小给压缩后的大小就行 —— 省掉一块 0x20000000 缓冲和一次内存拷贝。
+
 
 `tinyconfig` = `allnoconfig` + `EXPERT`，也就是**所有 `default y` 的东西全被关掉**。
 踩过的四个坑（每一个都表现为"QEMU 里能跑、真机上死"或"死得没声音"）：

@@ -67,28 +67,11 @@ sudo -n sh -c 'echo 1 > /sys/bus/pci/rescan'
 # 几秒后 NPU 打 TF-A/U-Boot 出来，p2 空/坏时会自己落到：
 #   Bad Linux ARM64 Image magic!
 #   Marvell>>
-# 注意：写之前必须清 RTS，所以这里不能 `printf > /dev/ttyS2`（见 05「控制台」）
-. installer/payload/serial.sh
-serial_raw_open                # 常开 fd 3 + 清 RTS，不登录
-printf '\r' >&3
-serial_drain 25
-printf '%s\n' "$_SERIAL_BUF"
+sudo -n sh -c 'printf "\r" > /dev/ttyS2; timeout 25 cat /dev/ttyS2'
 ```
 
 `00:03.1` 是那个端点的上游 root port（`lspci -tv` 里 `03.1-[03]----00.0`）。
 只 `echo 1 > .../remove` + `rescan` **不够**，实测复位不了 NPU。
-
-> ⚠️ **2026-11-25 复查：这一步没跑通，别当成可用手段。** 复查时串口只能读不能写
-> （RTS 的坑，见 [05](05-operations.md)「控制台」），`npu-uboot.sh` 敲下去的空格
-> 根本到不了 NPU；两次都没拦住 autoboot，其中一次还把 NPU 留在了一个"网不通、串口
-> 25 秒零输出"的状态里，最后靠**重启 x86**（PERST# 把 NPU 一起复位）才恢复。
-> 提示符匹配已经改成同时认 `Marvell>> ` 和 `=> `，但"读到 U-Boot 提示符"这件事
-> 仍旧**没有任何一次成功实测**。动手之前先用
-> `serial_raw_open; printf '\r' >&3; serial_drain 5` 确认真的能拿到提示符，
-> 否则只做 PCIe 复位、别去敲空格。
->
-> 也因为这样，`--fmt lzma` 那个"再省 0.5 MB"的问题**仍然没有答案**（U-Boot 的
-> `unzip` 认不认 lzma 没人验过），所以默认还是 gz。
 
 ### 第 2 步：把 x86 变成 NPU 的串口线
 
@@ -100,34 +83,37 @@ sudo -n python3 installer/payload/relay.py /dev/ttyS2
 跑起来后 PC 的 COM5 就等于直接插在 NPU 的 U-Boot 上。**不要**走"先传给 x86、再由 x86
 推给 NPU"：同一条 115200 要走两遍（21.5 MB 的 base64 光第一遍就 31 分钟，这次事故里白扔过）。
 
-### 第 3 步：三样东西推进 RAM（约 6 分钟）
+### 第 3 步：三样东西推进 RAM（约 3.6 分钟）
 
 ```sh
 # PC 上；每个文件都会核对 U-Boot 打的 "## Total Size"
 python installer/payload/ymodem-com.py COM5 send 0x06f00000 xgs87.dtb      #    21 KB, 几秒
-python installer/payload/ymodem-com.py COM5 send 0x0A000000 initramfs.gz   #  1.04 MB, 约 2 分钟
-python installer/payload/ymodem-com.py COM5 cmd  'unzip 0x0A000000 0x20000000'
-python installer/payload/ymodem-com.py COM5 send 0x02000000 Image.gz       #  2.14 MB, 约 3.7 分钟
-python installer/payload/ymodem-com.py COM5 cmd  'unzip 0x02000000 0x07000000'
+python installer/payload/ymodem-com.py COM5 send 0x0A000000 initramfs.xz   #   469 KB, 约 50 秒
+python installer/payload/ymodem-com.py COM5 send 0x02000000 Image.lzma     #  1.63 MB, 约 2.8 分钟
+python installer/payload/ymodem-com.py COM5 cmd  'lzmadec 0x02000000 0x07000000'
 ```
 
-（`Image.gz`/`initramfs.gz` 是 `build-rescue.sh` 从自编精简内核打出来的那一版；
-换成 Debian 内核那一版就是 13.7 MB / 2.2 MB，时间翻五倍。）
+⚠ **`unzip` 只认 gzip**。这台固件（U-Boot 2019.10-10.22.03）的 `unzip` 里
+`file_formats[]` 只有 gzip，喂 lzma 进去只会得到 `Error: Bad gzipped data`；
+lzma 要用它自带的 `lzmadec <src> <dst>`（2026-11-26 真机验过）。
+`initramfs.xz` **不用解**：内核有 `CONFIG_RD_XZ`，`booti` 直接给压缩后的大小。
 
-地址**必须写死**（factory env 里没有 `loadaddr`；initramfs 也不能原地解压）：
+（`Image.lzma`/`initramfs.xz` 是 `build-rescue.sh` 从自编精简内核打出来的那一版，整包
+2.1 MB；换成 Debian 内核那一版大概是 10.9 MB，时间翻五倍。）
+
+地址**必须写死**（factory env 里没有 `loadaddr`）：
 
 | 用途 | 地址 | 大小 |
 |---|---|---|
 | DTB | `0x06F00000` | 21 KB |
-| Image.gz（临时落脚） | `0x02000000` | 2.1 MB |
+| Image.lzma（临时落脚） | `0x02000000` | 1.63 MB |
 | Image 解压后 | `0x07000000` | 5.4 MB |
-| initramfs.gz | `0x0A000000` | 1.04 MB |
-| initramfs 解压后 | `0x20000000` | 2.0 MB |
+| initramfs.xz（**压缩态**直接用） | `0x0A000000` | 469 KB |
 
 ### 第 4 步：起急救系统，让它自己写 p2
 
 ```sh
-python installer/payload/ymodem-com.py COM5 cmd 'setenv rd_size 0x341a00'   # 上一步 filesize 的字面值
+python installer/payload/ymodem-com.py COM5 cmd 'setenv rd_size 0x729e8'    # initramfs.xz 的 filesize 字面值
 python installer/payload/ymodem-com.py COM5 cmd "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.10:8080/p2.img rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.11/24 rescue.sha256=<p2.img 的 sha256>'"
 python installer/payload/ymodem-com.py COM5 cmd 'booti 0x07000000 0x20000000:0x341a00 0x06f00000'
 ```
@@ -170,7 +156,7 @@ rescue: 写完了，重启
 | 需求 | 做法 |
 |---|---|
 | 看日志 | `rescue.log=/dev/mmcblk0p1:127000` —— 日志写到 p1 尾部 4 MB（p1 是原厂分区，有备份，本系统不用）。重启后从正常系统 `dd if=/dev/mmcblk0p1 bs=4096 skip=127000 count=8` |
-| 确认"用户态到底跑没跑" | `rescue.oneshot=/dev/mmcblk0p2:<Image 的起始块>`（`filefrag -v Image` 第 4 行的第三个字段）。/init 一执行就清掉镜像头 → U-Boot 的 `booti` 必然失败 → 回落到正常系统，**永远不会卡在试验内核里**；而镜像头是不是 0，在正常系统里 `dd | od` 一看就知道 |
+| 确认"用户态到底跑没跑" | `rescue.oneshot=/dev/mmcblk0p2:<DTB 的起始块>`（`filefrag -v /boot/xtest/xgs87.dtb` 第 4 行的第 2 个字段）。/init 一执行就清掉 DTB 头 → U-Boot 的 `booti` 必然失败 → 回落到正常系统，**永远不会卡在试验内核里**；而那一块是不是 0，在正常系统里 `dd | od` 一看就知道。**别指向 `Image.lzma`**：那等于让 `lzmadec` 去解一段坏流（2026-11-26 踩过） |
 | 重启 | `hard_reboot()`：优先 `echo b > /proc/sysrq-trigger`（`emergency_restart()`，不碰驱动），退回 `reboot -f` |
 
 ### 第 5 步：收尾

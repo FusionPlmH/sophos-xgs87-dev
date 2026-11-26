@@ -9,7 +9,7 @@
 #   2. （已删除）U-Boot + tftp：NPU 起不来时唯一还能用的路，但 x86 得插 USB 网卡做物理
 #      旁路（NPU 一进 U-Boot，vNTB 就断了）。会先停掉 xgs-ntb-watch，免得它
 #      的 PCIe rescan 把刚停住的 U-Boot 打飞
-#   3. 急救 initramfs：上面全不行时，串口推 15 MB（p2 里还有内核就只推 1.9 MB）
+#   3. 急救 initramfs：上面全不行时，串口推 2.1 MB（自编精简内核版；CI 的 Debian 内核版约 11 MB）
 #
 # 两条被删掉的老路，别再想：
 #
@@ -207,12 +207,12 @@ try_uboot() {
 	return 1
 }
 
-# 最后一招：串口推 15 MB 急救包进去，让它把 vNTB 拉起来再写整盘。
+# 最后一招：串口推急救包进去，让它把网口拉起来再写整盘。
 try_rescue() {
 	[ -f "$PAYLOAD/xgs87-rescue.tar.zst" ] || { echo "   （没有急救包，跳过）"; return 1; }
 	[ -x "$PAYLOAD/npu-rescue.sh" ] || return 1
-	echo "== 试最后一招：急救 initramfs（串口推 Image.gz + initramfs.gz，约 15 MB）"
-	echo "   115200 大约 24 分钟；BAUD=460800 sh 这个脚本就只要 6 分钟"
+	echo "== 试最后一招：急救 initramfs（串口推 Image.lzma + initramfs.xz，约 2.1 MB）"
+	echo "   115200 大约 4 分钟"
 	printf '现在试吗？[Y/n] '
 	read -r r
 	case "${r:-y}" in
