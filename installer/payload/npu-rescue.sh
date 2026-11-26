@@ -15,6 +15,9 @@ TTY=${SERIAL:-/dev/ttyS2}
 BAUD=${BAUD:-115200}
 IMG_NAME=p2.img
 PORT=${PORT:-8080}
+# RESCUE_PROBE=1：只验证"急救系统能不能起来、面板口通不通"，**不建镜像、不写盘**
+# （急救系统跑完自己重启回 Debian）。从 U 盘上敲这条是排查面板口/串口最省事的办法。
+RESCUE_PROBE=${RESCUE_PROBE:-0}
 
 # 这台 U-Boot 的 factory env 里**没有** loadaddr（`loady $loadaddr` 直接报
 # "not defined"），另外 initramfs 不能原地解压 —— gzip 的输出涨得比输入消费得
@@ -28,7 +31,7 @@ PORT=${PORT:-8080}
 SCRATCH_KERNEL=0x02000000
 
 [ -f "$RESCUE" ] || { echo "没有 $RESCUE（构建 U 盘时要带 --rescue）"; return 1; }
-[ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; return 1; }
+[ "$RESCUE_PROBE" = 1 ] || [ -f "$TAR" ] || { echo "找不到 debian-npu.tar.zst"; return 1; }
 
 STORE=$(ensure_store) || { echo "备份区没挂上，整盘影像没地方放"; return 1; }
 WORK=$STORE/rescue
@@ -38,6 +41,9 @@ echo "== 1/6 解开急救包"
 tar --zstd -xf "$RESCUE" -C "$WORK" || return 1
 ls -lh "$WORK" | sed 's/^/   /'
 
+if [ "$RESCUE_PROBE" = 1 ]; then
+	echo "== 2/6 （probe 模式）不建镜像、不写盘"
+else
 echo "== 2/6 准备要写的整盘影像（和 p2 等大，含根文件系统）"
 IMG=$WORK/$IMG_NAME
 if [ ! -f "$IMG" ]; then
@@ -53,6 +59,7 @@ if [ ! -f "$IMG" ]; then
 	sync; umount /tmp/xgs87-rescuemnt
 fi
 echo "   $(du -h "$IMG" | cut -f1)"
+fi
 
 echo "== 3/6 让 NPU 停在 U-Boot"
 stty -F "$TTY" "$BAUD" raw -echo 2>/dev/null || true
@@ -68,10 +75,14 @@ fi
 # initramfs 里没有 /lib/modules，KVER 就是空 → 直接走"推内核"那条。
 IRAM=$(ls "$WORK"/initramfs.* 2>/dev/null | head -1)
 [ -n "$IRAM" ] || { echo "包里没有 initramfs.*"; return 1; }
-case "$(file -b "$IRAM" 2>/dev/null)" in
-*XZ*) IRCAT="xz -dc" ;;
-*)    IRCAT="zcat" ;;
+# 按 magic 判压缩格式：xz 是 fd 37 7a 58 5a 00。不用 `file` —— x86 那个镜像里
+# 没装 file(1)（image/packages-x86.list 里没有），而 U 盘上跑的就是这一份。
+magic=$(od -An -tx1 -N6 "$IRAM" 2>/dev/null | tr -d ' \n')
+case "$magic" in
+fd377a585a00) IRCAT="xz -dc" ;;
+*)            IRCAT="zcat" ;;
 esac
+command -v xz >/dev/null 2>&1 || case "$IRCAT" in xz*) IRCAT=":"; echo "   （没有 xz，跳过 KVER 探测）" ;; esac
 KVER=$($IRCAT "$IRAM" 2>/dev/null | cpio -t 2>/dev/null | sed -n 's#^lib/modules/\([^/]*\)/.*#\1#p' | head -1)
 
 echo "== 4/6 先看 p2 里有没有能直接用的 kernel"
@@ -137,8 +148,19 @@ if [ "$USE_P2_KERNEL" != 1 ]; then
 fi
 
 echo "== 6/6 启动"
-serial_uboot "setenv bootargs 'console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.2:$PORT/$IMG_NAME rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.1/24'" 15 >/dev/null || true
+if [ "$RESCUE_PROBE" = 1 ]; then
+	# probe：把面板口 p1 配成 10.234.56.1（PC 那边直连就是 .10），跑完自己重启
+	BA="console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.mode=probe rescue.dev=p1 rescue.ip=10.234.56.1/24 rescue.ping=10.234.56.10 rescue.auto=reboot"
+else
+	BA="console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0512000 rescue.url=http://10.234.56.2:$PORT/$IMG_NAME rescue.part=/dev/mmcblk0p2 rescue.ip=10.234.56.1/24"
+fi
+serial_uboot "setenv bootargs '$BA'" 15 >/dev/null || true
 serial_uboot "booti \$kernel_addr_r \$ramdisk_addr_r:0x$RD_SIZE \$fdt_addr_r" 20 >/dev/null || true
+
+if [ "$RESCUE_PROBE" = 1 ]; then
+	echo "== probe 模式：NPU 应该 ~20 秒后从 10.234.56.1 回 ICMP，然后自己重启回 Debian"
+	return 0
+fi
 
 echo "== 等急救系统把 eth0 拉起来，然后喂它整盘影像"
 # vNTB 起来之前 x86 是没有地址的；先等 NTB netdev 出现，再给裸 eth0 配一个。

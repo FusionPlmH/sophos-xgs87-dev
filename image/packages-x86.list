@@ -25,8 +25,12 @@ whiptail,python3-minimal
 # installer breaks without it, so ask for it explicitly.
 zstd
 # cpio: npu-rescue.sh inspects the rescue initramfs to decide whether the NPU's
-# existing /boot/Image can be reused (saves pushing 13.7 MB over the serial).
+# existing /boot/Image can be reused (saves pushing the kernel over the serial).
 cpio
+# xz-utils: the rescue package's initramfs is xz (0.47 MB vs 1.0 MB gzip), and
+# npu-rescue.sh decodes it to probe /lib/modules.  `xz` is also what unpacks a
+# .lzma kernel by hand.  Do not assume dpkg pulls it in.
+xz-utils
 # picocom: the NPU console lives on this machine's /dev/ttyS2 (115200 8N1;
 # the old hand-installed image kernel needed host 57600).
 # Without it the fallback relay drops Ctrl-C handling and echo.
