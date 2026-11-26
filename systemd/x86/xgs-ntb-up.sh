@@ -19,7 +19,7 @@
 # presenting its factory identity (11ab:7080, Ethernet class), and a plain
 # rescan never re-reads the IDs of a device the kernel already knows.  Without
 # the remove+rescan that follows, ntb_hw_epf can never bind and the link looks
-# dead even though the NPU is fine (docs/20 §9.3.5).
+# dead even though the NPU is fine.
 #
 # Doing that in a loop is what produced the "NPU resets every ~2 s" symptom on
 # 2026-11-25, so it happens at most once per run, and never while the endpoint

@@ -22,7 +22,7 @@
 # 镜像同样的 VLAN、顺手把 sshd 的 host key 修好，再回到第 1 级。
 #
 # ⚠️ 写的是块设备：NPU 如果正跑着这个分区，边写边用会把文件系统写坏
-# （2026-11-25 就这么写坏过一次，见 docs/20 §11.2.1）。装完要重启。
+# （2026-11-25 就这么写坏过一次）。装完要重启。
 set -u
 # shellcheck disable=SC2154
 trap 'rc=$?; [ "$rc" = 0 ] || echo "$0: 退出码 $rc" >&2' EXIT
@@ -211,8 +211,10 @@ try_uboot() {
 try_rescue() {
 	[ -f "$PAYLOAD/xgs87-rescue.tar.zst" ] || { echo "   （没有急救包，跳过）"; return 1; }
 	[ -x "$PAYLOAD/npu-rescue.sh" ] || return 1
-	echo "== 试最后一招：急救 initramfs（串口推 Image.lzma + initramfs.xz，约 2.1 MB）"
-	echo "   115200 大约 4 分钟"
+	# 成员本身已经是 lzma/xz，整包大小≈串口要推的字节数。115200 的 YMODEM 约 9.8 KiB/s，
+	# 所以 588 KiB ≈ 1 分钟；往上取整，免得报得比实际短。
+	_rescue_kib=$(($(wc -c <"$PAYLOAD/xgs87-rescue.tar.zst") / 1024))
+	echo "== 试最后一招：急救 initramfs（串口推 ${_rescue_kib} KiB，115200 大约 $(((_rescue_kib + 587) / 588)) 分钟）"
 	printf '现在试吗？[Y/n] '
 	read -r r
 	case "${r:-y}" in

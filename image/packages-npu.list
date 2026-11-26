@@ -13,7 +13,7 @@
 #
 # Not installed on purpose: firmware-misc-nonfree.  It is the only source of
 # the EIP197 microcode (ifpp.bin) and nothing else here needs it; the driver is
-# blacklisted in overlay/npu/etc/modprobe.d/xgs87-blacklist.conf (docs/14 §7.4).
+# blacklisted in overlay/npu/etc/modprobe.d/xgs87-blacklist.conf.
 #
 # Kernel and switch drivers are stock Debian; the modules Debian does not
 # build are in kernel/npu and installed by DKMS.

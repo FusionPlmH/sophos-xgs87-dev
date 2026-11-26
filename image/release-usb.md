@@ -1,171 +1,105 @@
-# debian-usb — XGS 87 的维护 / 诊断 U 盘
+# debian-usb — XGS 87 的维护 / 急救 U 盘
 
-固定 release：每次跑 `image` workflow 的 usb 目标都会**覆盖**这里的资产和本文。
+每次跑 `image` workflow 的 **usb** 目标都会覆盖这里的资产和本文。
 
-| 资产 | 是什么 | 实测 |
+| 资产 | 是什么 | 体积 |
 |---|---|---|
-| `debian-usb.img.zst` | **整盘镜像**：可启动 U 盘，自带 x86 + NPU 两套安装包和串口菜单 | 解开约 1.16 GiB（`lean`，2026-11-25 实测；ESP 从 476 MiB 降到 128 MiB 后少了约 348 MiB） |
+| `debian-usb.img.zst` | **整盘镜像**：能启动的 x86 Debian + NPU 安装包 + 急救包 + 串口菜单 | 压缩 **615 MB**，解开 **1.16 GiB** |
 
-插上从 U 盘启动，x86 串口上出菜单：格式化重装 x86、把新 rootfs 推给 NPU、备份内置盘、看状态。
-这台双架构机器的急救盘——升级、刷坏、换系统都靠它。
+这台机器是 x86 + NPU 双 SoC，自带串口菜单；升级、刷坏、换系统都用这张盘。
 
 ## 里面是什么
 
 | 分区 | 内容 |
 |---|---|
-| `p1` | ESP（128 MiB FAT32 + GRUB），能不能启动全靠它 |
-| `p2` | 和 `debian-x86` 一样的 Debian root，多一个开机菜单和安装用的 payload（`/opt/xgs87/payload`） |
-| `p3` | **第一次开机才切**：U 盘上剩下的全部空间，做成 `exfat`（标签 `XGS87BAK`），挂到 `/media/xgs87-bak` 存备份 |
+| `p1` | ESP（128 MiB FAT32 + GRUB）。**BIOS 执行的就是这里的 `\EFI\BOOT\BOOTX64.EFI`** |
+| `p2` | 和 `debian-x86` 同源的 Debian root + 菜单 + payload（`/opt/xgs87/payload`） |
+| `p3` | **第一次开机才切**：盘上剩余空间做成 exfat（标签 `XGS87BAK`），挂 `/media/xgs87-bak` |
 
-镜像里只有 `p1` + `p2` 两个分区，安装用的 `debian-x86.img.zst` / `debian-npu.tar.zst` / DTB /
-脚本都在 root 的 `/opt/xgs87/payload` 里。所以**不用预估"给备份留多少"**：32 GB 的盘装完
-不到 1.5 GB 的系统，剩下 30 GB 第一次开机自己变成备份区；换 128 GB 的盘也不用重建镜像。
+镜像里只有 `p1` + `p2`（payload 有 `debian-x86.img.zst`、`debian-npu.tar.zst`、DTB、急救包和脚本）。
+剩余空间第一次开机自动变成备份区，换多大的盘都不用重建镜像。
 
-> ⚠️ 维护盘上的 `xgs87-growroot` 是**故意关掉**的（`installer/mkusb.sh` 直接删掉它的 enable 符号链接）：
-> 分区是构建时按 payload 大小撑开的，如果 growroot 再把它扩到整个 U 盘，`usbstore` 就没有
-> 空间切备份分区了 —— 这两者在盘尾抢地方，2026-11-25 审查时发现并修掉。
-
-payload 是构建 workflow 当时选的那个变体（`full` / `lean` / `base`），所以 U 盘里装出来的
-系统和你构建时选的一致。
+> ⚠️ 维护盘上的 `xgs87-growroot` 是**故意关掉**的（`mkusb.sh` 删掉 enable 符号链接）：
+> 分区已按 payload 撑开，growroot 再扩到盘尾就没地方切备份区了。
 
 ## 写进 U 盘
 
-> ⚠️ 下面每条命令都会**整条盘覆盖**。先 `lsblk` 确认目标盘，别写到系统盘上。
-
-**Linux / macOS**
+> 每条命令都**整条盘覆盖**。先 `lsblk` / `diskutil list` 确认目标盘。
 
 ```sh
 zstd -d debian-usb.img.zst
-lsblk                                  # 找到 U 盘，例如 /dev/sdb / /dev/disk4
+lsblk
 sudo dd if=debian-usb.img of=/dev/sdX bs=4M conv=fsync status=progress
 sync
 ```
 
-macOS 用 `diskutil list` 找盘，然后 `sudo dd if=debian-usb.img of=/dev/rdisk4 bs=4m`。
+Windows：7-Zip 解出 `.img`（1.16 GiB）→ Rufus 选它、**分区 GPT、写入方式 DD 镜像**；
+Etcher 直接选 `.img`。**不要用 ISO 模式**——它会重排分区、把 ESP 里的兜底启动器弄没，
+表现是"BIOS 认得出 U 盘、一个字符不打就 reset"。
 
-**Windows**
+写完自检（可选但强烈建议）：`sfdisk -d /dev/sdX` 能读出分区表，且 ESP 的 `\EFI\BOOT\`
+里有 `BOOTX64.EFI` —— 构建时 `mkdisk.sh`/`mkusb.sh` 都断言这一条，写坏了它就只能进 BIOS。
 
-1. 用 7-Zip 解压 `debian-usb.img.zst`，得到 `debian-usb.img`（约 1.16 GiB）。
-2. Rufus 选这个 `.img`，**分区类型 GPT、写入方式 DD 镜像**，开始写。
-   Win32DiskImager 也行；**不要**用 Rufus 默认的 ISO 模式，它会把 ESP 改坏。
+## 启动与菜单
 
-## 常见"看起来像失败"的输出
-
-- `zstd: error 70 : Write error : cannot write block : Broken pipe`：这是写盘前**探测 LBA0 签名**
-  时只读了 512 字节就停，压缩进程收到 EPIPE 的正常噪音。真正的写入紧跟在后面
-  （`dd ... 695205888 bytes`），只要最后看到 `分区表回读正常` 就是成功。
-  2026-11-25 之后的 payload 已经把这条噪音消掉，并在写完后加了一行 `LBA0 回读一致`。
-
-## 启动
-
-1. U 盘插到前面板 USB（那颗是 x86 的 USB，不是 NPU 的）。
-2. 开机进启动菜单（AMI，一般 **F11**；进 BIOS 是 **Del**），选 U 盘。
-   列表里没有 U 盘：BIOS → Boot → 关掉 CSM / 安全启动再试。
-3. x86 控制台（RJ45 或 micro-USB，**115200 8N1**）上出现菜单。
-   串口没输出：BIOS → Advanced → Console Redirection 打开。
-
-## 菜单
+1. U 盘插**前面板** USB（那颗是 x86 的，不是 NPU 的）。
+2. 开机按 **Esc** 进 BIOS，在 **Boot** 页把 U 盘排到第一位（串口重定向只转发 Esc，
+   F 键不转发，所以别指望串口上按 F7）。BIOS 执行的是 ESP 里那条兜底路径
+   `\EFI\BOOT\BOOTX64.EFI`，NVRAM 项丢了也能起。
+3. x86 控制台（RJ45 或 micro-USB，**115200 8N1**）上出菜单。
 
 | 选项 | 做什么 | 风险 |
 |---|---|---|
-| `1` 重装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**（eMMC） | 整盘覆盖，原分区表和系统没了 |
-| `2` 重装 NPU | 按**前提最容易满足**的顺序试：**ssh + dd**（NPU 只要 sshd 和 busybox `dd`，原厂系统也成立；但**写的时候 p2 不能正是 NPU 的根**，否则脚本直接拒绝）→ **急救 initramfs**（串口推 3.1 MB、约 6 分钟，起来后走面板口按 1 Gb/s 喂整盘）。写之前会先回读校验 | 目标分区被整个重写 |
-| `3` 查看状态 / 备份 | 子菜单：`1` 看状态，`2` 备份 x86 内置盘，`3` 备份 NPU 分区 | 只读 |
-| `4` NPU 串口 | 打开 NPU 控制台（`/dev/ttyS2`，**115200**；老 image 内核 57600）。NPU 起不来、SSH 不通时从这里进；`picocom` 退出是 Ctrl-A Ctrl-X | 同一时刻只能有一个读者 |
-| `5` shell | 直接进 root shell（U 盘系统） | — |
-| `9` / `0` | 关机 / 重启 | — |
+| `1` 装 x86 | 把 payload 里的 `debian-x86.img` 整盘写进**内置盘**，写前先问要不要备份 | 整盘覆盖 |
+| `2` 装 NPU | 自动按 **ssh + dd** → **急救 initramfs** 逐级试；写前回读校验 | 目标分区被重写 |
+| `3` 看状态 / 备份 | 子菜单：看状态、备份 x86 内置盘、备份 NPU 分区 | 只读 |
+| `4` NPU 串口 | NPU 控制台（`/dev/ttyS2`，115200）；`picocom` 退出是 Ctrl-A 再 Ctrl-X | 同一时刻只能一个读者 |
+| `5` shell / `9` 关机 / `0` 重启 | — | — |
 
-## 写 NPU 的几种办法，哪种该用在哪
+## U 盘对 NPU 能做什么
 
-| 办法 | 数据通道 | NPU 需要活着到什么程度 | 190 MB 大约要 | 适合 |
-|---|---|---|---|---|
-| **ssh + dd**（菜单 `2` 第 1 步） | vNTB，TCP | 只要 sshd + busybox `dd` | 1–2 分钟 | ✅ **首选，也是唯一实战验证过的**：整块 ext4 镜像灌进 p2，装完回读校验 |
-| **急救 initramfs + 面板口**（菜单 `2` 第 2 步） | 串口推 3.1 MB → NPU 在内存里跑急救系统 → 面板口 1 Gb/s 从 PC 拉整盘 | U-Boot 还在即可 | 串口约 6 分钟 + 写盘 1 分钟 | ✅ NPU 全废（连 sshd 都没有）时的路，**2026-11-25 实战把一台 p2 救回来过**，见 `docs/06-rescue.md` |
-| U-Boot `ext4load`/`ext4write` | 只能读它自己看得见的介质（eMMC 的 p1/p3、SD） | 停在 `=> ` 即可 | 取决于数据从哪来 | ✅ **救 bootcmd/env/DTB、验证分区可读、在 eMMC 内部搬文件** |
-| ~~U-Boot `tftpboot`~~ | ~~网口~~ | — | — | ❌ **已证伪并删除**：2026-11-25 实测 U-Boot 里 ARP/TFTP 完全不通（面板口 link/VLAN/PVID 全对也没用），脚本已从仓库移除 |
-| U-Boot `loady`（串口 YMODEM） | 串口 115200 | 同上 | **几个小时** | ❌ 只适合几百 KB 的 DTB |
-| 串口 shell 命令 | 串口 | 用户态 | 传输不可行，命令可以 | ✅ 修网络、修 sshd、手动 `wget`/`dd` |
-
-**结论**：先试 **ssh + dd**（不动 NPU、不需要插网卡，原厂系统也成立）；
-前提不成立（p2 正是根 / 连 sshd 都没有）时走**急救 initramfs：串口推 3.1 MB，起来后用面板口按 1 Gb/s 喂整盘**——2026-11-25 实战救回一台。U-Boot+tftp 已证伪删除。
-
-**"U 盘一个够不够"要分清三种前提**（2026-11-25 逐条核对）：
-
-| NPU 的状态 | U 盘（x86 从它启动）能做 | 还要什么 |
+| NPU 的状态 | U 盘能做 | 还缺什么 |
 |---|---|---|
-| 用户态活着 | ✅ 整盘重写 p2（vNTB + ssh + dd，实测 1.6 GiB / 45 秒） | 无 |
-| 只剩 U-Boot | ⚠️ 能把急救系统推进内存（`/dev/ttyS2` 就在 x86 上，不用第二个人敲串口） | **一台带网口的机器接面板口**：x86 自己**没有网口**（`lspci` 里没有任何 Ethernet 控制器，`eth0` 是 vNTB 虚拟网卡），所以它没法同时当"串口驱动方"和"HTTP 服务方" |
+| 用户态活着 | ✅ 整盘重写 p2（vNTB + ssh + dd，1.6 GiB ≈ 45 秒） | 无 |
+| 只剩 U-Boot | ✅ 把急救系统推进内存（`/dev/ttyS2` 在 x86 上，不用第二个人敲串口） | **一台带网口的机器接面板口**：x86 自己没有网口（`lspci` 里没有任何 Ethernet，`eth0` 是 vNTB 虚拟网卡），没法同时当"串口驱动方"和"HTTP 服务方" |
 | U-Boot 也没了 | ✅ x86 上的 MCP2210 直接写 SPI NOR | 无 |
 
-"ssh + tar 流式解包"和 NBD 这两级已经删除：前者要在 NPU 正挂着的根分区上 `mkfs`，内核必拒，
-永远不可能成功（docs/11 §11.2.1）；后者两个镜像都没带 `nbd-client`/`nbd-server`，也从未跑通。
-U-Boot 还能做 ssh 路径做不到的事：`setenv bootcmd 'run bootcmd_emmc1'; saveenv` 换回 p1 的原厂系统、
-修 `bootargs`、用 `mmc part` / `ext4load` 确认分区到底还在不在。
+**别在这些方向上白花时间**：U-Boot 的 `tftpboot`/`ping` 实测完全不通（2026-11-25 证伪，脚本已删）；
+"ssh + tar 流式解包"和 NBD 也删了——前者要在正挂着的根分区上 `mkfs`，内核必拒；后者两个镜像都没带
+`nbd-client`/`nbd-server`，从未跑通。
 
-> ⚠️ **NPU 停在 U-Boot 时 vNTB 是断的**。x86 自己没有网口，那两条 VLAN（`eth0.100`/`eth0.200`）
-> 全在 NPU 的 Linux 里 —— NPU 一进 U-Boot，x86 立刻没网、没默认路由。
-> 所以 U-Boot 那条路的数据只能走 **物理旁路**：x86 的 USB 网卡 → 网线 → 面板口 → 交换机 → NPU `end0`
-> （交换机在 U-Boot 里是默认转发状态，够用）。脚本因此**先确认有载波网口才去停 NPU**，
-> 没网卡就直接退出，免得把机器停在"NPU 在 U-Boot、x86 又没网"的死角里。
-> 串口（`/dev/ttyS2`）全程不受影响 —— 它不经过 PCIe。
-
-`2` 在写之前会问一句"要先备份吗"，答 `Y` 就跑子菜单 `3`→`2`/`3` 的备份流程；
-**备份失败会中止，不会格式化**。选项 `2` 在 NPU 起不来时退化成急救 initramfs，
-按屏幕提示在 NPU 控制台（x86 的 `/dev/ttyS2`，**115200**）里操作；如果 x86 那边连
-IPv4 地址都还没有（vNTB 没起来），它会直接告诉你去看 `ip -br a`，而不是硬绑一个不存在的地址。
+> ⚠️ **NPU 停在 U-Boot 时 vNTB 是断的**：那两条 VLAN 都在 NPU 的 Linux 里，NPU 一进 U-Boot，
+> x86 立刻没网、没默认路由。所以 U-Boot 那条路的数据只能走物理旁路（x86 的 USB 网卡 → 面板口），
+> 脚本会**先确认有载波网口才去停 NPU**。串口全程不受影响，它不经过 PCIe。
 
 ## 急救包（NPU 起不来、也没有 USB 网卡时）
 
-`/opt/xgs87/payload/xgs87-rescue.tar.zst`，由 `tools/build/build-rescue.sh` 组装。
-CI 里打的那一份用的是 Debian 内核（CI 不编内核），本地用自编精简内核能小到 2.1 MB：
+`/opt/xgs87/payload/xgs87-rescue.tar.zst`，由 `tools/build/build-rescue.sh` 组装：
 
-| 内容 | CI（Debian 内核） | 本地（精简内核） | 为什么需要 |
-|---|---|---|---|
-| `Image.lzma` | **9.8 MB** | **1.63 MB** | NPU 的内核，U-Boot 用 `lzmadec` 解（`unzip` 只认 gzip） |
-| `initramfs.xz` | **0.47 MB** | **0.47 MB** | 裁剪过的静态 busybox（52 个 applet）+ `/init`；内核自己解 xz |
-| `cn9130-…dtb` | 21 KB | 21 KB | 板级设备树 |
-| 合计 | **≈10.9 MB** | **≈2.1 MB** | 串口 9.8 KiB/s 推 19 / 3.6 分钟 |
+| 内容 | 体积 | 说明 |
+|---|---|---|
+| `Image.lzma` | **1.63 MB**（5.36 MB 未压缩） | U-Boot 用 `lzmadec` 解——**这台固件的 `unzip` 只认 gzip** |
+| `initramfs.xz` | **0.47 MB** | 裁剪过的静态 busybox（52 个 applet）+ `/init`；xz 由内核自己解 |
+| `cn9130-…dtb` | 21 KB | 板级设备树 |
+| 合计 | **2.1 MB** | 115200 的 YMODEM ≈ 9.8 KiB/s → **3.6 分钟** |
 
-`/init` 只做三件事：找网口（面板口 p1/p2 或 vNTB 的 `eth0`）→ 配地址 → 从 HTTP
-`wget` 整盘影像并 `dd` 到 `p2`，然后 sysrq-b 硬重启。
+上面是本地拿 `board/rescue-kernel.config` 自编的版本。CI 里没有自编内核，会退回 Debian 的
+arm64 内核，整包约 **10.9 MB**（`Image.lzma` 9.8 + `initramfs.xz` 0.47 + DTB，串口要推
+~19 分钟）—— 所以急救包值得在本地编。
 
-**为什么不用 NBD/TFTP 做 initramfs**：那要把 `nbd-server`（glibc + 依赖，约 4 MB）或
-TFTP 客户端塞进去，而 busybox 的 `wget`+`dd` 已经把这条链走完 —— 0.47 MB vs 6 MB，
-而且 HTTP 比 TFTP 好传大文件（能续、能看到进度）。
-
-串口耗时：10.9 MB（CI 的 Debian 内核版）在 115200 ≈ 19 分钟，`BAUD=460800` 时 **≈5 分钟**；
-本地精简内核版只有 2.1 MB，115200 就够（3.6 分钟）。
-要提速就改 U-Boot 的 `baudrate`：**在 NPU 的 Linux 里用 `fw_setenv baudrate 460800`**（它会先擦后写），
-x86 侧相应把 `BAUD=460800`。别在 U-Boot 提示符下反复 `saveenv` —— 那颗 NOR 的 env 写入不先擦除，
-连续写会把 env 写成半截（[docs/14](../docs/06-rescue.md) §14.7）。
-（U-Boot 自己配置这个速率；老 image 内核的 2x 分频问题不适用于 U-Boot。）
-
-## 备份区（`/media/xgs87-bak`）
-
-第一次从 U 盘开机时，`xgs87-usbstore.service` 会：
-
-1. 把 GPT 备份头搬到盘尾（`sgdisk -e`）——`dd` 到更大的盘之后它还在镜像原来的末尾；
-2. 用 `sfdisk` 在剩下的空间上切一个 `p3`（能切多少切多少，盘尾留 1 MiB 给 GPT）；
-3. `mkfs.exfat -n XGS87BAK` 并挂到 `/media/xgs87-bak`。
-
-选 `exfat` 是为了插到 Windows / macOS 上也能直接读备份文件；单文件没有 4 GiB 上限，
-`backup-x86.sh` 流出的是 `dd | gzip` 的 `.img.gz`，解压后是完整盘。手动跑一次：
+`/init` 只做三件事：找网口（面板口 p1/p2 或 vNTB 的 `eth0`）→ 配地址 → 从 HTTP `wget`
+整盘影像并 `dd` 到 `p2`，然后 sysrq-b 硬重启。想只验证"能不能起来、面板口通不通"：
 
 ```sh
-sudo /usr/local/sbin/xgs87-usbstore.sh
+RESCUE_PROBE=1 sh /opt/xgs87/payload/npu-rescue.sh     # 不建镜像、不写盘，跑完自己重启
 ```
 
-U 盘和镜像一样大（没有剩余空间）时它只会打一行提示，菜单照常可用，只是备份选项会告诉你
-没地方写。
+⚠️ **给内核清零的"一次性信标"只能指向 DTB，不能指向 `Image.lzma`** ——
+那等于让 `lzmadec` 去解一段坏流。见 `installer/payload/rescue-init` 里的注释。
 
-重装完 x86 后首次开机会自动把 root 分区扩到盘尾（`xgs87-growroot.service`）。
-登录 **`admin` / `P@ssw0rd`**（`sudo` 要密码），`root` 已锁定、SSH 拒绝 root。
-
-## 从原厂 SFOS 第一次装 Debian
-
-SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先备份（SPI 的 `mtd0`/`mtd1` 和 eMMC），
-再从 U 盘启动重装。SFOS 高级 shell、备份、串口波特率的细节见
-[docs/04-install.md](../docs/04-install.md)。
+要提速就改 U-Boot 的 `baudrate`：在 NPU 的 Linux 里 `fw_setenv baudrate 460800`，x86 侧把
+`BAUD=460800`。别在 U-Boot 提示符下反复 `saveenv` —— 那颗 NOR 的 env 写入不先擦除，
+连写会把 env 写半截。
 
 ## 自己构建
 
@@ -173,12 +107,16 @@ SFOS 里没有第二个系统盘可以原地覆盖，所以走这条 U 盘：先
 sudo ./image/build.sh --arch amd64 --variant lean --out out/xgs87-x86-lean.tar.zst
 sudo ./image/mkdisk.sh --rootfs out/xgs87-x86-lean.tar.zst --out out/debian-x86.img
 zstd -T0 -10 --rm out/debian-x86.img
-sudo ./installer/mkusb.sh \
-    --x86 out/debian-x86.img.zst \
-    --npu out/debian-npu.tar.zst \
+bash ./tools/build/build-rescue-busybox.sh            # 可省略：省则退回 Debian 的 busybox-static
+sudo bash ./tools/build/build-rescue.sh --npu out/debian-npu.tar.zst --out out/xgs87-rescue.tar.zst
+sudo bash ./installer/mkusb.sh \
+    --x86 out/debian-x86.img.zst --npu out/debian-npu.tar.zst \
     --dtb out/cn9130-sophos-xgs87w-sfp10g.dtb \
-    --out out/debian-usb.img
+    --rescue out/xgs87-rescue.tar.zst --out out/debian-usb.img
 ```
 
-CI 的 `.github/workflows/image.yml`（`target=usb`）跑的就是这串：amd64 runner 出 x86 整盘镜像、
-arm64 runner 出 NPU rootfs + DTB，第三个 job 拼盘，产物覆盖发布到 `debian-usb`。
+`.github/workflows/image.yml`（`target=usb`）跑的就是这串：amd64 runner 出 x86 整盘镜像、
+arm64 runner 出 NPU rootfs + DTB，第三个 job 编 busybox、打急救包、拼盘，产物覆盖发布到 `debian-usb`。
+
+细节见 [docs/](https://github.com/FusionPlmH/sophos-xgs87-dev/tree/main/docs)：
+`04-install`（从原厂 SFOS 第一次装）、`06-rescue`（三级救砖）。

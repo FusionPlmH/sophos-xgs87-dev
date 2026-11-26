@@ -65,8 +65,8 @@ picocom -b 115200 /dev/ttyS2     # 在 x86 上开 NPU 的串口
 | `kernel/{x86,npu}/` | 打进镜像的 DKMS 模块（vNTB 那一套 + `clkfix`），每边一个 `install.sh` |
 | `ntb/`、`net/` | 内核补丁：`pci-epf-vntb`、`ntb_hw_epf`、`mv88e6xxx` 端口检查 |
 | `systemd/{common,npu,x86}/` | 开机要跑的东西（脚本一律装到 `/usr/local/sbin/`） |
-| `image/` | rootfs 构建（`build.sh`）、U 盘镜像（`mkdisk.sh`）、包清单、`overlay/` |
-| `installer/` | 维护 U 盘的菜单 + 所有 payload（含急救 initramfs 和串口工具） |
+| `image/` | rootfs 构建（`build.sh`）、x86 整盘镜像（`mkdisk.sh`）、包清单、`overlay/` |
+| `installer/` | 维护 U 盘拼装（`mkusb.sh`）+ 菜单和所有 payload（含急救 initramfs、串口工具） |
 | `tools/` | `build/` 构建脚本；`on-pc/`、`on-x86/` 是一次性小工具 |
 | `out/` | 构建产物（不入库） |
 

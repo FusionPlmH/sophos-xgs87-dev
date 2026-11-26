@@ -85,8 +85,8 @@ npu_ssh() {
 		ssh $NPU_SSH_OPTS "${NPU_USER:-admin}@$NPU" "sudo -S -p '' bash -s"
 }
 # npu_ssh_stream 已删除：它唯一的调用者（"ssh + tar 流式解包"）在 2026-11-25 被
-# 证明永远不可能成功 —— 那一级要在 NPU 正挂着的根分区上 mkfs，内核必拒
-# （docs/20 §11.2.1）。现在往 NPU 灌数据只有 npu-sshdd.sh，它自带同一套
+# 证明永远不可能成功 —— 那一级要在 NPU 正挂着的根分区上 mkfs，内核必拒。
+# 现在往 NPU 灌数据只有 npu-sshdd.sh，它自带同一套
 # askpass（SUDO_ASKPASS + sudo -A，stdin 留给数据），照那份写就行。
 
 # ------------------------------------------------ 块设备安全检查（必读）---

@@ -237,7 +237,7 @@ rm -rf /var/lib/apt/lists/* /var/cache/apt
 find /var/log -type f -exec truncate -s0 {} +
 
 # --- keep the journal, bound the journal ------------------------------------
-# It is the only forensic trace of a lockup (docs/20 §11.1), so it stays on --
+# It is the only forensic trace of a lockup, so it stays on --
 # 248 MB of it piled up on the live x86 -- and the timers that maintain things
 # this image does not have are masked: no keyboard or monitor, no man pages,
 # no LVM (e2scrub), no XFS, and no unattended apt run (updates are deliberate

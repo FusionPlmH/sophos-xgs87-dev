@@ -88,7 +88,8 @@ mkdir -p "$TMP/root/boot/efi"
 mount --bind "$TMP/esp" "$TMP/root/boot/efi"
 for d in dev proc sys; do mount --bind /$d "$TMP/root/$d"; done
 
-# Short boot menu: 26 s instead of 70 s (see docs/20 20.8).
+# Short boot menu: 26 s instead of 70 s.  RECORDEFAIL_TIMEOUT keeps it short
+# even after a bad shutdown, which would otherwise hide the menu for 30 s.
 cat > "$TMP/root/etc/default/grub" <<'EOF'
 GRUB_DEFAULT=0
 GRUB_TIMEOUT=2

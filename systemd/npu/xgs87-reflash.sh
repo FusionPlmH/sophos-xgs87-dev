@@ -16,8 +16,8 @@
 # out), and the UART runs at 115200.
 #
 # Rewriting the root you are running from corrupts it: dd finishes, and then the
-# old filesystem keeps flushing its dirty pages into the brand new metadata
-# (docs/11 §11.2.1).  FIFREEZE is what makes it safe -- it syncs the filesystem
+# old filesystem keeps flushing its dirty pages into the brand new metadata.
+# FIFREEZE is what makes it safe -- it syncs the filesystem
 # and blocks every writer, so once it returns nothing but our dd can touch p2.
 #
 #   install  （已禁用：见 do_install 里的 2026-11-25 事故说明）

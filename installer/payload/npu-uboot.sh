@@ -3,7 +3,7 @@
 #
 # U-Boot 的 bootdelay 只有 3 秒，而且必须"一边重启一边敲空格"—— 串口只有一个读者，
 # 所以这件事得一个脚本干完：自己发 reboot，然后连续敲空格 20 秒，最后把串口交给
-# picocom 交互。docs/03 §3.4 里说的"小脚本"就是这个。
+# picocom 交互。
 #
 # 到了 "=> " 之后能做的事（板上 U-Boot 2019.10，原厂环境变量都在）：
 #   mmc dev 0; ext4load mmc 0:2 $kernel_addr_r /boot/Image      # 验证分区可读
