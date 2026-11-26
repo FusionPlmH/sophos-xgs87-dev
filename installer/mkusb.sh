@@ -238,6 +238,18 @@ mount "$ESP_DEV" "$WORK/esp"
 	umount "$WORK/esp"; exit 1
 }
 ls -l "$WORK/esp/EFI/BOOT" | sed 's/^/   /'
+# ESP 上那个 117 字节的 EFI/BOOT/grub.cfg 是 grub-install --removable 写的，里面
+# search --fs-uuid 指的是**镜像原始 root 的 UUID**。上面第 2 步把 root 的 UUID 换掉了
+# （tune2fs -U），当时只 sed 了 /etc/fstab 和 /boot/grub/grub.cfg —— 这一个漏了，
+# 于是 U 盘开机第一句就是：
+#   error: no such device: <旧 UUID>
+#   error: file `/boot/grub/x86_64-efi/bli.mod' not found
+# 2026-11-26 在真机上撞到（能出菜单，但一路带着错的 prefix）。这里补上。
+if [ -f "$WORK/esp/EFI/BOOT/grub.cfg" ] && [ -n "${OLD_ROOT_UUID:-}" ] &&
+   grep -q "$OLD_ROOT_UUID" "$WORK/esp/EFI/BOOT/grub.cfg"; then
+	echo "   修 EFI/BOOT/grub.cfg 里的旧 root UUID"
+	sed -i "s/$OLD_ROOT_UUID/$NEW_ROOT_UUID/g" "$WORK/esp/EFI/BOOT/grub.cfg"
+fi
 mkdir -p "$WORK/esp/boot/grub"
 {
 	echo "search --no-floppy --fs-uuid --set=root $NEW_ROOT_UUID"
