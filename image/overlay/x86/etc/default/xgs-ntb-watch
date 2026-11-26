@@ -1,36 +1,24 @@
 # xgs-ntb-watch.sh 会 source 这个文件。
 #
 # 它是唯一负责"把 vNTB 拉起来并一直盯着"的东西（xgs-ntb.service 只在开机遇一次）。
-# 这台机器唯一的网络就是这条链路，链路没起来就没法远程进来。
+# 这台机器唯一的网络就是这条链路，链路没起来就没法远程进来，所以这里默认就是
+# "一直重试到成功"：上电顺序不受控（BIOS 可能比 NPU 的端点早、host 重启会把 NPU
+# 一起复位、NPU 可能还在 U-Boot），一次性脚本只要抢在那个瞬间跑完就再没人管了。
 #
-# 它每秒看一次状态，变了就动作（一拍几毫秒）；所有会阻塞的动作都扔后台并加锁，
-# 所以主循环永远不会被卡住。真正的恢复延迟由动作决定，不是这个 1 秒。
-#
-# 纯事件驱动（udev/FIFO）试过两版，真机上都会静默卡死，所以没有采用 —— 见脚本
-# 开头的说明。
-## 动作按代价从低到高：
-#   接口在但 carrier 不是 1 / 端点 bind 了却没 netdev -> 补管道            PLUMB_CD
-#   端点在总线上、没有驱动                            -> 后台再 bind 一次  BIND_CD
-#   上面都不行                                        -> 整条重来         FLUSH_CD
-#   总线上没有端点                                    -> plain rescan（安全）
-#   连续 RETRAIN_AFTER 秒都没有端点                   -> 重训链路（别调小！）
+# 三种状态各自的动作，按代价从低到高：
+#   端点在、没有 ntb netdev  -> 重跑 xgs-ntb-up.sh（不碰 PCIe）      PLUMB_CD 秒一次
+#   总线上没有端点           -> plain rescan（不碰已知设备，安全）    RESCAN_CD 秒一次
+#   ID 被缓存成 11ab:7080    -> remove + rescan（会复位 NPU）         STALE_CD 秒一次
+#   连着 RETRAIN_AFTER 次没救 -> toggle 根端口 Link Disable 重训链路  RETRAIN_CD 秒一次
 #
 # 全部留空就用脚本里的默认值。
 
-# 对端地址（NPU 的 LAN 口），用来判断"接口看着好但对面没起来"
+# 每隔几秒看一次
+#INTERVAL=5
+# 对端地址（NPU 的 br-lan），用来判断"链路通了但对面没起来"
 #PEER=10.234.56.1
-# 补管道的冷却（秒）
-#PLUMB_CD=2
-# 重试 bind 的冷却（秒）
-#BIND_CD=2
-# 整条重来的冷却（秒）
-#FLUSH_CD=6
-# 几秒 ping 一次（只在接口自称 up 时）
-#PING_EVERY=3
-# 连续几次 ping 不通就算对端没了
-#PING_MISS=2
-# 连续多少秒没有端点才重训链路。NPU 正常重启要 30 秒左右，这个值必须比它大很多：
-# 2026-11-26 实测，调小之后 host 会在 NPU 启动途中把链路重训，NPU 被打回去重启，
-# 于是变成"重启风暴"。
-#RETRAIN_AFTER=120
-#RETRAIN_CD=300
+#RESCAN_CD=5
+#STALE_CD=30
+#RETRAIN_AFTER=3
+#RETRAIN_CD=180
+#PLUMB_CD=15

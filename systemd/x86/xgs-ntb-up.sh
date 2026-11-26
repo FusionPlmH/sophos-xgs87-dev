@@ -47,7 +47,6 @@ esac
 WAN_VID=${WAN_VID:-100}
 LAN_VID=${LAN_VID:-200}
 WAIT=${WAIT:-180}
-BIND_EVERY=${BIND_EVERY:-3}
 BDF=0000:03:00.0
 NTB_DEV=/sys/bus/ntb/devices/$BDF
 PCI_DEV=/sys/bus/pci/devices/$BDF
@@ -79,36 +78,6 @@ set_bdf() {
 	PCI_DEV=/sys/bus/pci/devices/$BDF
 }
 
-# 写 /sys/bus/pci/rescan 在"设备刚被摘掉"那种状态下会阻塞几分钟才返回
-# （2026-11-25 实测：`--force-rescan` 就卡在这里，看着像整个脚本死了）。
-# 扫总线不需要同步等它，所以扔后台，调用方按"设备有没有出现"轮询就好。
-pci_rescan_bg() {
-	( echo 1 > /sys/bus/pci/rescan ) >/dev/null 2>&1 &
-}
-
-# 函数在总线上、却没有驱动 —— 这是 2026-11-25 让整台机器黑掉的那个状态。
-# ntb_hw_epf 的 probe 要去配端点门铃，端点还没武装就会超时：
-#     ntb_hw_epf 0000:03:00.0: Failed to configure doorbell
-#     ntb_hw_epf 0000:03:00.0: probe with driver ntb_hw_epf failed with error -110
-# 之后内核**不会**再试，函数就那么挂在总线上（lspci、BAR、链路全都正常），
-# 永远不会有 eth0。 把 BDF 写进 driver/bind 就是让 probe 重跑一遍，代价接近零。
-pci_driver() {
-	local d
-	# readlink -f prints the path unchanged when the last component is not a
-	# symlink (or does not exist), so a device with *no* driver would answer
-	# "driver" here and look bound to something else.  Check first.
-	[ -e "$PCI_DEV/driver" ] || return 0
-	d=$(readlink -f "$PCI_DEV/driver" 2>/dev/null) || return 0
-	echo "${d##*/}"
-}
-
-bind_epf() {
-	# The probe talks to the endpoint's doorbell; against a stale endpoint it
-	# can block in the kernel for tens of seconds.  Never let that stall the
-	# boot unit -- the supervisor retries anyway.
-	timeout 20 sh -c "echo $BDF > /sys/bus/pci/drivers/ntb_hw_epf/bind" 2>/dev/null
-}
-
 # Cold boots land here with a *stale* enumeration surprisingly often: the
 # firmware's PERST# resets the endpoint's DBI, the kernel scans the bus during
 # that window and caches the boot firmware's factory identity (11ab:7080 /
@@ -128,27 +97,19 @@ if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
 		echo "xgs-ntb: $PCI_DEV is stale: cached $cached_vid:$cached_did, live config space says 1957:0809; re-enumerating" >&2
 		echo 1 2>/dev/null > "$PCI_DEV/remove"
 		sleep 2
-		pci_rescan_bg
+		echo 1 2>/dev/null > /sys/bus/pci/rescan
 	fi
 fi
 
-# Wait for the function to show up (and, if it is already on the bus with no
-# driver, keep retrying the probe).  WAIT=180 s is for the case where the NPU's
-# Debian is still booting: a power cycle, fsck or a manual U-Boot stop can take
-# minutes, and none of that is a reason to touch the PCIe link.
+# 180 s of plain waiting.  The NPU's Debian boots in ~11 s, but a power cycle,
+# fsck or a manual U-Boot stop can take much longer; none of that is a reason
+# to touch the PCIe link.
 i=0
-last_bind=0
 while [ ! -e "$NTB_DEV" ] && [ "$i" -lt "$WAIT" ]; do
 	i=$((i + 1))
-	if found=$(find_epf); then
+	if [ $((i % 5)) -eq 0 ] && found=$(find_epf); then
 		[ "$found" = "$BDF" ] || echo "xgs-ntb: endpoint enumerated at $found (was $BDF)" >&2
 		set_bdf "$found"
-	fi
-	if [ -e "$PCI_DEV" ] && [ -z "$(pci_driver)" ] &&
-		[ $((i - last_bind)) -ge "$BIND_EVERY" ]; then
-		last_bind=$i
-		echo "xgs-ntb: $BDF has no driver; retrying ntb_hw_epf bind (t=${i}s)" >&2
-		bind_epf
 	fi
 	sleep 1
 done
@@ -163,12 +124,12 @@ done
 # xgs-vntb.service is ~10-20 s), so the function can appear after the kernel
 # has already scanned the bus.  Without a rescan the host never notices, and
 # from both ends it looks exactly like a dead link.
-if [ ! -e "$NTB_DEV" ] && [ ! -e "$PCI_DEV" ] && [ "$FORCE_RESCAN" != 1 ]; then
+if [ ! -e "$NTB_DEV" ] && [ "$FORCE_RESCAN" != 1 ]; then
 	i=0
 	while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 3 ]; do
 		i=$((i + 1))
 		echo "xgs-ntb: no ntb device yet; plain bus rescan $i/3" >&2
-		pci_rescan_bg
+		echo 1 2>/dev/null > /sys/bus/pci/rescan || true
 		j=0
 		while [ ! -e "$NTB_DEV" ] && [ "$j" -lt 20 ]; do
 			j=$((j + 1))
@@ -181,7 +142,7 @@ if [ "$FORCE_RESCAN" = 1 ] && [ -e "$PCI_DEV" ]; then
 	echo "xgs-ntb: forcing one remove/rescan of $PCI_DEV" >&2
 	echo 1 2>/dev/null > "$PCI_DEV/remove"
 	sleep 1
-	pci_rescan_bg
+	echo 1 2>/dev/null > /sys/bus/pci/rescan
 	i=0
 	while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 30 ]; do
 		i=$((i + 1))
@@ -237,16 +198,38 @@ if [ "$RETRAIN" = 1 ] && [ ! -e "$NTB_DEV" ]; then
 fi
 
 # The ntb device node only exists once ntb_hw_epf has *bound* the PCI
-# function.  By now the loop above has already retried the bind WAIT times, so
-# whatever is left here is a real diagnosis rather than another attempt.
+# function, and a driver that was already loaded binds as soon as the device
+# is added -- so this normally does nothing.  It matters when the module was
+# not loaded at the moment the function appeared (module index stale, service
+# restarted after the fact, DKMS module installed later): the device sits
+# there with no driver and nothing ever picks it up.  Meanwhile a user looking
+# at `lspci` sees a perfectly normal endpoint, which is exactly the confusing
+# "03:00.0 在，eth0 没有" state.
+
+
+
+# The ntb device node only exists once ntb_hw_epf has *bound* the PCI
+# function, and a driver that was already loaded binds as soon as the device
+# is added -- so this normally does nothing.  It matters when the module was
+# not loaded at the moment the function appeared (module index stale, service
+# restarted after the fact, DKMS module installed later): the device sits
+# there with no driver and nothing ever picks it up.
 if [ ! -e "$NTB_DEV" ] && [ -e "$PCI_DEV" ]; then
-	bound=$(pci_driver)
-	if [ -n "$bound" ]; then
-		echo "xgs-ntb: $PCI_DEV is bound to $bound, not to ntb_hw_epf" >&2
+	bound=$(readlink -f "$PCI_DEV/driver" 2>/dev/null || true)
+	if [ -n "$bound" ] && [ -e "$PCI_DEV/driver" ]; then
+		echo "xgs-ntb: $PCI_DEV is bound to ${bound##*/}, not to ntb_hw_epf" >&2
 	else
-		echo "xgs-ntb: $PCI_DEV has no driver after ${WAIT} bind attempts" >&2
-		echo "xgs-ntb: the driver said:" >&2
-		dmesg | grep -iE 'ntb_hw_epf|ntb_epf' | tail -6 >&2 || true
+		echo "xgs-ntb: $PCI_DEV is enumerated with no driver; binding ntb_hw_epf" >&2
+		if echo "$BDF" 2>/dev/null > /sys/bus/pci/drivers/ntb_hw_epf/bind; then
+			i=0
+			while [ ! -e "$NTB_DEV" ] && [ "$i" -lt 15 ]; do
+				i=$((i + 1))
+				sleep 1
+			done
+		else
+			echo "xgs-ntb: bind failed; the driver said:" >&2
+			dmesg | grep -iE 'ntb|0000:03:00' | tail -10 >&2 || true
+		fi
 	fi
 fi
 if [ ! -e "$NTB_DEV" ]; then

@@ -20,21 +20,6 @@ import time
 SOH, STX, EOT, ACK, NAK, CAN, CRC_C = 0x01, 0x02, 0x04, 0x06, 0x15, 0x18, 0x43
 
 
-def drop_rts(fd):
-    """这块板子的 UART 收发器拿 RTS 当方向控制：**RTS 拉低**才把 x86 的 TX 放出去。
-
-    2026-11-25 实测：默认状态（内核开端口时把 DTR+RTS 都拉高）写多少对端都收不到
-    一个字节；把 RTS 清掉之后立刻能收到。DTR 必须保持高 —— 连 DTR 一起清掉又收不到了。
-    现象是"串口只能读不能写"，很容易误判成线没接。
-    """
-    try:
-        import fcntl
-        import struct
-        fcntl.ioctl(fd, 0x5417, struct.pack('i', 0x004))  # TIOCMBIC / TIOCM_RTS
-    except Exception:
-        pass
-
-
 def crc16(data):
     crc = 0
     for b in data:
@@ -181,7 +166,6 @@ def make_raw(path):
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
     except termios.error:
         pass
-    drop_rts(fd)
     return fd
 
 

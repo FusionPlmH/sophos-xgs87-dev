@@ -4,51 +4,10 @@
 # Order matters: the endpoint controller must exist before pci_epf_vntb is
 # loaded (the EPF driver needs it), and ntb_transport/ntb_netdev must come
 # after the function has been started so an NTB device actually exists.
-#
-# ⚠️ There is **no** way to reset the endpoint controller from inside Linux on
-# this board, so do not try (2026-11-25, tested twice):
-#
-#   * dw-pcie sets suppress_bind_attrs, so /sys/bus/platform/drivers/dw-pcie
-#     has no bind/unbind at all;
-#   * `modprobe -r pcie_dw_plat` fails, and after the attempt the machine is
-#     wedged: sshd accepts TCP but never sends a banner, the console is silent,
-#     and only a power cycle brings it back.
-#
-# Two states therefore need an NPU reboot (or rebooting the x86, whose PERST#
-# resets this end too):
-#
-#   1. the host asserted PERST#, which wipes the endpoint's DBI while configfs
-#      still reports start=1 -- we believe we are armed and we are not, so the
-#      host's probe times out with "Failed to configure doorbell";
-#   2. a previous pci_epf_vntb probe failed, so the controller still counts the
-#      BARs as taken.  The next probe asks for a "free" BAR, gets one with size
-#      0 and dies with
-#          pci_epf_vntb ...: Doorbell BAR set failed
-#          pci_epf_vntb ...: Failed to initialize EPC
-#      and every later configfs poke fails the same way.
-#
-# What *is* safe and useful is the soft path: reload the vNTB stack and rewrite
-# the configfs function (that is what xgs-vntb-watch.sh does).  Keep the EPC
-# armed whenever possible: stopping it without being able to re-create the
-# function leaves the endpoint half-armed and kills the link.
 set -u
 
 C=/sys/kernel/config/pci_ep
-EPC=${EPC:-f2600000.pcie}
-
-case "${1:-}" in
-"") ;;
--h | --help)
-	echo "usage: $0"
-	echo "arms the vNTB endpoint on the NPU (no options: there is no safe way to"
-	echo "reset the endpoint controller from Linux, see the comment at the top)"
-	exit 0
-	;;
-*)
-	echo "usage: $0" >&2
-	exit 2
-	;;
-esac
+EPC=f2600000.pcie
 
 modprobe configfs 2>/dev/null
 mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
@@ -92,15 +51,6 @@ echo 0x10   > "$N/vbus_number"
 
 [ -e "$C/controllers/$EPC/func1" ] || ln -s "$F" "$C/controllers/$EPC/func1"
 echo 1 > "$C/controllers/$EPC/start"
-
-# 武装失败的唯一可靠判据：function 没挂上控制器，或者 start 写不进去。
-# 停在"start=1 但没有 function"最糟 —— 对端看到的设备是死的。
-if [ ! -e "$C/controllers/$EPC/func1" ] ||
-	[ "$(cat "$C/controllers/$EPC/start" 2>/dev/null)" != 1 ]; then
-	echo "xgs-vntb: 端点没武装起来（func1/start 不对），把 EPC 停在 0" >&2
-	echo 0 >"$C/controllers/$EPC/start" 2>/dev/null || true
-	exit 1
-fi
 
 modprobe ntb_transport transport_mtu=2048 2>/dev/null
 modprobe ntb_netdev 2>/dev/null

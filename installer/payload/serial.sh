@@ -19,21 +19,13 @@ BAUD=${BAUD:-115200}
 NPU_USER=${NPU_USER:-admin}
 NPU_PASS=${NPU_PASS:-P@ssw0rd}
 
-# U-Boot 的提示符。这台原厂 U-Boot 是 "Marvell>> "，不是主线的 "=> "：
-# 2026-11-25 实测，之前所有只等 "=> " 的写法每次都白等满整个超时，于是
-# npu-rescue.sh 判"没停住"、lzma 那次实验也永远等不到提示符。两个都认。
-UBOOT_PROMPT=${UBOOT_PROMPT:-'Marvell>> '}
-UBOOT_PROMPT_ALT=${UBOOT_PROMPT_ALT:-'=> '}
-
 _serial_open=0
 
-# 读，直到出现 $1（纯字符串匹配，不是正则）或者 $2 秒超时。
-# 可选的 $3 是"另一个也算数的标记"，用来同时认两种提示符。
+# 读，直到出现 $1（正则不支持的，纯字符串匹配）或者 $2 秒超时。
 # 输出写进 $_SERIAL_BUF，成功返回 0。
 serial_read_until() {
 	_pat=$1
 	_to=${2:-10}
-	_pat2=${3:-}
 	_SERIAL_BUF=
 	_end=$(( $(date +%s) + _to ))
 	while [ "$(date +%s)" -le "$_end" ]; do
@@ -42,11 +34,6 @@ serial_read_until() {
 		case "$_SERIAL_BUF" in
 		*"$_pat"*) return 0 ;;
 		esac
-		if [ -n "$_pat2" ]; then
-			case "$_SERIAL_BUF" in
-			*"$_pat2"*) return 0 ;;
-			esac
-		fi
 	done
 	return 1
 }
@@ -72,27 +59,13 @@ serial_send() {
 # 丢了。实测（2026-11-25，机器刚装好）：NPU 明明停在 `xgs-debian-npu login:`，
 # serial_login 连发 5 次回车都读不到它，安装器的串口兜底因此直接判"NPU 没起来"。
 # 改成一直开着同一个 fd，读写都走它，并在 stty 里加 -hupcl。
-# 只把端口打开（常开 fd 3 + 关掉 RTS），不发任何东西、不登录。
-# 给"对面不是 Linux"的场合用：U-Boot 提示符、刚复位完还没起系统的 NPU。
-serial_raw_open() {
-	[ -e "$TTY" ] || { echo "serial: 没有 $TTY" >&2; return 1; }
-	[ "$_serial_open" = 1 ] && return 0
-	stty -F "$TTY" "$BAUD" raw -echo -crtscts clocal -hupcl 2>/dev/null || true
-	exec 3<>"$TTY" || { echo "serial: 打不开 $TTY" >&2; return 1; }
-	_serial_open=1
-	# 这块板子的 UART 收发器拿 RTS 当方向控制：RTS 拉低才把 x86 的 TX 放出去。
-	# 不清掉的话只能读不能写（2026-11-25 实测，见 docs/05「控制台」）。
-	# stty 表达不了 RTS 引脚，只能 ioctl；fd 3 已经开着了，这里再用一个 fd
-	# 清一次不会把端口的调制解调器线重置掉。
-	python3 -c 'import fcntl, os, struct, sys
-fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY)
-fcntl.ioctl(fd, 0x5417, struct.pack("i", 0x004))
-os.close(fd)' "$TTY" 2>/dev/null || true
-	return 0
-}
-
 serial_open() {
-	serial_raw_open || return 1
+	[ -e "$TTY" ] || { echo "serial: 没有 $TTY" >&2; return 1; }
+	if [ "$_serial_open" != 1 ]; then
+		stty -F "$TTY" "$BAUD" raw -echo -crtscts clocal -hupcl 2>/dev/null || true
+		exec 3<>"$TTY" || { echo "serial: 打不开 $TTY" >&2; return 1; }
+		_serial_open=1
+	fi
 	# 一直按回车直到看见 login:（NPU 可能已经在提示符上，也可能刚重启）
 	i=0
 	while [ $i -lt 5 ]; do
