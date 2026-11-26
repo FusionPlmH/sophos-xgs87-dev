@@ -104,6 +104,9 @@ ssh admin@10.234.56.1 'uptime'                     # x86 → NPU 那一跳
 | NPU 上没有 `p1..p8`，只有 `eth0` | DSA 模块没起来：MDIO 那层必须先于 `mvmdio`；`bridge` 要 `llc`+`stp`；`dsa_core` 要 `selftests`+`hsr` |
 | 串口一片安静，`cat /dev/ttyS2` 什么都不给 | 有没有别的读者占着；NPU 是不是真的在跑（看 `xgs-ntb` 的 journal） |
 | `ssh` 报 `Host key verification failed` | 换过系统，`known_hosts` 里的旧指纹还在：删掉那一行 |
+| **x86 上电就循环 reboot**（约 11 秒一轮，串口只在刷 BIOS 横幅和 POST 码，插不插 U 盘都一样） | POST 阶段就 reset 了，不是"缺启动盘"那么简单。按顺序试：① 拔掉所有 USB 存储再上电（有个坏盘会卡住枚举）② BIOS 里 `Advanced → USB Configuration → USB boot` 确认是 `Enabled` ③ **清 CMOS**（断电后短接 CLR_CMOS / 取纽扣电池 30 秒）—— 2026-11-26 这台就是这么卡的，BIOS 认得出 eMMC 和 U 盘、却一个字符都不打就 reset ④ 还不行就是 eMMC 本身挂在初始化里（POST 码 `A0 A2 A2` 附近），要换盘 |
+| BIOS 里 `Boot` 页只有一个 `UEFI: …USB…`，eMMC 完全不在列表里 | 这块板子的 BIOS 执行的是 ESP 上的**兜底路径** `\EFI\BOOT\BOOTX64.EFI`（`grub-install --removable` 的那个）。eMMC 的 ESP 没有它就不算"可启动"，且 NVRAM 项丢了也不会自动重建。`image/mkdisk.sh` 和 `installer/mkusb.sh` 现在都会在构建时断言这个文件在 |
+| U 盘写了镜像、BIOS 也列成 Boot Option #1，但起不来 | 写入方式不对：GPT+ESP 的整盘镜像必须 `dd` 或 Etcher/Rufus 的 **DD 模式**；Rufus 的 ISO 模式会重排分区，ESP 里的 `\EFI\BOOT\BOOTX64.EFI` 就没了。写完用 `sfdisk -d /dev/sdX` 核一下分区表，再挂上 ESP 看 `EFI/BOOT` 目录 |
 
 ## 还没做的
 
