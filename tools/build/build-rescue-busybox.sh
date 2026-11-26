@@ -37,6 +37,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 MIRROR=${MIRROR:-https://busybox.net/downloads}
+DEB_MIRROR=${DEB_MIRROR:-https://deb.debian.org/debian}
 
 for t in "$CROSS_COMPILE"gcc file python3 script; do
 	command -v "$t" >/dev/null 2>&1 || { echo "缺 $t" >&2; exit 1; }
@@ -47,12 +48,27 @@ trap 'rm -rf "$WORK"' EXIT
 TB=$WORK/busybox-$BBVER.tar.bz2
 
 echo "== 1/5 取 busybox $BBVER"
-[ -f "$REPO/out/busybox-$BBVER.tar.bz2" ] && TB=$REPO/out/busybox-$BBVER.tar.bz2
-if [ ! -f "$TB" ]; then
-	curl -fsSL -o "$WORK/busybox-$BBVER.tar.bz2" "$MIRROR/busybox-$BBVER.tar.bz2" ||
-		{ echo "下载失败：$MIRROR/busybox-$BBVER.tar.bz2" >&2; exit 1; }
-	TB=$WORK/busybox-$BBVER.tar.bz2
+# ⚠ GitHub 的 runner 连不上 busybox.net（curl 28，133 秒超时），而 Debian 源里那份
+# busybox_1.38.0.orig.tar.bz2 和 upstream 的 tar.bz2 **字节完全相同**（sha256 一致，
+# 2026-11-26 对过），所以主源用 deb.debian.org，busybox.net 只当兜底。
+TB=$WORK/busybox-$BBVER.tar.bz2
+got_it=0
+if [ -f "$REPO/out/busybox-$BBVER.tar.bz2" ]; then
+	TB=$REPO/out/busybox-$BBVER.tar.bz2
+	got_it=1
+	echo "   用本地缓存 $TB"
+else
+	for u in "$DEB_MIRROR/pool/main/b/busybox/busybox_$BBVER.orig.tar.bz2" \
+	         "$MIRROR/busybox-$BBVER.tar.bz2" \
+	         "https://busybox.net/downloads/busybox-$BBVER.tar.bz2"; do
+		echo "   试 $u"
+		if curl -fsSL --connect-timeout 20 --max-time 300 -o "$TB" "$u"; then
+			got_it=1
+			break
+		fi
+	done
 fi
+[ "$got_it" = 1 ] || { echo "下载失败：三个源都没拿到 busybox-$BBVER.tar.bz2" >&2; exit 1; }
 got=$(sha256sum "$TB" | cut -d' ' -f1)
 [ "$got" = "$BBSHA256" ] || { echo "sha256 不对：$got" >&2; exit 1; }
 echo "   $(du -h "$TB" | cut -f1)  sha256 ok"
