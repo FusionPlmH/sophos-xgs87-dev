@@ -104,6 +104,16 @@ chroot "$TMP/root" grub-install --target=x86_64-efi --efi-directory=/boot/efi \
 	--bootloader-id=debian --removable --no-nvram
 chroot "$TMP/root" update-grub
 
+# 这块板子的 BIOS 执行的是 ESP 上的**兜底路径** \EFI\BOOT\BOOTX64.EFI（--removable 产
+# 的那个），NVRAM 里那条 debian 项丢了也还能起。所以兜底文件必须真的在盘上：缺了它
+# 镜像看起来完全正常，但机器上"BIOS 认得出 U 盘、却一个字符都不打就 reset"，
+# 而且从机器本身没有任何办法修（2026-11-26 就是这么卡了半天）。
+ls -l "$TMP/esp/EFI/BOOT" | sed 's/^/   /'
+[ -s "$TMP/esp/EFI/BOOT/BOOTX64.EFI" ] ||
+	{ echo "== ERROR: ESP 里没有 /EFI/BOOT/BOOTX64.EFI —— 这块板子起不来" >&2; exit 1; }
+[ -s "$TMP/esp/EFI/debian/shimx64.efi" ] || [ -s "$TMP/esp/EFI/debian/grubx64.efi" ] ||
+	echo "== warning: /EFI/debian 里既没有 shimx64.efi 也没有 grubx64.efi（只靠兜底路径也能起，但 NVRAM 项会指空）" >&2
+
 # Prove the ESP sizing in the build log instead of finding out on a machine that
 # will not boot: a full ESP means grub-install fails and the next update bricks it.
 df -h "$TMP/esp" | sed -n '1,2p'

@@ -229,6 +229,15 @@ fi
 echo "== 让 U 盘的 ESP 能自己启动"
 mkdir -p "$WORK/esp"
 mount "$ESP_DEV" "$WORK/esp"
+# 兜底启动器必须在盘上。这块板子的 BIOS 执行的是 ESP 的 \EFI\BOOT\BOOTX64.EFI；
+# 少了它，机器上是"BIOS 认得出 U 盘、但一个字符都不打就 reset"，而且没法从机器本身修
+# （2026-11-26 卡了半天）。CI 里没有真机，只能在这里拦。
+[ -s "$WORK/esp/EFI/BOOT/BOOTX64.EFI" ] || {
+	echo "== ERROR: U 盘 ESP 里没有 /EFI/BOOT/BOOTX64.EFI —— 这块板子起不来" >&2
+	echo "   （x86 镜像里的 grub-install --removable 没生效？看 image/mkdisk.sh）" >&2
+	umount "$WORK/esp"; exit 1
+}
+ls -l "$WORK/esp/EFI/BOOT" | sed 's/^/   /'
 mkdir -p "$WORK/esp/boot/grub"
 {
 	echo "search --no-floppy --fs-uuid --set=root $NEW_ROOT_UUID"
